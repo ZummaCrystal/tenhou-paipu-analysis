@@ -1053,7 +1053,13 @@ r = t % 3; t = (t // 3) * 4; h = [t, t, t]
 - 本轮收尾时用户 m04462 指示：其余已完成、只差 GitHub 推送时先停止该项 ⇒ 推送留待用户提供账号 / PAT（或自行建仓）后再做。
 
 ### 17.9 本轮踩到的坑
-- 见第 19 节第 68~72 条（正则 `\\` 只落一个反斜杠、行号转储抄缩进、PowerShell 重定向原生命令、本机 ssh + `core.autocrlf`、结构改造后逐项核对路径引用）。
+- 见第 19 节第 68~73 条（正则 `\\` 只落一个反斜杠、行号转储抄缩进、PowerShell 重定向原生命令、本机 ssh + `core.autocrlf`、结构改造后逐项核对路径引用、静态页面搬家后必须 302 跳转）。
+
+### 17.10 追加修正：静态页面搬迁后必须 302 跳转（用户 m04553）
+- 现象：访问 `http://127.0.0.1:8770/` 后界面点不动，服务端刷 `code 404, message File not found` 与 `GET /js/mjsfeat.js` / `GET /js/app.js` / `GET /style.css` 404。
+- 根因：`/` 原来只是**内部改写** `self.path` 成 `/web/index.html`（浏览器地址仍是 `/`），而 `web/index.html` 里是相对引用 `style.css` / `js/*.js` ⇒ 解析成 `/style.css`、`/js/*.js`（改造前的旧路径）⇒ 404。
+- 修法：`mjscore/server.py` 的 `do_GET` 把 `/` 与 `/index.html` 改成 **302 跳转**到 `/web/index.html`（`Location` + `Content-Length: 0`），浏览器地址变成 `/web/index.html`，相对引用才落在 `/web/` 下；`/media/tiles/*` 与 `/api/*` 不受影响。
+- 复验：`/`、`/index.html` → 302；`/web/index.html` 200；页面里的 7 个相对引用（`style.css` + 6 个 `js/*.js`）全部 200；`/media/tiles/1m.svg` 200、`/api/health` 200（`test/*.py|*.js` 里没有任何针对根路径的断言，改动不影响既有测试）。
 
 ## 18. 后续待办（第 1~4、6 项已完成，见第 6 节；第 17 轮完成三种向听数，见第 11 节；第 19 轮完成 12 个期望特征，见第 13 节；第 20 轮完成危险筋组 / 危险两面组，见第 14 节；第 21 轮完成第二类特征接入检索、帧特征面板、分析进度条、牌谱下载，见第 15 节；第 22 轮完成 bug 修复、版本号 v0.1.0、扩充现有数据库、readme，见第 16 节；第 23 轮完成扩充库 bug 修复、向听数 `>=3` 展示、作者信息、项目结构整理，见第 17 节；下面是第 12 轮之后的待办）
 
@@ -1234,8 +1240,10 @@ r = t % 3; t = (t // 3) * 4; h = [t, t, t]
 72. **目录结构改造后要逐项核对路径引用**：`web/js/tiles.js` 的 `TILE_DIR` / `web/js/ui.js` 的 `BACK_SRC`（`file:` 协议用 `../media/tiles/`、否则 `/media/tiles/`）、
     `mjscore/node_harness.js` 的 `JS_DIR`、`mjscore/server.py` 的 `/` → `/web/index.html` 重写、`tools/analyze.py` 的 `sys.path`（项目根 = 上一级）、
     `tools/download_tenhou.py` 的 `PROJECT_ROOT`、以及 `test/*.js` 里的资源路径；漏一处就是 404 或运行期错误。
+73. **静态页面搬家后不能只做「内部 URL 改写」**：`/` 若内部改写成 `/web/index.html` 而不真正跳转，页面里的相对引用（`style.css` / `js/*.js`）会按**浏览器地址**（`/`）解析到根目录 ⇒ 全部 404。
+    正确做法是 302 跳转（浏览器地址随之改变），相对引用才会落在 `/web/` 下；改完只要抓一次 `/` + 页面里所有相对引用，看是否都 200。
 
 
 
 ---
-*最后更新：第 23 轮（用户 m04115：修「扩充现有数据库」把库名拼成 `<名字>.sqlite.sqlite` 导致报「数据库不存在」的 bug（`cli.db_path_of()` + `server._db_of()`）；与向听数有关的特征内部值 3 一律显示 `>=3`（`cli.feat_value_text()` / `web/js/app.js` 的 `fmtFeatValue()`，检索仍按内部整数匹配，`3` / `3-5` / `>=3` 都命中内部值 3）；新增作者信息（`mjscore\__init__.py` 的 `AUTHOR` / `AUTHOR_EMAIL` + `/api/health` `/api/features` + 页眉 `#appAuthor`）；项目结构整理 —— 前端移到 `web/`（`index.html` / `style.css` / `js/`）、命令行移到 `tools/`（`analyze.py` / `download_tenhou.py`），根目录只留 `server.py`，并顺手修掉批量替换引入的 `\a`（BEL）/ `\d`（SyntaxWarning）缺陷；GitHub 本地已 `git init` + 提交 `ceda372`（78 文件 / 32315 行），推送待账号 / PAT。测试：`test\apptest.js` 276 OK、`test\mjscore_test.py` 全量 通过 217 项 / 失败 0 项（wall 3658.0 s ≈ 61.0 分钟，exit=0）、`test\agari_test.py` 182 / `test\danger_test.py` 29 / `test\expect_test.py` 73 / `test\shanten_test.py` 92 / `test\selftest.js` / `test\uitest.js` 全绿。本节见第 17 节；当前有效展示规则 = 5.1~5.7；下一步见第 18 节。）*
+*最后更新：第 23 轮（用户 m04115：修「扩充现有数据库」把库名拼成 `<名字>.sqlite.sqlite` 导致报「数据库不存在」的 bug（`cli.db_path_of()` + `server._db_of()`）；与向听数有关的特征内部值 3 一律显示 `>=3`（`cli.feat_value_text()` / `web/js/app.js` 的 `fmtFeatValue()`，检索仍按内部整数匹配，`3` / `3-5` / `>=3` 都命中内部值 3）；新增作者信息（`mjscore\__init__.py` 的 `AUTHOR` / `AUTHOR_EMAIL` + `/api/health` `/api/features` + 页眉 `#appAuthor`）；项目结构整理 —— 前端移到 `web/`（`index.html` / `style.css` / `js/`）、命令行移到 `tools/`（`analyze.py` / `download_tenhou.py`），根目录只留 `server.py`，并顺手修掉批量替换引入的 `\a`（BEL）/ `\d`（SyntaxWarning）缺陷；GitHub 本地已 `git init` + 提交 `ceda372`（78 文件 / 32315 行），推送待账号 / PAT。测试：`test\apptest.js` 276 OK、`test\mjscore_test.py` 全量 通过 217 项 / 失败 0 项（wall 3658.0 s ≈ 61.0 分钟，exit=0）、`test\agari_test.py` 182 / `test\danger_test.py` 29 / `test\expect_test.py` 73 / `test\shanten_test.py` 92 / `test\selftest.js` / `test\uitest.js` 全绿。追加修正（用户 m04553）：`/` 与 `/index.html` 由内部改写改为 **302 跳转**到 `/web/index.html`（否则页面里的 `style.css` / `js/*.js` 会解析成旧路径而 404）；本节见第 17 节；当前有效展示规则 = 5.1~5.7；下一步见第 18 节。）*

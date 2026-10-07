@@ -4,7 +4,7 @@
 浏览器出于安全不能直接读写本地磁盘、也不能拉起 python，所以「牌谱分析 / 牌谱检索」
 都经由这个本地服务完成：
 
-    GET  /                       前端（等价于 /web/index.html：页面在 web/，素材在 media/）
+    GET  /                       302 跳转到 /web/index.html（页面在 web/，素材在 media/）
     GET  /api/health             {ok:true, name, version, author, author_email}（软件名 / 版本号 v0.1.0 / 作者）
     GET  /api/features           33 个特征定义（16 个第一类 + 17 个第二类，m02959）+ 打点口径
     GET  /api/dbs                已建数据库列表（data/db/*.sqlite）
@@ -295,12 +295,20 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._send_json({"path": p, "text": text})
             except ApiError as exc:
                 return self._send_json({"ok": False, "error": str(exc)}, exc.code)
-        # 前端页面在 web/ 下（项目根只放 server.py）：/ 与 /index.html 转发到 /web/index.html，
-        # 其余静态文件（/web/js/*.js、/media/tiles/*.svg）按项目根解析。
+        # 前端页面在 web/ 下（项目根只放 server.py）：/ 与 /index.html 用 302 跳到 /web/index.html。
+        # 必须真正跳转（不能内部改写 URL），否则页面里的相对引用
+        # （style.css、js/*.js）会解析成 /style.css / /js/*.js —— 那是改造前的旧路径，现在都在 web/ 下，会 404（用户 m04553）。
         if path in ("/", "/index.html"):
             qs = self.path.split("?", 1)[1] if "?" in self.path else ""
-            self.path = "/web/index.html" + (("?" + qs) if qs else "")
-            return super().do_GET()
+            loc = "/web/index.html" + (("?" + qs) if qs else "")
+            body = b""
+            self.send_response(302)
+            self.send_header("Location", loc)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if path in GET_ROUTES:
             try:
                 return self._send_json(GET_ROUTES[path](q))
