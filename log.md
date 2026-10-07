@@ -1062,6 +1062,16 @@ r = t % 3; t = (t // 3) * 4; h = [t, t, t]
 - 复验：`/`、`/index.html` → 302；`/web/index.html` 200；页面里的 7 个相对引用（`style.css` + 6 个 `js/*.js`）全部 200；`/media/tiles/1m.svg` 200、`/api/health` 200（`test/*.py|*.js` 里没有任何针对根路径的断言，改动不影响既有测试）。
 
 - **追加（用户 m04598 仍见 `/style.css`、`/js/*.js` 404）**：根因是**浏览器缓存了改造前的旧 HTML**（文档 URL 仍是 `/`，相对引用自然还解析成旧路径），不是服务端没改。服务端补两道保险：① 旧路径回退：根目录没有、`web/` 下有同名文件时 **302 到 `/web/…`**（实测 `/style.css` → 302 `/web/style.css`、`/js/mjsfeat.js` → 302 → 200）；② `Handler.end_headers()` 给 `text/html` 响应加 `Cache-Control: no-store, must-revalidate`。
+### 17.11 追加：牌谱播放改为入口式，首页只留介绍 + 开始播放（用户 m04628）
+
+- 要求：牌谱播放不要再直接暴露在首页，改成与「牌谱分析 / 检索 / 下载」一样的入口 —— 首页只保留功能介绍 + 「开始播放」按钮。
+- 改动（`web/index.html` / `web/js/app.js` / `web/style.css`）：首页卡片里的 `btnPickFile` / `fileInput` / `dropZone` /
+  `sampleSelect` / `btnLoadSample` / `#homeMsg` / 打不开文件的提示整块**搬进播放视图**，包在 `#rpOpenBar`（`.open-bar`）里；
+  首页只留 `<button id="btnGoReplay">开始播放</button>`；播放视图工具栏加「打开牌谱…」(`#btnOpenPicker`) 折叠 / 展开该栏。
+- 行为：`loadText()` 载入成功后自动收起 `#rpOpenBar`；点页签「牌谱播放」即使没载入牌谱也允许进入（原来会弹提示并退回首页），
+  改为展开 `#rpOpenBar` 并提示「请选择一个牌谱文件，或载入示例牌谱」；`render()` 本身有 `if (!App.game) return;`，空视图不会报错。
+- 验证（只挑选个例，未做全量）：`test\apptest.js` 新增 5 条断言（首页窗口片段不含 `btnPickFile`/`dropZone`、播放视图片段含控件、
+  点「开始播放」进播放视图且打开栏可见、「打开牌谱…」可收起 / 再展开）⇒ **281 OK / 0 FAIL / 全部通过**（原 276 OK）+ `node --check` 通过。
 ## 18. 后续待办（第 1~4、6 项已完成，见第 6 节；第 17 轮完成三种向听数，见第 11 节；第 19 轮完成 12 个期望特征，见第 13 节；第 20 轮完成危险筋组 / 危险两面组，见第 14 节；第 21 轮完成第二类特征接入检索、帧特征面板、分析进度条、牌谱下载，见第 15 节；第 22 轮完成 bug 修复、版本号 v0.1.0、扩充现有数据库、readme，见第 16 节；第 23 轮完成扩充库 bug 修复、向听数 `>=3` 展示、作者信息、项目结构整理，见第 17 节；下面是第 12 轮之后的待办）
 
 - [ ] 解析 mjlog XML，按局切分（`INIT` … `AGARI`/`RYUUKYOKU`）。
@@ -1244,8 +1254,9 @@ r = t % 3; t = (t // 3) * 4; h = [t, t, t]
 73. **静态页面搬家后不能只做「内部 URL 改写」**：`/` 若内部改写成 `/web/index.html` 而不真正跳转，页面里的相对引用（`style.css` / `js/*.js`）会按**浏览器地址**（`/`）解析到根目录 ⇒ 全部 404。
     正确做法是 302 跳转（浏览器地址随之改变），相对引用才会落在 `/web/` 下；改完只要抓一次 `/` + 页面里所有相对引用，看是否都 200。
 74. **前端搬家后浏览器会缓存旧 HTML**：相对引用按文档 URL 所在目录解析，`/` 上的旧页面会一直去取 `/style.css`、`/js/*.js`。除把 `/` 302 到 `/web/index.html`，服务端还应：根目录找不到而 `web/` 下有的文件 302 过去、并给 HTML 响应加 `Cache-Control: no-store`；否则用户即使重启服务也还是 404（用户 m04598）。
+75. **把首页的控件搬进子视图时，别忘了同步改「页签守卫」**：原来点「牌谱播放」页签会在 `!App.game` 时弹提示并退回首页（那时控件在首页），控件搬进播放视图后这条守卫反而把入口堵死了 —— 要么放开守卫、要么把守卫的提示换成「先在这里选文件」（用户 m04628）。
 
 
 
 ---
-*最后更新：第 23 轮（用户 m04115：修「扩充现有数据库」把库名拼成 `<名字>.sqlite.sqlite` 导致报「数据库不存在」的 bug（`cli.db_path_of()` + `server._db_of()`）；与向听数有关的特征内部值 3 一律显示 `>=3`（`cli.feat_value_text()` / `web/js/app.js` 的 `fmtFeatValue()`，检索仍按内部整数匹配，`3` / `3-5` / `>=3` 都命中内部值 3）；新增作者信息（`mjscore\__init__.py` 的 `AUTHOR` / `AUTHOR_EMAIL` + `/api/health` `/api/features` + 页眉 `#appAuthor`）；项目结构整理 —— 前端移到 `web/`（`index.html` / `style.css` / `js/`）、命令行移到 `tools/`（`analyze.py` / `download_tenhou.py`），根目录只留 `server.py`，并顺手修掉批量替换引入的 `\a`（BEL）/ `\d`（SyntaxWarning）缺陷；GitHub 本地已 `git init` + 提交 `ceda372`（78 文件 / 32315 行），推送待账号 / PAT。测试：`test\apptest.js` 276 OK、`test\mjscore_test.py` 全量 通过 217 项 / 失败 0 项（wall 3658.0 s ≈ 61.0 分钟，exit=0）、`test\agari_test.py` 182 / `test\danger_test.py` 29 / `test\expect_test.py` 73 / `test\shanten_test.py` 92 / `test\selftest.js` / `test\uitest.js` 全绿。追加修正（用户 m04553）：`/` 与 `/index.html` 由内部改写改为 **302 跳转**到 `/web/index.html`（否则页面里的 `style.css` / `js/*.js` 会解析成旧路径而 404）；本节见第 17 节；当前有效展示规则 = 5.1~5.7；下一步见第 18 节。）*
+*最后更新：第 23 轮（用户 m04115：修「扩充现有数据库」把库名拼成 `<名字>.sqlite.sqlite` 导致报「数据库不存在」的 bug（`cli.db_path_of()` + `server._db_of()`）；与向听数有关的特征内部值 3 一律显示 `>=3`（`cli.feat_value_text()` / `web/js/app.js` 的 `fmtFeatValue()`，检索仍按内部整数匹配，`3` / `3-5` / `>=3` 都命中内部值 3）；新增作者信息（`mjscore\__init__.py` 的 `AUTHOR` / `AUTHOR_EMAIL` + `/api/health` `/api/features` + 页眉 `#appAuthor`）；项目结构整理 —— 前端移到 `web/`（`index.html` / `style.css` / `js/`）、命令行移到 `tools/`（`analyze.py` / `download_tenhou.py`），根目录只留 `server.py`，并顺手修掉批量替换引入的 `\a`（BEL）/ `\d`（SyntaxWarning）缺陷；GitHub 本地已 `git init` + 提交 `ceda372`（78 文件 / 32315 行），推送待账号 / PAT。测试：`test\apptest.js` 276 OK、`test\mjscore_test.py` 全量 通过 217 项 / 失败 0 项（wall 3658.0 s ≈ 61.0 分钟，exit=0）、`test\agari_test.py` 182 / `test\danger_test.py` 29 / `test\expect_test.py` 73 / `test\shanten_test.py` 92 / `test\selftest.js` / `test\uitest.js` 全绿。追加修正（用户 m04628）：牌谱播放改为入口式，首页只留介绍 + 「开始播放」按钮；追加修正（用户 m04553）：`/` 与 `/index.html` 由内部改写改为 **302 跳转**到 `/web/index.html`（否则页面里的 `style.css` / `js/*.js` 会解析成旧路径而 404）；本节见第 17 节；当前有效展示规则 = 5.1~5.7；下一步见第 18 节。）*

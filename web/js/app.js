@@ -132,6 +132,7 @@
     buildRoundSelect();
     setFileInfo(App.fileName + ' · 共 ' + game.rounds.length + ' 局');
     $('rpFile').textContent = App.fileName;
+    $('rpOpenBar').classList.add('hidden');   /* 载入牌谱后收起「选择牌谱文件」栏 */
     homeMsg('');
     setView('replay');
     render();
@@ -1345,6 +1346,12 @@
     });
     $('btnLoadSample').addEventListener('click', loadSample);
     $('btnGoSearch').addEventListener('click', function () { setView('search'); });
+    bind('btnGoReplay', function () {
+      $('rpOpenBar').classList.remove('hidden');
+      homeMsg('请选择一个牌谱文件，或载入示例牌谱。');
+      setView('replay');
+    });
+    bind('btnOpenPicker', function () { $('rpOpenBar').classList.toggle('hidden'); });
     bind('btnGoAnalyze', function () { setView('analyze'); });
 
     /* 牌谱分析 */
@@ -1400,9 +1407,9 @@
       tabs[i].addEventListener('click', function () {
         var v = this.getAttribute('data-view');
         if (v === 'replay' && !App.game) {
-          homeMsg('请先选择一个牌谱文件（或载入示例）。', true);
-          setView('home');
-          return;
+          /* 没载入牌谱也允许进播放视图：入口（选择文件 / 载入示例）就在那里 */
+          $('rpOpenBar').classList.remove('hidden');
+          homeMsg('请选择一个牌谱文件，或载入示例牌谱。');
         }
         setView(v);
       });

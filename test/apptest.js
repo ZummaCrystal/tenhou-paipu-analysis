@@ -454,6 +454,21 @@ tabs[1].fire('click', { target: tabs[1] });
 check(App.view === 'replay', '点页签回到播放视图');
 check(countTiles(byId.board) > 0, '切回后牌桌仍在（渲染 ' + countTiles(byId.board) + ' 张牌）');
 
+/* 播放功能的入口（m04628）：首页只留介绍 + 开始播放，播放控件搬进播放视图 */
+var homeHtml = html.slice(html.indexOf('id="view-home"'), html.indexOf('id="view-replay"'));
+var rpHtml = html.slice(html.indexOf('id="view-replay"'), html.indexOf('id="view-analyze"'));
+check(homeHtml.indexOf('btnGoReplay') >= 0 && homeHtml.indexOf('btnPickFile') < 0 && homeHtml.indexOf('dropZone') < 0,
+      '首页只留「开始播放」入口，不再直接暴露选择文件 / 拖拽区');
+check(rpHtml.indexOf('btnPickFile') >= 0 && rpHtml.indexOf('dropZone') >= 0 && rpHtml.indexOf('sampleSelect') >= 0
+      && rpHtml.indexOf('homeMsg') >= 0, '选择文件 / 拖拽区 / 示例下拉 / 提示都搬进播放视图');
+byId.btnGoReplay.fire('click', { target: byId.btnGoReplay });
+check(App.view === 'replay' && !byId.rpOpenBar.classList.contains('hidden'),
+      '点「开始播放」进入播放视图并展开「选择牌谱文件」栏');
+byId.btnOpenPicker.fire('click', { target: byId.btnOpenPicker });
+check(byId.rpOpenBar.classList.contains('hidden'), '「打开牌谱…」可以收起该栏');
+byId.btnOpenPicker.fire('click', { target: byId.btnOpenPicker });
+check(!byId.rpOpenBar.classList.contains('hidden'), '再点一次又展开');
+
 /* ============================================================ 11. 全量遍历 */
 console.log('\n=== 11. 全量帧遍历（所有牌谱 / 所有局 / 所有帧）===');
 var totalFrames = 0, gameCount = 0, renderErrors = 0;

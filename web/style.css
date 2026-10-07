@@ -138,6 +138,16 @@ main { flex: 1 1 auto; overflow: auto; }
 
 .row { display: flex; align-items: center; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
 
+.open-bar {
+  margin: 0 0 12px;
+  padding: 10px 12px 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-panel);
+}
+.open-bar .row { margin: 6px 0; }
+.open-bar .drop-zone { margin: 8px 0 6px; }
+
 .drop-zone {
   margin: 12px 0;
   padding: 22px;

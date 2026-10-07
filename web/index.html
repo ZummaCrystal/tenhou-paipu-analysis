@@ -33,28 +33,8 @@
           也可以在下方选择 <code>data/</code> 中已下载的示例牌谱。</p>
 
         <div class="row">
-          <button id="btnPickFile" class="primary">选择牌谱文件…</button>
-          <input id="fileInput" type="file" accept=".xml,.mjlog,text/xml,application/xml" hidden />
+          <button id="btnGoReplay" class="primary">开始播放</button>
         </div>
-
-        <div id="dropZone" class="drop-zone">把 .xml 牌谱文件拖到这里</div>
-
-        <div class="row">
-          <label for="sampleSelect">示例牌谱（需本地 HTTP 服务器）</label>
-          <select id="sampleSelect"></select>
-          <button id="btnLoadSample">载入</button>
-        </div>
-
-        <p id="homeMsg" class="msg"></p>
-        <details class="hint">
-          <summary>打不开文件 / 载入示例失败？</summary>
-          <p>正常用法：在项目根目录启动本地服务，再打开页面地址。需要本地服务才能访问
-            <code>data/</code> 牌谱、「牌谱分析」与「牌谱检索」：<br />
-            <code>python server.py</code><br />
-            然后访问 <code>http://127.0.0.1:8770/</code>（页面文件在 <code>web/index.html</code>）。</p>
-          <p>也可以直接双击 <code>web/index.html</code> 用「选择牌谱文件」离线播放，
-            但牌谱分析与检索必须走本地服务。</p>
-        </details>
       </div>
 
       <div class="card">
@@ -87,6 +67,7 @@
   <section id="view-replay" class="view hidden">
     <div class="replay-toolbar">
       <button id="btnBackHome" class="ghost">← 返回首页</button>
+      <button id="btnOpenPicker" class="ghost">打开牌谱…</button>
       <span id="rpFile" class="file-name"></span>
       <div class="topbar-spacer"></div>
       <label for="roundSelect">局</label>
@@ -99,6 +80,29 @@
       
       <label class="chk"><input type="checkbox" id="chkList" checked /> 事件列表</label>
     </div>
+
+      <div id="rpOpenBar" class="open-bar">
+        <div class="row">
+          <button id="btnPickFile" class="primary">选择牌谱文件…</button>
+          <input id="fileInput" type="file" accept=".xml,.mjlog,text/xml,application/xml" hidden />
+          <label for="sampleSelect">示例牌谱（需本地 HTTP 服务器）</label>
+          <select id="sampleSelect"></select>
+          <button id="btnLoadSample">载入</button>
+        </div>
+
+        <div id="dropZone" class="drop-zone">把 .xml 牌谱文件拖到这里</div>
+
+        <p id="homeMsg" class="msg"></p>
+        <details class="hint">
+          <summary>打不开文件 / 载入示例失败？</summary>
+          <p>正常用法：在项目根目录启动本地服务，再打开页面地址。需要本地服务才能访问
+            <code>data/</code> 牌谱、「牌谱分析」与「牌谱检索」：<br />
+            <code>python server.py</code><br />
+            然后访问 <code>http://127.0.0.1:8770/</code>（页面文件在 <code>web/index.html</code>）。</p>
+          <p>也可以直接双击 <code>web/index.html</code> 用「选择牌谱文件」离线播放，
+            但牌谱分析与检索必须走本地服务。</p>
+        </details>
+      </div>
 
     <div id="warnBar" class="warn-bar hidden"></div>
 
