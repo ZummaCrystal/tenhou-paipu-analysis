@@ -461,6 +461,12 @@ check(homeHtml.indexOf('btnGoReplay') >= 0 && homeHtml.indexOf('btnPickFile') < 
       '首页只留「开始播放」入口，不再直接暴露选择文件 / 拖拽区');
 check(rpHtml.indexOf('btnPickFile') >= 0 && rpHtml.indexOf('dropZone') >= 0 && rpHtml.indexOf('sampleSelect') >= 0
       && rpHtml.indexOf('homeMsg') >= 0, '选择文件 / 拖拽区 / 示例下拉 / 提示都搬进播放视图');
+var cssTxt = fs.readFileSync(base + '/web/style.css', 'utf8');
+check(homeHtml.indexOf('牌谱下载') < homeHtml.indexOf('牌谱播放')
+      && homeHtml.indexOf('牌谱播放') < homeHtml.indexOf('牌谱分析')
+      && homeHtml.indexOf('牌谱分析') < homeHtml.indexOf('牌谱检索'),
+      '首页四张卡片顺序 = 下载 / 播放 / 分析 / 检索');
+check(/\.cards\s*\{[^}]*repeat\(2,/.test(cssTxt), '首页四个入口按 2 x 2 排布（.cards 两列网格）');
 byId.btnGoReplay.fire('click', { target: byId.btnGoReplay });
 check(App.view === 'replay' && !byId.rpOpenBar.classList.contains('hidden'),
       '点「开始播放」进入播放视图并展开「选择牌谱文件」栏');

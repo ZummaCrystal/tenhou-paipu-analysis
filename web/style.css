@@ -120,11 +120,17 @@ main { flex: 1 1 auto; overflow: auto; }
 
 /* ----------------------------------------------------------- 首页 */
 .cards {
+  /* 四个功能入口按 2 x 2 排布（顺序：下载 / 播放 / 分析 / 检索） */
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
   max-width: 1000px;
   margin: 24px auto 0;
+  align-items: start;
+}
+
+@media (max-width: 760px) {
+  .cards { grid-template-columns: minmax(0, 1fr); }
 }
 .card {
   background: var(--bg-panel);

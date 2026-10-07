@@ -1072,6 +1072,14 @@ r = t % 3; t = (t // 3) * 4; h = [t, t, t]
   改为展开 `#rpOpenBar` 并提示「请选择一个牌谱文件，或载入示例牌谱」；`render()` 本身有 `if (!App.game) return;`，空视图不会报错。
 - 验证（只挑选个例，未做全量）：`test\apptest.js` 新增 5 条断言（首页窗口片段不含 `btnPickFile`/`dropZone`、播放视图片段含控件、
   点「开始播放」进播放视图且打开栏可见、「打开牌谱…」可收起 / 再展开）⇒ **281 OK / 0 FAIL / 全部通过**（原 276 OK）+ `node --check` 通过。
+### 17.12 追加：首页布局改为 2 x 2，牌谱下载排第一（用户 m04685）
+
+- 要求：首页四个功能区域按 **2 x 2** 排布，且把「牌谱下载」放在第一个（在「牌谱播放」之前）。
+- 改动：`web/index.html` 的 `<div class="cards">` 里把「牌谱下载」卡片整块移到最前，卡片顺序 = 下载 / 播放 / 分析 / 检索；
+  `web/style.css` 的 `.cards` 由 `repeat(auto-fit, minmax(320px, 1fr))` 改为 `repeat(2, minmax(0, 1fr))` + `align-items: start`，
+  并加 `@media (max-width: 760px) { .cards { grid-template-columns: minmax(0, 1fr); } }`（窄屏回落单列）。
+- 验证：`test\apptest.js` 新增 2 条断言（首页四张卡片顺序 = 下载 / 播放 / 分析 / 检索、`.cards` 是两列网格）
+  ⇒ **283 OK / 0 FAIL / 全部通过**；`node --check web/js/app.js` 通过。
 ## 18. 后续待办（第 1~4、6 项已完成，见第 6 节；第 17 轮完成三种向听数，见第 11 节；第 19 轮完成 12 个期望特征，见第 13 节；第 20 轮完成危险筋组 / 危险两面组，见第 14 节；第 21 轮完成第二类特征接入检索、帧特征面板、分析进度条、牌谱下载，见第 15 节；第 22 轮完成 bug 修复、版本号 v0.1.0、扩充现有数据库、readme，见第 16 节；第 23 轮完成扩充库 bug 修复、向听数 `>=3` 展示、作者信息、项目结构整理，见第 17 节；下面是第 12 轮之后的待办）
 
 - [ ] 解析 mjlog XML，按局切分（`INIT` … `AGARI`/`RYUUKYOKU`）。

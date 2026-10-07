@@ -28,6 +28,13 @@
   <section id="view-home" class="view">
     <div class="cards">
       <div class="card">
+        <h2>牌谱下载</h2>
+        <p class="muted">把天凤牌谱下载到 <code>data/paipu/&lt;子目录&gt;</code>：可以输入单个牌谱 URL，
+          也可以选择一个「每行一个 URL」的本地文本文件；同名文件直接覆盖，下载完可直接拿去分析。</p>
+        <button id="btnGoDownload">进入下载</button>
+      </div>
+
+      <div class="card">
         <h2>牌谱播放</h2>
         <p class="muted">选择一个本地 <code>mjlog</code> 牌谱（.xml）后进入播放界面，逐步回放每一局。
           也可以在下方选择 <code>data/</code> 中已下载的示例牌谱。</p>
@@ -52,13 +59,6 @@
         <p class="muted">指定一个本地数据库文件，按「牌谱特征」检索打点帧（摸牌帧 / 吃碰后帧），输出：
           <b>牌谱特征码 + 局况 + 本场 + 巡目 + 风位</b>，并可跳转到对应帧形态查看。</p>
         <button id="btnGoSearch">进入检索</button>
-      </div>
-
-      <div class="card">
-        <h2>牌谱下载</h2>
-        <p class="muted">把天凤牌谱下载到 <code>data/paipu/&lt;子目录&gt;</code>：可以输入单个牌谱 URL，
-          也可以选择一个「每行一个 URL」的本地文本文件；同名文件直接覆盖，下载完可直接拿去分析。</p>
-        <button id="btnGoDownload">进入下载</button>
       </div>
     </div>
   </section>
