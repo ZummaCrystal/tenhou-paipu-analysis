@@ -1,0 +1,16 @@
+# 牌谱与数据库（体积大、本地生成；需要时用 tools/download_tenhou.py 重新下载）
+data/
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+
+# 测试产物
+test/out/
+test/_tmp/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

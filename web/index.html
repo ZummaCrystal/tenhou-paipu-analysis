@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>天凤牌谱分析</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand"><span id="brandName">天凤牌谱分析</span> <span id="appVer" class="app-ver"></span></div>
+  <nav class="tabs">
+    <button class="tab" data-view="home">首页</button>
+    <button class="tab" data-view="replay">牌谱播放</button>
+    <button class="tab" data-view="analyze">牌谱分析</button>
+    <button class="tab" data-view="search">牌谱检索</button>
+    <button class="tab" data-view="download">牌谱下载</button>
+  </nav>
+  <div class="topbar-spacer"></div>
+  <div id="appAuthor" class="app-author"></div>
+  <div id="fileInfo" class="file-info">未载入牌谱</div>
+</header>
+
+<main>
+
+  <!-- ============================ 首页 ============================ -->
+  <section id="view-home" class="view">
+    <div class="cards">
+      <div class="card">
+        <h2>牌谱播放</h2>
+        <p class="muted">选择一个本地 <code>mjlog</code> 牌谱（.xml）后进入播放界面，逐步回放每一局。
+          也可以在下方选择 <code>data/</code> 中已下载的示例牌谱。</p>
+
+        <div class="row">
+          <button id="btnPickFile" class="primary">选择牌谱文件…</button>
+          <input id="fileInput" type="file" accept=".xml,.mjlog,text/xml,application/xml" hidden />
+        </div>
+
+        <div id="dropZone" class="drop-zone">把 .xml 牌谱文件拖到这里</div>
+
+        <div class="row">
+          <label for="sampleSelect">示例牌谱（需本地 HTTP 服务器）</label>
+          <select id="sampleSelect"></select>
+          <button id="btnLoadSample">载入</button>
+        </div>
+
+        <p id="homeMsg" class="msg"></p>
+        <details class="hint">
+          <summary>打不开文件 / 载入示例失败？</summary>
+          <p>正常用法：在项目根目录启动本地服务，再打开页面地址。需要本地服务才能访问
+            <code>data/</code> 牌谱、「牌谱分析」与「牌谱检索」：<br />
+            <code>python server.py</code><br />
+            然后访问 <code>http://127.0.0.1:8770/</code>（页面文件在 <code>web/index.html</code>）。</p>
+          <p>也可以直接双击 <code>web/index.html</code> 用「选择牌谱文件」离线播放，
+            但牌谱分析与检索必须走本地服务。</p>
+        </details>
+      </div>
+
+      <div class="card">
+        <h2>牌谱分析</h2>
+        <p class="muted">选择本地牌谱文件或一个子目录，对其中<b>每一个非自摸的摸牌帧</b>与<b>每一个吃/碰后等待出牌的帧</b>
+          （视角＝摸牌者本人；巡目按「出牌」计）标注 33 个特征（16 个第一类 + 17 个第二类：向听数 / 期望枚数 /</p>
+        <p class="muted">期望打点 / 危险筋组·两面组），写入本地 SQLite 数据库。</p>
+        <p class="muted">特征取值说明：三种向听数的内部取值 3 表示「>=3 向听」，界面与文档里一律显示成 <b>&gt;=3</b>；
+          检索时按 <b>&gt;=3</b> 填写条件即可。</p>
+        <button id="btnGoAnalyze">进入牌谱分析</button>
+      </div>
+
+      <div class="card">
+        <h2>牌谱检索</h2>
+        <p class="muted">指定一个本地数据库文件，按「牌谱特征」检索打点帧（摸牌帧 / 吃碰后帧），输出：
+          <b>牌谱特征码 + 局况 + 本场 + 巡目 + 风位</b>，并可跳转到对应帧形态查看。</p>
+        <button id="btnGoSearch">进入检索</button>
+      </div>
+
+      <div class="card">
+        <h2>牌谱下载</h2>
+        <p class="muted">把天凤牌谱下载到 <code>data/paipu/&lt;子目录&gt;</code>：可以输入单个牌谱 URL，
+          也可以选择一个「每行一个 URL」的本地文本文件；同名文件直接覆盖，下载完可直接拿去分析。</p>
+        <button id="btnGoDownload">进入下载</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========================== 牌谱播放 ========================== -->
+  <section id="view-replay" class="view hidden">
+    <div class="replay-toolbar">
+      <button id="btnBackHome" class="ghost">← 返回首页</button>
+      <span id="rpFile" class="file-name"></span>
+      <div class="topbar-spacer"></div>
+      <label for="roundSelect">局</label>
+      <select id="roundSelect"></select>
+      <span id="rpFrame" class="frame-info"></span>
+
+      <span id="itemInfo" class="item-info hidden"></span>
+      <button id="btnPrevItem" class="ghost hidden">◀ 上一条目</button>
+      <button id="btnNextItem" class="ghost hidden">下一条目 ▶</button>
+      
+      <label class="chk"><input type="checkbox" id="chkList" checked /> 事件列表</label>
+    </div>
+
+    <div id="warnBar" class="warn-bar hidden"></div>
+
+    <div class="replay-body">
+      <div class="board-wrap">
+        <!-- 静态帧里的特征串（牌谱特征码 + 局况 + 本场 + 巡目 + 风位），点击复制 -->
+        <div id="frameKey" class="frame-key" title="点击复制"></div>
+        <div id="boardBox" class="board-box">
+          <div id="board" class="board"></div>
+        </div>
+        <div id="controls" class="controls">
+          <button data-act="prevRound">⇤ 上一局</button>
+          <button data-act="first">⎮◀ 开局</button>
+          <button data-act="prevKey">◀◀ 上一关键</button>
+          <button data-act="prev">◀ 上一步</button>
+          <button data-act="next" class="primary">下一步 ▶</button>
+          <button data-act="nextKey">下一关键 ▶▶</button>
+          <button data-act="last">本局结束 ⎮▶</button>
+          <button data-act="auto">▶ 自动播放</button>
+          <button data-act="nextRound">下一局 ⇥</button>
+          <button data-act="others" id="btnOthers">隐藏他家手牌</button>
+        </div>
+        <div id="rpDesc" class="desc-bar"></div>
+      </div>
+
+      <aside id="featPanel" class="feat-panel">
+        <div class="feat-panel-head">当前帧特征 <span id="featPanelInfo" class="muted"></span></div>
+        <div id="featPanelList" class="feat-panel-body"></div>
+      </aside>
+
+      <aside id="eventList" class="event-list">
+        <div class="event-list-head">事件列表（点击跳转）</div>
+        <div id="eventListBody" class="event-list-body"></div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ========================== 牌谱分析 ========================== -->
+  <section id="view-analyze" class="view hidden">
+    <div class="card wide">
+      <h2>牌谱分析</h2>
+      <p class="muted">选择一个牌谱文件或一个子目录，对其中<b>每一个非自摸的摸牌帧</b>与<b>每一个吃/碰后等待出牌的帧</b>
+        （视角＝摸牌者本人；巡目按「出牌」计）标注 33 个特征（16 个第一类 + 17 个第二类），写入本地 SQLite 数据库。分析由本地服务完成：
+        请先运行 <code>python server.py</code>，再从它打印的地址打开本页。</p>
+
+      <div class="row">
+        <label class="chk"><input type="radio" name="anMode" id="anModeNew" value="new" checked /> 新建数据库</label>
+        <label class="chk"><input type="radio" name="anMode" id="anModeExtend" value="extend" /> 扩充现有数据库</label>
+        <label for="anDbName">数据库名</label>
+        <input id="anDbName" type="text" value="paipu" size="14" />
+        <label class="chk"><input type="checkbox" id="anFull" /> 同时写入原始数据（--full）</label>
+        <button id="btnFullHelp" class="ghost" title="勾选与不勾选的区别">？</button>
+      </div>
+
+      <div id="anExtendRow" class="row hidden">
+        <label for="anExtendDb">要扩充的数据库</label>
+        <select id="anExtendDb"></select>
+        <span id="anExtendInfo" class="muted"></span>
+      </div>
+
+      <details id="anFullHelp" class="hint">
+        <summary>「同时写入原始数据（--full）」勾选与不勾选的区别</summary>
+        <p id="anFullNote" class="muted">勾选：把每一帧的原始数据（手牌 / 副露 / 宝牌 / 分数）一起写进 frame_full 表，
+          以后新增特征时可以直接用旧牌谱重算；不勾选：只写 33 个特征值与定位信息，数据库更小
+          （约为勾选时的一半），但新增特征时必须重新分析牌谱。</p>
+      </details>
+
+      <div class="row">
+        <label for="anSourceDir">牌谱文件 / 子目录</label>
+        <input id="anSourceDir" type="text" value="data" size="44" />
+        <button id="btnScan">扫描</button>
+        <button id="btnSelAll" class="ghost">全选</button>
+        <button id="btnSelNone" class="ghost">全不选</button>
+        <span id="anFileCount" class="muted"></span>
+      </div>
+
+      <div id="anFileList" class="file-list"></div>
+
+      <div class="row">
+        <button id="btnAnalyze" class="primary">开始分析并入库</button>
+        <button id="btnRefreshDb" class="ghost">刷新数据库列表</button>
+      </div>
+
+      <div id="anProgressBox" class="progress-box hidden">
+        <div class="progress-track"><div id="anProgressBar" class="progress-bar"></div></div>
+        <div id="anProgressText" class="progress-text"></div>
+      </div>
+
+      <p id="anMsg" class="msg"></p>
+
+      <h3 class="sub-h">本地数据库（data/db）</h3>
+      <div id="anDbList" class="db-list"></div>
+      <p class="muted">点「设为当前库」可把它选为牌谱检索使用的数据库。</p>
+
+      <details class="hint">
+        <summary>路径怎么写 / 找不到 node？</summary>
+        <p>相对路径按项目根目录解析，所以 <code>data</code> 就是项目里的 <code>data\</code>；
+          也可以直接写绝对路径（会递归扫描其中的 <code>.xml</code> 牌谱），例如
+          <code>D:\paipu</code>。</p>
+        <p>打点不用选工具：有 <code>node.exe</code> 时第一类特征由 node 打点、第二类 17 项由 python 补齐
+          （两者逐字段一致，有交叉校验测试）；没有 node 时全部走 python。</p>
+        <p>「扩充现有数据库」把本次牌谱追加进已有的库，库里已经有的牌谱（特征码相同）自动跳过；
+          数据库里记录了生成它的软件版本，<b>版本不一致的库不能扩充</b>，请删除后重新分析。</p>
+      </details>
+    </div>
+  </section>
+
+  <!-- ========================== 牌谱检索 ========================== -->
+  <section id="view-search" class="view hidden">
+    <div class="card wide">
+      <h2>牌谱检索</h2>
+      <p class="muted">先指定一个本地数据库文件，再逐条添加「牌谱特征」（<b>支持全部 33 个特征</b>：
+        16 个第一类 + 17 个第二类，不能重复添加），每条特征都要指定条件（<b>互斥取值的特征用下拉选取</b>，
+        整数特征填 整数 / 区间 / 列表 / 比较，期望枚数·期望打点等实数特征可填
+        <code>0.5</code> / <code>0-1.5</code> / <code>0,1,2.5</code> / <code>&gt;=3</code>）；
+        点「检索」返回<b>同时满足全部条件</b>的打点帧。
+        条目名＝<b>牌谱特征码 + 局况 + 本场 + 巡目 + 风位</b>，点击跳到对应帧形态查看；
+        跳转后右侧「当前帧特征」面板会列出该类全部特征与取值，<b>检索用到的特征会高亮</b>；
+        「全部浏览」则按顺序阅图，用「上一条目 / 下一条目」切换。</p>
+
+      <div class="row">
+        <label for="scDbSelect">本地数据库文件</label>
+        <select id="scDbSelect"></select>
+        <button id="btnScRefresh" class="ghost">刷新</button>
+        <label for="scDbPath">或直接填路径</label>
+        <input id="scDbPath" type="text" placeholder="例：data\db\paipu.sqlite" size="30" />
+      </div>
+
+      <fieldset>
+        <legend>牌谱特征</legend>
+        <div class="row">
+          <select id="scFeatSelect"></select>
+          <button id="btnAddFeat">添加</button>
+          <button id="btnClearConds" class="ghost">清空</button>
+        </div>
+        <div id="scCondList" class="cond-list"></div>
+      </fieldset>
+
+      <div class="row">
+        <button id="btnRunQuery" class="primary">检索</button>
+        <button id="btnBrowseAll">全部浏览</button>
+        <span id="scResultInfo" class="muted"></span>
+      </div>
+      <p id="scMsg" class="msg"></p>
+
+      <div id="scResultList" class="item-list"></div>
+    </div>
+  </section>
+
+  <!-- ========================== 牌谱下载 ========================== -->
+  <section id="view-download" class="view hidden">
+    <div class="card wide">
+      <h2>牌谱下载</h2>
+      <p class="muted">把天凤牌谱下载到本地：可以输入<b>单个牌谱 URL</b>（或裸特征码），也可以选择
+        一个<b>本地文本文件</b>（每行一个 URL）。文件固定下载到 <code>data/paipu/</code> 下的子目录里，
+        子目录名可以自定义（默认是带时间戳的目录名）；同名文件直接覆盖。下载完可以在
+        「牌谱分析」里把该目录作为来源扫描并入库。</p>
+
+      <div class="row">
+        <label for="dlSubdir">存储子目录</label>
+        <span class="muted">data/paipu/</span>
+        <input id="dlSubdir" type="text" size="24" />
+        <button id="btnDlDefaultDir" class="ghost">用当前时间戳</button>
+      </div>
+
+      <div class="row">
+        <label class="chk"><input type="radio" name="dlMode" value="url" checked /> 单个牌谱 URL</label>
+        <label class="chk"><input type="radio" name="dlMode" value="file" /> 本地文本文件（每行一个 URL）</label>
+      </div>
+
+      <div id="dlUrlRow" class="row">
+        <input id="dlUrl" type="text" size="72"
+          placeholder="http://tenhou.net/0/?log=2026082919gm-00a9-0000-4e40cd3e&amp;tw=0 或裸特征码" />
+      </div>
+
+      <div id="dlFileRow" class="row hidden">
+        <button id="btnDlPickFile">选择文本文件…</button>
+        <input id="dlUrlFile" type="file" accept=".txt,text/plain" hidden />
+        <span id="dlFileName" class="muted">未选择文件</span>
+      </div>
+
+      <div class="row">
+        <button id="btnDownload" class="primary">下载</button>
+        <span id="dlCounts" class="muted"></span>
+      </div>
+
+      <div id="dlProgressBox" class="progress-box hidden">
+        <div class="progress-track"><div id="dlProgressBar" class="progress-bar"></div></div>
+        <div id="dlProgressText" class="progress-text"></div>
+      </div>
+
+      <p id="dlMsg" class="msg"></p>
+      <div id="dlList" class="item-list"></div>
+    </div>
+  </section>
+
+</main>
+
+<script src="js/tiles.js"></script>
+<script src="js/mjlog.js"></script>
+<script src="js/replay.js"></script>
+<script src="js/mjsfeat.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
