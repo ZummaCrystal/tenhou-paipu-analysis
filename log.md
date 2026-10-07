@@ -1080,6 +1080,13 @@ r = t % 3; t = (t // 3) * 4; h = [t, t, t]
   并加 `@media (max-width: 760px) { .cards { grid-template-columns: minmax(0, 1fr); } }`（窄屏回落单列）。
 - 验证：`test\apptest.js` 新增 2 条断言（首页四张卡片顺序 = 下载 / 播放 / 分析 / 检索、`.cards` 是两列网格）
   ⇒ **283 OK / 0 FAIL / 全部通过**；`node --check web/js/app.js` 通过。
+### 17.13 追加：四张功能卡片统一默认尺寸（用户 m04704）
+
+- 现象：2 x 2 之后四个卡片高矮参差。要求给统一的默认尺寸（比「牌谱分析」那张大一些），文字超出时再自适应长高。
+- 改动（`web/style.css`）：`.cards` 用 `grid-auto-rows: minmax(300px, auto)` —— 每格默认至少 300px、内容更长时行高自动增长
+  （不会溢出或裁切）；去掉 `align-items: start` 让卡片填满单元格；`.cards > .card` 改 `display: flex; flex-direction: column`，
+  入口按钮（`> button` 或 `> .row:last-child`）加 `margin-top: auto` 贴底对齐；窄屏（`max-width: 760px`）回落单列且 `grid-auto-rows: auto`，避免大片空白。
+- 验证：只做静态点检 —— `web/style.css` 花括号配平 181 / 181、`.cards` 规则文本复查无误（按要求未跑全套测试）。
 ## 18. 后续待办（第 1~4、6 项已完成，见第 6 节；第 17 轮完成三种向听数，见第 11 节；第 19 轮完成 12 个期望特征，见第 13 节；第 20 轮完成危险筋组 / 危险两面组，见第 14 节；第 21 轮完成第二类特征接入检索、帧特征面板、分析进度条、牌谱下载，见第 15 节；第 22 轮完成 bug 修复、版本号 v0.1.0、扩充现有数据库、readme，见第 16 节；第 23 轮完成扩充库 bug 修复、向听数 `>=3` 展示、作者信息、项目结构整理，见第 17 节；下面是第 12 轮之后的待办）
 
 - [ ] 解析 mjlog XML，按局切分（`INIT` … `AGARI`/`RYUUKYOKU`）。
