@@ -674,7 +674,7 @@ r = t % 3; t = (t // 3) * 4; h = [t, t, t]
 - `class Expect(state, seat, agg="sum", max_shanten=DEFAULT_MAX_SHANTEN)`：`dist(counts, used=None) = min(国士, 七対, 面子手)`（面子手已含起和役；缓存键含 `used`）；`waits(counts)`（形状听牌张，与可见牌 / 起和役无关）；`_avail_left(used)` / `_unseen_left(used)`（扣掉假想摸进的牌）；`_eval(counts, kind, tsumo, assume)` = 一次 `agari.evaluate(...)` 同时得到「有没有役」与 `gain`（返回 None ⇒ 这颗和牌张不计；furo 假设用 `state=FURO, menzen=False`，menzen 假设用 `state=self.cat, menzen=True`，并传 `ctx={"dora": self.dora}`）；`_tiles(counts, kinds, measure, used)`（avail = Σ(avail[k] − used[k])，abs = Σ(4 − counts[k] − 副露张数)）；`node(counts, used=None)`（13−3n 张 → 24 个内部键 = 12 个枚数 + 6 个打点分子 + 6 个打点分母，带缓存）。
 - `node(counts, used)`：叶子（d = 0）对每个模式取 `got = [k for k in waits if _eval(k, FURO) is not None]` 写副露 4 个枚数键、打点分子 `("sc", FURO, mode)` 与打点分母 `("ms", FURO, mode)`（每张有役和牌张 `ms += p`）；门清帧再写 2 个枚数键（用**全部** wait）、打点分子 `("sc", MENZEN, mode)` 与打点分母 `("ms", MENZEN, mode)`。非叶子：枚举合格进张（手里 < 4、`avail[t] − used[t] > 0`、摸进后 `dist == d − 1`），再枚举打牌只留「打完 `dist == d − 1`」的；`agg = "sum"` 的枚数键累加 `p × Σ kids`、其余枚数键累加 `p × max(kids)`；打点键先按 `chosen[("sc", 假设, 模式)] = max(kids, key=…)` 选分支，再 `sc += p × chosen[sc]`、`ms += p × chosen[ms]`（分子分母走同一条 argmax 分支）。`compute()` → `(12 项, alt)`：张数不是 13−3n / 14−3n ⇒ 全 0；14−3n 且 `dist == -1` ⇒ 枚数 0、打点 = 该手牌和牌得点；14−3n ⇒ 只留最小向听的打牌，**枚数键对 keeps 求和、打点键对 keeps 取最大**；13−3n ⇒ 直接取 `node(counts)`。模块 API：`values_both(state, seat, agg="sum", max_shanten=DEFAULT_MAX_SHANTEN)` / `values(...)`（默认上限 `DEFAULT_MAX_SHANTEN = 1`，绝对上限 `MAX_SHANTEN = 2`）。
 - 两种聚合口径（24 个内部键在同一份 dict 里）：`agg` 同时作用于枚数键与打点键 —— `sum` = 所有完美路线 / 所有合格打牌都计入（**默认**）；`best` = 每层打牌只取最大（与打点口径一致）。`alt`（`values_both` 的第二个返回值）是另一种口径，且**只有 6 个枚数项**（`("sc", assume, mode)` / `("ms", assume, mode)` 8 个打点键与 `agg` 无关，在 `alt` 里恒 0）。
-- 本轮做的三处性能优化：① 打点只在小向听打牌里取最大（不评估让向听数变大的打牌，否则会再深一层枚举，那也不是有意义的打法）；② `node()` 里 `if self.dist(newc) != d - 1: continue`（进张后必须正好 −1 才可能不浪费，省下大量 `dist` 调用，等价于逐个试打）；③ `compute()` 的 14−3n 分支先算 `d0 = dist(counts)`，`d0 > max` 直接返回全 0、`d0 == -1` 直接走和牌分支（省下 14~34 次 `dist` 调用；依据见第 18 节第 35 条）。
+- 本轮做的三处性能优化：① 打点只在小向听打牌里取最大（不评估让向听数变大的打牌，否则会再深一层枚举，那也不是有意义的打法）；② `node()` 里 `if self.dist(newc) != d - 1: continue`（进张后必须正好 −1 才可能不浪费，省下大量 `dist` 调用，等价于逐个试打）；③ `compute()` 的 14−3n 分支先算 `d0 = dist(counts)`，`d0 > max` 直接返回全 0、`d0 == -1` 直接走和牌分支（省下 14~34 次 `dist` 调用；依据见第 19 节第 35 条）。
 
 ### 13.3 验证结果（全绿）
 - `test\expect_test.py`（m02647 后 672 行）**70 项全部通过 / 失败 0**（总耗时 23.6 s；m02647 前 66 项 / 636 行；原 47 项 + 宝牌 / 扣减 / 两向听独立参考等新断言）：① `waits_of` 对暴力 `agari.shapes_of` 对拍（合成嵌张 / 両面 / 七対子 / 国士十三面 / 国士有对子 + 语料 239 个听牌手牌）**0 差异**；② 手算用例（嵌张 4 枚 + 默听自摸、両面 8 枚 + 平和荣和 / 自摸、牌河见 1 张 ⇒ 期望 7 / 绝对 8、副露碰發 8 枚、吃 123s 无役 ⇒ 0、立直与默听共用枚数项、14 张根节点、已经和牌的帧、张数不对、超上限、**副露假设与门清假设并存**、**表宝牌计入打点**）；③ 120 个听牌手牌 × 2 种假设逐键与独立参考（`used` 逐张扣减 + 用 `agari.score` 自己判役取点）一致；④ 20 个 14 张「打一张即听」帧的独立一层聚合（sum / best × 副露 / 门清）一致；⑤ **3c：2 个向听 1 的手牌用扣减版独立枚举对拍**；⑥ 不变量（非负 / 绝对 ≥ 期望 / 和牌帧枚数 0 / 超上限 0）0 违规；⑦ **期望打点归一化（m02389）**：`node_keys()` 20 键（m02512 后 24 键、m02647 后 36 键，见 13.9 / 13.10）、叶子 / 中间节点 / keep 三级都满足 `打点 = SC / MS`（多和牌张 = 各张得点的概率加权平均，如 L1 门清自摸 5666.67、13 张中间节点 `23468m2278p2346s` 门清自摸 5150.0）、`_pick_score` 在分母 0 时返回 0.0、多解候选（120 手牌 × 2 假设逐键）与独立参考一致；⑧ **立直 / 默听两套假想（m02512，见 13.9）**：副露帧门清 6 项记 0，门清帧 4 个打点项都算（`h1` 荣和 1300 / 自摸 2000、`h2` 荣和 2000 / 自摸 2700、已立直帧 `damaten_tsumo_score` 1100 等）。
@@ -688,7 +688,7 @@ r = t % 3; t = (t // 3) * 4; h = [t, t, t]
 - 三个可选方向（待用户定）：① 保持默认上限 1（向听 ≥2 的帧 12 项全 0，全量 1.63 h）；② 换**快速向听算法**（按花色 DP / 表法，理论可快两个数量级，上限 2 也可能压到可接受）；③ 只对检索 / 展示需要的帧按需算（不预先入库全量）。
 
 ### 13.5 本轮踩到的坑
-- 见第 18 节第 33~37 条；本轮修订新增第 38~48 条（第 43~45 条见 13.8 / 13.9，第 46~48 条见 13.10 / 13.11）；第 20 轮新增第 49~51 条（见 14.5）。
+- 见第 19 节第 33~37 条；本轮修订新增第 38~48 条（第 43~45 条见 13.8 / 13.9，第 46~48 条见 13.10 / 13.11）；第 20 轮新增第 49~51 条（见 14.5）。
 
 ### 13.6 口径修订（用户 m02073 / m02075：假想摸牌扣减、一轮枚举、副露假设、表宝牌）
 
@@ -851,7 +851,7 @@ r = t % 3; t = (t // 3) * 4; h = [t, t, t]
 
 ### 14.5 本轮踩到的坑
 
-- 见第 18 节第 49~51 条（合成算例的可张数别忘立直家自己的牌河、全局出牌序用 `DangerLog`、立直宣告取 `REACH step="1"`）。
+- 见第 19 节第 49~51 条（合成算例的可张数别忘立直家自己的牌河、全局出牌序用 `DangerLog`、立直宣告取 `REACH step="1"`）。
 
 ## 15. 第 21 轮：第二类特征接入检索 + 帧特征面板 + 分析进度条 + 牌谱下载（用户 m02959）
 
@@ -934,7 +934,7 @@ r = t % 3; t = (t // 3) * 4; h = [t, t, t]
 
 ### 15.6 本轮踩到的坑
 
-- 见第 18 节第 52~57 条（路由前缀顺序、假 DOM 没有 `.style`、残留 `setInterval` 让测试进程不退出、帧特征面板缓存、
+- 见第 19 节第 52~57 条（路由前缀顺序、假 DOM 没有 `.style`、残留 `setInterval` 让测试进程不退出、帧特征面板缓存、
   `mjscore_test.py` 的 float 值域分支与 `SCHEMA_VERSION`、长跑接口的超时值）。
 - 另记一条口径：`--tool node` 时第二类 17 项由 Python 后处理补齐（因此 node 库的 `s_*` 也一定有值），会带一条 warning。
 
@@ -991,9 +991,9 @@ r = t % 3; t = (t // 3) * 4; h = [t, t, t]
 
 - `test\apptest.js` **276 OK / 0 FAIL / 全部通过**（`node --check` 通过）：假服务新增 `/api/features`，`/api/dbs` 带 `app_version` / `compatible`，`/api/analyze` 回显 `extend`；新增 (4b) 节断言（`#anTool` 已删 / 版本显示 / `--full` 说明 / 扩充下拉禁用不兼容库 / 扩充模式目标库与请求体 `extend:true` 且不含 `tool` / 进度文本不含「阶段」「打点」）；条目模式断言额外校验 `/api/detail` 请求体带 `db`（即 ① 的 bug 修复点）。
 - `test\mjscore_test.py` 新增第 7 节（v0.1.0 / 扩充 / 版本校验）：`meta.app_version`、`app_version_of`、版本不匹配拒绝打开（人为改 `0.0.9`）、无 `app_version` 的老库按兼容、扩充的重复 / 缺库 / fixture 冲突三种报错、扩充只分析新牌谱并跳过已入库（`logs = 1 / skipped = 2`）、空库扩充按新建处理、`/api/health` 与 `/api/features` 带版本、`/api/dbs` 每项带 `app_version` / `compatible`、`POST /api/analyze` 扩充全重复 400、版本不匹配的库 `/api/detail` 400。
-- **全量结果：通过 208 项 / 失败 0 项**（driver `exit=0 wall=3170.9 s` ≈ 53 分钟；跑法见第 18 节第 58 / 59 条）。首轮跑的 204 / 4 全是新增断言插错位置造成的假失败（见第 18 节第 67 条）。
-- 本轮测试自身修掉的 4 处：① 造 `__mjtest_ver__` 时补 `set_meta(..., "schema_version", ...)` + `commit()`（见第 18 节第 64 / 65 条）；② 读不匹配库的 `app_version` 改 raw `sqlite3`（`store.connect()` 会抛）；③ 两处 `list_dbs` 断言排除 `__mjtest_ver__`；④ 扩充 / 版本不匹配两条断言移到进度断言之后并改名 `st5 / d5`。
-- `test\selftest.js` / `test\uitest.js`：牌谱搬到 `data\paipu\20261007-165558\` 后它们静默扫到 0 个牌谱（假通过），改为递归 `walkXml` + 按 5 个基础牌谱特征码挑选 ⇒ selftest `files 5 / rounds 58 / frames 5824 / draws 2701 / discards 2776 / calls 117`、`[OK] 全部不变量通过`；uitest `全部通过`（见第 18 节第 63 条）。
+- **全量结果：通过 208 项 / 失败 0 项**（driver `exit=0 wall=3170.9 s` ≈ 53 分钟；跑法见第 19 节第 58 / 59 条）。首轮跑的 204 / 4 全是新增断言插错位置造成的假失败（见第 19 节第 67 条）。
+- 本轮测试自身修掉的 4 处：① 造 `__mjtest_ver__` 时补 `set_meta(..., "schema_version", ...)` + `commit()`（见第 19 节第 64 / 65 条）；② 读不匹配库的 `app_version` 改 raw `sqlite3`（`store.connect()` 会抛）；③ 两处 `list_dbs` 断言排除 `__mjtest_ver__`；④ 扩充 / 版本不匹配两条断言移到进度断言之后并改名 `st5 / d5`。
+- `test\selftest.js` / `test\uitest.js`：牌谱搬到 `data\paipu\20261007-165558\` 后它们静默扫到 0 个牌谱（假通过），改为递归 `walkXml` + 按 5 个基础牌谱特征码挑选 ⇒ selftest `files 5 / rounds 58 / frames 5824 / draws 2701 / discards 2776 / calls 117`、`[OK] 全部不变量通过`；uitest `全部通过`（见第 19 节第 63 条）。
 - 其余套件：`test\danger_test.py` 29 项 / 1.3 s、`test\agari_test.py` 182 项 / 1.3 s、`test\expect_test.py` 73 项 / 22.0 s、`test\shanten_test.py` 92 项 / 135.69 s（37533 帧、3.615 ms/帧、四家外推 417.4 s）。
 - 顺带修掉两个与扩充 / 版本校验相关的问题：`cli.list_dbs()` 读不兼容库的 meta 不再走 `store.connect()`（改 raw `sqlite3`），否则 `/api/dbs` 丢 `app_version` 并被误判成兼容；`store.connect()` 版本校验失败时先 `conn.close()` 再抛，否则 Windows 上该 sqlite 文件一直被占（删不掉 / 覆盖不了）。
 - `style.css` 追加 `.app-ver` / `.hint > p` / `#anExtendRow select` / `#anExtendInfo`（19871 → 20110 B / 629 行）。
@@ -1004,7 +1004,58 @@ r = t % 3; t = (t // 3) * 4; h = [t, t, t]
 - 旧库（无 `app_version`）要到下一次用 v0.1.0 分析（或扩充）时才会补写 `app_version`。
 - 偶发 / 特殊役（一发 / 里宝 / 槍槓 / 嶺上 / 海底 / 河底）仍未纳入起和役与期望打点。
 
-## 17. 后续待办（第 1~4、6 项已完成，见第 6 节；第 17 轮完成三种向听数，见第 11 节；第 19 轮完成 12 个期望特征，见第 13 节；第 20 轮完成危险筋组 / 危险两面组，见第 14 节；第 21 轮完成第二类特征接入检索、帧特征面板、分析进度条、牌谱下载，见第 15 节；第 22 轮完成 bug 修复、版本号 v0.1.0、扩充现有数据库、readme，见第 16 节；下面是第 12 轮之后的待办）
+## 17. 第 23 轮：扩充库 bug 修复 + 向听数 `>=3` 展示 + 作者信息 + 项目结构整理（用户 m04115）
+
+### 17.1 要求（用户 m04115，五项）
+1. 修 bug：选中用 71 个牌谱建的 `20261007_test.sqlite` 后点「扩充现有数据库」报「分析失败：要扩充的数据库不存在：…\data\db\20261007_test.sqlite（请先新建数据库）」。
+2. 与向听数有关的特征，内部取值为 3 时对外**一律显示 `>=3`**（代码注释、界面、文档同步）。
+3. 在代码与文档的相关位置添加作者信息：**Zumma Crystal** / 邮箱 **z1025zzsg@sohu.com**。
+4. 整理项目结构：根目录除 `server.py` 外不暴露其他源码文件。
+5. 上传 GitHub，仓库名 `tenhou-paipu-analysis`。
+补充（用户 m04182）：向听数的**检索条件**仍接收整数 / 列表 / 区间 / 比较，内部取值范围是 `{-1,0,1,2,3}`，直接用内部取值匹配（输入 `3-5` 应检索出内部值 3 的帧）；`>=3` 的修改**只涉及展示**，不涉及计算逻辑。
+
+### 17.2 bug ①：「扩充现有数据库」报「数据库不存在」
+- 根因：`mjscore/cli.py` 的 `db_path_of()` 对库名**无条件追加 `.sqlite`**，而前端扩充下拉的 value 带扩展名（`20261007_test.sqlite`）⇒ 实际路径成 `20261007_test.sqlite.sqlite` ⇒ 报「不存在」。
+- 修法：`db_path_of(db=None, db_name=None)` —— 显式路径直接用；否则名字不以 `.sqlite` 结尾才追加；`mjscore/server.py` 的 `_db_of(payload)` 纯库名分支改调 `cli.db_path_of(None, name)`，避免两份解析器分叉。
+- 实测：`POST /api/analyze {paths:["data/paipu/20261007-165558"], db_name:"20261007_test.sqlite", extend:true}` → 400「这 71 个牌谱都已经在数据库里了，没有需要扩充的新牌谱」（0.02 s）；`db_name:"20261007_test"` 与 `db:"data/db/20261007_test.sqlite"` 同；`no_such_db.sqlite` → 正确的「要扩充的数据库不存在…」。
+- 端到端（`tool:"python"`）：新建 1 谱 → 200（116 s）；扩充 2 谱（其中 1 个已入库）→ 200、`skipped:["2026082919gm-00a9-0000-4e40cd3e"]`（91.5 s，只分析新的）；再扩充全旧 → 400。
+
+### 17.3 向听数 `>=3` 只改展示
+- `mjscore/feats.py` 新增 `SHANTEN_KEYS = tuple(f["key"] for f in SHANTEN_FEATURES)`；`mjscore/shanten.py` docstring 注明「内部值 3 = >=3，对外一律写成 >=3」。
+- `mjscore/cli.py` 新增 `feat_value_text(key, value)`：向听数特征且 `value == 3` ⇒ `">=3"`，其余 `str(value)`；`--values` 的输出改用它并追加一行检索口径提示。
+- 前端：`web/js/app.js` 加 `SHANTEN_KEYS` 映射、`fmtFeatValue(key, v)`（3 → `>=3`）与 `featHint()` 的向听数分支（`整数 / 区间 -1-3 / 列表 1,2,3 / 比较 >=3（内部值 3 = >=3，按整数匹配）`）；`web/js/mjsfeat.js` 注释、`web/index.html` 说明、`readme.md` §1.1 / §2.2 同步。
+- 检索口径不变（内部整数）：对用户库实测分布 `-1` 2 帧 / `0` 5862 / `1` 9773 / `2` 10943 / `>=3` 10674；`3`、`3-5`、`>=3` 三种写法**都命中 10674**，`0,3` 16536，`>3` 0，`-1` 2。
+
+### 17.4 作者信息
+- `mjscore/__init__.py`：`AUTHOR = "Zumma Crystal"`、`AUTHOR_EMAIL = "z1025zzsg@sohu.com"`、`__author__` / `__email__`。
+- `mjscore/server.py`：`/api/health` 与 `/api/features` 的返回都加 `author` / `author_email`。
+- 前端：`web/index.html` 增 `#appAuthor`，`web/js/app.js` 的 `loadMeta()` 填充 `v0.1.0 · Zumma Crystal <z1025zzsg@sohu.com>`，`web/style.css` 加 `.app-author` 样式。
+- 另外 `tools/analyze.py` / `tools/download_tenhou.py` 的 docstring、`readme.md` 新增 `## 9. 作者`。
+
+### 17.5 项目结构整理（根目录只留 `server.py`）
+- 移动：`index.html` → `web/index.html`、`style.css` → `web/style.css`、`js/` → `web/js/`、`analyze.py` → `tools/analyze.py`、`download_tenhou.py` → `tools/download_tenhou.py`。现在根目录 = `server.py` / `readme.md` / `log.md` / `tenhou-url.txt` + `data/ media/ mjscore/ references/ test/ tools/ web/`。
+- 随之修正的路径引用：`web/js/tiles.js` 的 `TILE_DIR` 与 `web/js/ui.js` 的 `BACK_SRC`（`file:` 协议用 `../media/tiles/`，否则 `/media/tiles/`）；`mjscore/node_harness.js` 的 `JS_DIR = path.join(__dirname, '..', 'web', 'js')`；`mjscore/server.py` 把 `/` 与 `/index.html` 重写成 `/web/index.html`（静态根仍是项目根）；`tools/analyze.py` 把项目根加进 `sys.path`；`tools/download_tenhou.py` 的 `PROJECT_ROOT = parent.parent`；各模块 docstring 里的 `js/x.js` → `web/js/x.js`、`python analyze.py` → `python tools/analyze.py`；`test/apptest.js` / `test/uitest.js` / `test/selftest.js` 的资源路径。
+- 冒烟：`/` 200（= `web/index.html`）、`/web/js/app.js` 200、`/media/tiles/1m.svg` 200、`/api/health` 200；`python tools\analyze.py --version` → `天凤牌谱分析 v0.1.0`。
+
+### 17.6 顺手修掉的反斜杠缺陷
+- 批量把 `python analyze.py` 换成 `python tools\analyze.py` 时用了 `re.subn(..., r"python tools\\analyze.py")` —— replacement 里的 `\\` 只落成**一个**反斜杠，于是写出 `python tools\analyze.py`：`mjscore/cli.py` 的 epilog（普通字符串字面量，`\a` = BEL 控制字符，`--help` 会打出乱码）、`tools/analyze.py` docstring、`tools/download_tenhou.py` docstring（`\d` 触发 `SyntaxWarning: "\d" is an invalid escape sequence`）。
+- 修法：统一改**正斜杠** `python tools/analyze.py` / `python tools/download_tenhou.py`；复验用 `compile()` + `warnings.simplefilter("always")` 扫全仓 `.py` ⇒ 问题 0（唯一 SyntaxError 是第三方 `references/mjlog2mjai_parse.py` 带 UTF-8 BOM，非本轮引入）。
+
+### 17.7 验证结果（全绿）
+- `py_compile`（全仓，跳过 `data/`）失败 0；`node --check` 7 个 JS 文件全 exit 0。
+- `test/agari_test.py` 182 项、`test/danger_test.py` 29 项、`test/expect_test.py` 73 项、`test/shanten_test.py` 92 项 —— 全绿。
+- `test/apptest.js` **276 OK / 0 失败**；`test/selftest.js` `[OK] 全部不变量通过`；`test/uitest.js` 全部通过。
+- `test/mjscore_test.py`：新增 9 条断言（`/api/health` 与 `/api/features` 的作者字段、`cli.feat_value_text` 4 条、`db_path_of` 2 条、扩充不存在的库 1 条）⇒ 全量 **通过 217 项 / 失败 0 项**（wall 3658.0 s ≈ 61.0 分钟）。
+
+### 17.8 GitHub（第 ⑤ 项：本地仓库已就绪，推送暂缓）
+- 本地：`git init -b main` + `.gitignore`（排除 `data/`、`__pycache__/`、`test/out/`、`test/_tmp/`）+ `git config core.autocrlf false`（系统级是 `true`，会破坏 LF）+ 本地 `user.name` / `user.email`；`git add -A` 后 78 个文件，提交 **ceda372**（`78 files changed, 32315 insertions(+)`）。
+- 本机 `ssh` 客户端坏（`failed to initialize w32posix wrapper`，连接卡死），且**没有 `gh` CLI** ⇒ 只能走 HTTPS + PAT；GitHub API 可达，候选账号 `Z1025` / `ZummaCrystal` 下 `tenhou-paipu-analysis` 均不存在（404）⇒ 待用户提供账号与 PAT（或自行建仓）后再推送。
+- 本轮收尾时用户 m04462 指示：其余已完成、只差 GitHub 推送时先停止该项 ⇒ 推送留待用户提供账号 / PAT（或自行建仓）后再做。
+
+### 17.9 本轮踩到的坑
+- 见第 19 节第 68~72 条（正则 `\\` 只落一个反斜杠、行号转储抄缩进、PowerShell 重定向原生命令、本机 ssh + `core.autocrlf`、结构改造后逐项核对路径引用）。
+
+## 18. 后续待办（第 1~4、6 项已完成，见第 6 节；第 17 轮完成三种向听数，见第 11 节；第 19 轮完成 12 个期望特征，见第 13 节；第 20 轮完成危险筋组 / 危险两面组，见第 14 节；第 21 轮完成第二类特征接入检索、帧特征面板、分析进度条、牌谱下载，见第 15 节；第 22 轮完成 bug 修复、版本号 v0.1.0、扩充现有数据库、readme，见第 16 节；第 23 轮完成扩充库 bug 修复、向听数 `>=3` 展示、作者信息、项目结构整理，见第 17 节；下面是第 12 轮之后的待办）
 
 - [ ] 解析 mjlog XML，按局切分（`INIT` … `AGARI`/`RYUUKYOKU`）。
 - [ ] 逐巡目重建每一家的**手牌**（起手 13 张 + 摸牌 − 打牌 − 鸣牌/杠消耗，注意鸣牌后的摸牌顺序）与**牌河**（各玩家 D/E/F/G 序列）。
@@ -1020,8 +1071,9 @@ r = t % 3; t = (t // 3) * 4; h = [t, t, t]
 - [ ] 牌河类特征的展示遗留：手切被鸣（69/107）只有红框、没有透明度（5.8 回滚后未给替代方案）。
 - [ ] 「全部浏览」一次取全 2786 行（第 13 轮后），条目再多（多牌谱全量）时应改成按页/按需加载。
 - [ ] 展示规则里**无真实样本**的分支（大明杠、流局満貫、九種九牌、四家立直、四風連打、四槓散了、三家和了、一炮双响/三响）在有样本后回归确认。
+- [ ] 推送 / 维护 GitHub 仓库 `tenhou-paipu-analysis`：本地已 `git init` + 提交 `ceda372`（78 文件 / 32315 行），本机 ssh 客户端坏、只能 HTTPS+PAT，远端仓库尚未创建（第 23 轮，见 17.8）。
 
-## 18. 环境与工具踩坑速查
+## 19. 环境与工具踩坑速查
 
 1. **本环境 PowerShell 不能对原生命令做管道 / 重定向 / 变量捕获**（`| Select-Object`、`> file`、`$x = & node …` 会空输出或 exit 1）；必须直接 `& 'D:\Program Files\nodejs\node.exe' <脚本路径>` 让输出进控制台。
    （第 13 轮实测补充：`& <exe> … | Select-String '…'` 在控制台可直接用；失效的是 `> file`、`$x = & …` 这类重定向/捕获，
@@ -1170,8 +1222,20 @@ r = t % 3; t = (t // 3) * 4; h = [t, t, t]
     `d` 被改写成 400 错误体，害得 `analyze 摘要` / `补齐警告` 两条读到 `None` 假失败；② 别在依赖全局状态的断言之前调用会重置该状态的接口 ——
     `/api/analyze` 一进来就 `progress_reset()`，插在进度断言之前会把快照改成 `tool='auto' / files_done=0`，于是「进度快照记录工具 / 已完成牌谱数」两条假失败。
     修法：整段移到进度断言之后 + 变量改名（`st5 / d5`）；一次全量跑 53 分钟，这类顺序错误代价很高。
+68. **正则替换里的 `\\` 只落成「一个」反斜杠**：`re.subn(r"python analyze\.py", r"python tools\\analyze.py", s)` 写出的文本是 `python tools\analyze.py` ——
+    落在 docstring 里是 `\d`（`SyntaxWarning: "\d" is an invalid escape sequence`），落在普通字符串字面量里是 `\a` = BEL 控制字符（`--help` 打出乱码，静默不报错）。
+    改法：路径统一用**正斜杠**（`python tools/analyze.py`）；批量替换后必须用 `compile(src, path, "exec")` + `warnings.simplefilter("always")` 扫一遍。
+69. **行号转储的缩进不能目视抄**：`"%4d | %s"` 转储在 `|` 后自带 1 个空格，照抄后锚点比文件实际多 1 个空格（`count=0`）。
+    改法：补丁一律用**行号切片**（`L[a-1:b] = text.split("\n")`）+ 上下文断言，并自下而上（行号递减）依次改。
+70. **PowerShell 不能重定向原生命令的 stdout**：`git status > f` 得到空文件、`$LASTEXITCODE` 为空；`<原生命令> | Select-Object -First N` 会吞掉输出并让 `$LASTEXITCODE=1`。
+    要么直接打屏，要么让 python 自己 `io.open(..., "w")` 落盘（含中文的日志一律用 python 读）。
+71. **本机 `ssh` 客户端坏了**（`failed to initialize w32posix wrapper`，连接卡死到超时），只能走 HTTPS + PAT；系统级 git 是 `core.autocrlf=true`，
+    仓库里必须 `git config core.autocrlf false` 才不会把 LF 改成 CRLF；`data/`（约 36 MB）默认由 `.gitignore` 排除。
+72. **目录结构改造后要逐项核对路径引用**：`web/js/tiles.js` 的 `TILE_DIR` / `web/js/ui.js` 的 `BACK_SRC`（`file:` 协议用 `../media/tiles/`、否则 `/media/tiles/`）、
+    `mjscore/node_harness.js` 的 `JS_DIR`、`mjscore/server.py` 的 `/` → `/web/index.html` 重写、`tools/analyze.py` 的 `sys.path`（项目根 = 上一级）、
+    `tools/download_tenhou.py` 的 `PROJECT_ROOT`、以及 `test/*.js` 里的资源路径；漏一处就是 404 或运行期错误。
 
 
 
 ---
-*最后更新：第 22 轮（用户 m03580：修 `/api/detail` 丢 db 的 bug、版本号 **v0.1.0**（`mjscore\__init__.py` + `store.meta.app_version` + `check_version` 版本校验 + `/api/health` `/api/features` + 页眉 `#appVer`）、删除打点工具选择、进度条删「打点 N 行 / 阶段」、新增「扩充现有数据库」（与库名互斥、按牌谱特征码判重跳过、版本匹配才能扩充 / 加载）、重写 `readme.md`；`test\apptest.js` 276 OK 全绿；`test\selftest.js` / `test\uitest.js` 改为递归找牌谱；`test\mjscore_test.py` 新增第 7 节（全量 208 项全通过 / 0 失败，约 53 分钟）；本节见第 16 节；当前有效展示规则 = 5.1~5.7；下一步见第 17 节。）*
+*最后更新：第 23 轮（用户 m04115：修「扩充现有数据库」把库名拼成 `<名字>.sqlite.sqlite` 导致报「数据库不存在」的 bug（`cli.db_path_of()` + `server._db_of()`）；与向听数有关的特征内部值 3 一律显示 `>=3`（`cli.feat_value_text()` / `web/js/app.js` 的 `fmtFeatValue()`，检索仍按内部整数匹配，`3` / `3-5` / `>=3` 都命中内部值 3）；新增作者信息（`mjscore\__init__.py` 的 `AUTHOR` / `AUTHOR_EMAIL` + `/api/health` `/api/features` + 页眉 `#appAuthor`）；项目结构整理 —— 前端移到 `web/`（`index.html` / `style.css` / `js/`）、命令行移到 `tools/`（`analyze.py` / `download_tenhou.py`），根目录只留 `server.py`，并顺手修掉批量替换引入的 `\a`（BEL）/ `\d`（SyntaxWarning）缺陷；GitHub 本地已 `git init` + 提交 `ceda372`（78 文件 / 32315 行），推送待账号 / PAT。测试：`test\apptest.js` 276 OK、`test\mjscore_test.py` 全量 通过 217 项 / 失败 0 项（wall 3658.0 s ≈ 61.0 分钟，exit=0）、`test\agari_test.py` 182 / `test\danger_test.py` 29 / `test\expect_test.py` 73 / `test\shanten_test.py` 92 / `test\selftest.js` / `test\uitest.js` 全绿。本节见第 17 节；当前有效展示规则 = 5.1~5.7；下一步见第 18 节。）*
