@@ -11,7 +11,7 @@
   "scripts": {
     "start": "electron .",
     "pack": "electron-builder --win --dir",
-    "dist": "electron-builder --win nsis --publish never -c.npmRebuild=false",
+    "dist": "electron-builder --win nsis --publish never",
     "build": "powershell -ExecutionPolicy Bypass -File build.ps1"
   },
   "devDependencies": {
@@ -30,6 +30,7 @@
       "desktop/**/*",
       "package.json"
     ],
+    "npmRebuild": false,
     "extraResources": [
       {
         "from": "dist/pyi/tenhou-paipu-analysis-server",

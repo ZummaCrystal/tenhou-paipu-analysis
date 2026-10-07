@@ -1300,6 +1300,8 @@ r = t % 3; t = (t // 3) * 4; h = [t, t, t]
 87. **`ELECTRON_CACHE` 管不到 Electron 的缓存目录**：`app-builder-lib/out/electronGet.js:48-55` 只用 `process.env.LOCALAPPDATA` 拼 `<LOCALAPPDATA>\electron\Cache`；要挪位置只能改环境变量本身（`ELECTRON_BUILDER_CACHE` 才管 nsis / winCodeSign）。
 88. **PyInstaller 6.x 的 hook 发现默认在隔离子进程里跑**：受限终端下 `PyInstaller/isolated/_parent.py:224` 的 `create_pipe` 抛 `PermissionError [WinError 5] 拒绝访问`；先设 `sys._pyi_isolated_subprocess = True`（`_parent.py:215` 读这个标记）可改成进程内执行，产物与正常模式一致（`packaging/pyi_build.py --in-process`）。
 89. **Node 在禁管道的沙箱里 `spawn` / `spawnSync` / `fork` 全部 `EPERM`**（`errno -4048`），但 `stdio` 指向文件句柄照样能用 —— 这就是后端子进程日志写文件而不是管道的原因。
+90. **electron-builder 的 `-c.key=value` 写法不稳**：`-c.npmRebuild=false` 在某些 shell / 参数传递路径下被 yargs 拆成 `-c` 加上值 `.npmRebuild=false`，于是把它当**配置文件路径**去读，报 `ENOENT: no such file or directory, open 「...\.npmRebuild=false」`，栈为 `app-builder-lib/src/util/config/load.ts:19 readConfig` → `config.ts:43 getConfig` → `packager.ts:367 validateConfig` → `packager.ts:398 build`。要改配置就写进 `package.json` 的 `build` 字段（如 `"npmRebuild": false`），命令行只留 `--win nsis --publish never`。
+91. **PowerShell 调原生 exe 会吞掉参数里的双引号**：`& $py -c 'print("dq ok")'` 实际传成 `print(dq ok)` → `SyntaxError: invalid syntax. Perhaps you forgot a comma?`；`[System.IO.File]::WriteAllText` 这类 cmdlet 不受影响 ⇒ 带引号的脚本先写成文件再执行。
 
 ## 20. 第 24 轮：本地数据管理 + 打包前路径改造 + SVG→ICO 工具（用户 m00178 / m00590）
 ### 20.1 要求
@@ -1362,7 +1364,7 @@ r = t % 3; t = (t // 3) * 4; h = [t, t, t]
 | `packaging/smoke.py` | 冻结后端冒烟：起 exe → 轮询 `/api/health` → 打印关键字段 → `taskkill /T /F` 收进程树，日志写 `build\pyi\smoke-backend.log` |
 | `desktop/main.js` | Electron 主进程：取空闲端口 → 起后端（stdout/stderr 走文件 fd）→ 轮询 health → `loadURL("http://127.0.0.1:N/web/index.html")` → 退出收进程树；单实例、禁 nodeIntegration、F12 DevTools |
 | `packaging/installer.nsh` | `!macro customUnInstall` 里 MessageBox 询问是否 `RMDir /r "$LOCALAPPDATA\tenhou-paipu-analysis"` |
-| 根 `package.json` | 补齐 `name`/`version`/`description`/`author`/`main`/`scripts`（`npm run dist` = `electron-builder --win nsis --publish never -c.npmRebuild=false`、`npm run build` = 调 build.ps1）与 `build` 配置（`extraResources` 把 `dist/pyi/tenhou-paipu-analysis-server` → `resources/backend`） |
+| 根 `package.json` | 补齐 `name`/`version`/`description`/`author`/`main`/`scripts`（`npm run dist` = `electron-builder --win nsis --publish never`、`npm run build` = 调 build.ps1）与 `build` 配置（`extraResources` 把 `dist/pyi/tenhou-paipu-analysis-server` → `resources/backend`） |
 | `readme.md` | 新增第 9 节「打包发布（Windows，可选）」，原第 9 节「作者」顺延为第 10 节 |
 
 ### 21.3 冻结后的路径（决策 3 落地）
@@ -1381,7 +1383,7 @@ r = t % 3; t = (t // 3) * 4; h = [t, t, t]
 
 ### 21.5 本机（受限沙箱）做不到 → 交接给用户
 
-- **electron-builder 出不了安装包**：它必须用匿名管道起子进程。默认死在 `@electron/rebuild` 的 `child_process.fork`（`app-builder-lib/src/util/rebuild.ts:10`，`spawn EPERM`）；加 `-c.npmRebuild=false` 后死在收集 node_modules（`app-builder-lib/src/node-module-collector/nodeModulesCollector.ts:376` `streamCollectorCommandToFile`）。本沙箱里 Node 的 `spawn`/`spawnSync`/`fork` 全 EPERM、Python `subprocess(PIPE)` 报 WinError 5（见踩坑 84~89、88）。
+- **electron-builder 出不了安装包**：它必须用匿名管道起子进程。默认死在 `@electron/rebuild` 的 `child_process.fork`（`app-builder-lib/src/util/rebuild.ts:10`，`spawn EPERM`）；把依赖重建关掉后死在收集 node_modules（当时写成 `-c.npmRebuild=false`，见踩坑 90）（`app-builder-lib/src/node-module-collector/nodeModulesCollector.ts:376` `streamCollectorCommandToFile`）。本沙箱里 Node 的 `spawn`/`spawnSync`/`fork` 全 EPERM、Python `subprocess(PIPE)` 报 WinError 5（见踩坑 84~89、88）。
 - 因此**安装包由用户在本机普通终端跑**：`powershell -ExecutionPolicy Bypass -File .\build.ps1`（首次会下载 Electron 约 100 MB、nsis/winCodeSign 约 50 MB 到 `%LOCALAPPDATA%\electron-builder\Cache`）。
 - `git push`：本沙箱报 `error: cannot create standard input pipe for ssh: Permission denied` + `fatal: unable to fork`，由用户本机推。
 
@@ -1391,5 +1393,25 @@ r = t % 3; t = (t // 3) * 4; h = [t, t, t]
 - `test/mjscore_test.py` 全量仍未跑完；`tools/svg2ico.py` 仍不支持圆弧 `A`（`5p.svg` / `1s.svg` 会报错，用 `6m.svg` 做图标没问题）。
 - `test/_tmp` 下 3 个 ACL 空目录删不掉（踩坑 78）。
 
+### 21.7 用户机复测发现的缺陷（m00923）：-c.npmRebuild=false 被当成配置文件
+
+用户在本机跑 `build.ps1`，第 5 步 electron-builder 直接失败：
+
+```
+⨯ ENOENT: no such file or directory, open 'D:\coding\dsh_workspace\simple\tenhou-paipu-analysis\.npmRebuild=false'  failedTask=build
+    at readConfig (node_modules/app-builder-lib/src/util/config/load.ts:19:16)
+    at getConfig (node_modules/app-builder-lib/src/util/config/config.ts:43:34)
+    at Packager.validateConfig (node_modules/app-builder-lib/src/packager.ts:367:27)
+    at Packager.build (node_modules/app-builder-lib/src/packager.ts:398:5)
+```
+
+原因见踩坑 90：`-c.npmRebuild=false` 被 yargs 拆成 `-c` 加上值 `.npmRebuild=false`，于是被当成「配置文件路径」去读。修法（已落地）：
+
+- `package.json` 的 `build` 字段里加 `"npmRebuild": false`，`scripts.dist` 改成 `electron-builder --win nsis --publish never`；
+- `build.ps1` 第 5 步去掉该参数，并留注释警示不要再写回命令行；
+- `readme.md` 第 9 节「注意」补一条同样说明。
+
+复测（本沙箱）：日志出现 `• loaded configuration file=package.json ("build" field)` 与 `• skipped dependencies rebuild  reason=npmRebuild is set to false`，之后才撞上本沙箱的 `spawn EPERM`（`node-module-collector/nodeModulesCollector.ts:376`）⇒ 参数解析缺陷已消除，剩下的是纯环境限制（踩坑 89/90）。
+
 ---
-*最后更新：第 25 轮（用户 m00751 / m00796：打包 —— `build.ps1` 一键脚本（图标 → PyInstaller 后端 → 冒烟 → electron-builder NSIS）、`packaging/pyi_build.py`（含 `--in-process` 兜底）、`packaging/smoke.py`、`desktop/main.js`、`packaging/installer.nsh`、根 `package.json` 补齐、readme 新增第 9 节；后端产物 `dist\pyi\tenhou-paipu-analysis-server`（exe 2,341,406 B + 内嵌 node 91,694,408 B）实测可跑（冻结端到端分析 89.3 s / 530 帧入库）；受限沙箱里 electron-builder 必死（`spawn EPERM`，见踩坑 84~89），安装包由用户本机跑 `build.ps1` 出；见第 21 节）。上一轮：第 24 轮（用户 m00178 / m00590：新增「本地数据管理」第六个页签与首页第五张卡（3 x 2 布局）、修首页「载入示例牌谱」相对路径 bug（web/js/app.js 改走 /api/health + /api/scan + 绝对路径）、拆出 mjscore/paths.py（只读资源根 / 用户数据根分离；冻结后默认 %LOCALAPPDATA%\tenhou-paipu-analysis\data，与用户已迁移位置一致）、加固 data/paipu 与 data/db 的越界（..、绝对路径、跨根、软链接/目录联接一律 400）、新增 	ools/svg2ico.py 生成 uild/icon.ico、精简 .gitignore；验证：	est/apptest.js 全通过 + 新增 	est/datamgr_test.py 67/67，	est/mjscore_test.py 全量仍未跑完；见第 20 节）。上一轮：第 23 轮（用户 m04115：修「扩充现有数据库」把库名拼成 `<名字>.sqlite.sqlite` 导致报「数据库不存在」的 bug（`cli.db_path_of()` + `server._db_of()`）；与向听数有关的特征内部值 3 一律显示 `>=3`（`cli.feat_value_text()` / `web/js/app.js` 的 `fmtFeatValue()`，检索仍按内部整数匹配，`3` / `3-5` / `>=3` 都命中内部值 3）；新增作者信息（`mjscore\__init__.py` 的 `AUTHOR` / `AUTHOR_EMAIL` + `/api/health` `/api/features` + 页眉 `#appAuthor`）；项目结构整理 —— 前端移到 `web/`（`index.html` / `style.css` / `js/`）、命令行移到 `tools/`（`analyze.py` / `download_tenhou.py`），根目录只留 `server.py`，并顺手修掉批量替换引入的 `\a`（BEL）/ `\d`（SyntaxWarning）缺陷；GitHub 本地已 `git init` + 提交 `ceda372`（78 文件 / 32315 行），推送待账号 / PAT。测试：`test\apptest.js` 276 OK、`test\mjscore_test.py` 全量 通过 217 项 / 失败 0 项（wall 3658.0 s ≈ 61.0 分钟，exit=0）、`test\agari_test.py` 182 / `test\danger_test.py` 29 / `test\expect_test.py` 73 / `test\shanten_test.py` 92 / `test\selftest.js` / `test\uitest.js` 全绿。追加修正（用户 m04628）：牌谱播放改为入口式，首页只留介绍 + 「开始播放」按钮；追加修正（用户 m04553）：`/` 与 `/index.html` 由内部改写改为 **302 跳转**到 `/web/index.html`（否则页面里的 `style.css` / `js/*.js` 会解析成旧路径而 404）；本节见第 17 节；当前有效展示规则 = 5.1~5.7；下一步见第 18 节。）*
+*最后更新：第 25 轮（用户 m00751 / m00796：打包 —— `build.ps1` 一键脚本（图标 → PyInstaller 后端 → 冒烟 → electron-builder NSIS）、`packaging/pyi_build.py`（含 `--in-process` 兜底）、`packaging/smoke.py`、`desktop/main.js`、`packaging/installer.nsh`、根 `package.json` 补齐、readme 新增第 9 节；后端产物 `dist\pyi\tenhou-paipu-analysis-server`（exe 2,341,406 B + 内嵌 node 91,694,408 B）实测可跑（冻结端到端分析 89.3 s / 530 帧入库）；受限沙箱里 electron-builder 必死（`spawn EPERM`，见踩坑 84~89），安装包由用户本机跑 `build.ps1` 出；用户机复测发现 `-c.npmRebuild=false` 被 electron-builder 当成配置文件路径（`ENOENT ...\.npmRebuild=false`），已改成 `package.json` 的 `build.npmRebuild = false`（踩坑 90，见第 21.7 节）；见第 21 节）。上一轮：第 24 轮（用户 m00178 / m00590：新增「本地数据管理」第六个页签与首页第五张卡（3 x 2 布局）、修首页「载入示例牌谱」相对路径 bug（web/js/app.js 改走 /api/health + /api/scan + 绝对路径）、拆出 mjscore/paths.py（只读资源根 / 用户数据根分离；冻结后默认 %LOCALAPPDATA%\tenhou-paipu-analysis\data，与用户已迁移位置一致）、加固 data/paipu 与 data/db 的越界（..、绝对路径、跨根、软链接/目录联接一律 400）、新增 	ools/svg2ico.py 生成 uild/icon.ico、精简 .gitignore；验证：	est/apptest.js 全通过 + 新增 	est/datamgr_test.py 67/67，	est/mjscore_test.py 全量仍未跑完；见第 20 节）。上一轮：第 23 轮（用户 m04115：修「扩充现有数据库」把库名拼成 `<名字>.sqlite.sqlite` 导致报「数据库不存在」的 bug（`cli.db_path_of()` + `server._db_of()`）；与向听数有关的特征内部值 3 一律显示 `>=3`（`cli.feat_value_text()` / `web/js/app.js` 的 `fmtFeatValue()`，检索仍按内部整数匹配，`3` / `3-5` / `>=3` 都命中内部值 3）；新增作者信息（`mjscore\__init__.py` 的 `AUTHOR` / `AUTHOR_EMAIL` + `/api/health` `/api/features` + 页眉 `#appAuthor`）；项目结构整理 —— 前端移到 `web/`（`index.html` / `style.css` / `js/`）、命令行移到 `tools/`（`analyze.py` / `download_tenhou.py`），根目录只留 `server.py`，并顺手修掉批量替换引入的 `\a`（BEL）/ `\d`（SyntaxWarning）缺陷；GitHub 本地已 `git init` + 提交 `ceda372`（78 文件 / 32315 行），推送待账号 / PAT。测试：`test\apptest.js` 276 OK、`test\mjscore_test.py` 全量 通过 217 项 / 失败 0 项（wall 3658.0 s ≈ 61.0 分钟，exit=0）、`test\agari_test.py` 182 / `test\danger_test.py` 29 / `test\expect_test.py` 73 / `test\shanten_test.py` 92 / `test\selftest.js` / `test\uitest.js` 全绿。追加修正（用户 m04628）：牌谱播放改为入口式，首页只留介绍 + 「开始播放」按钮；追加修正（用户 m04553）：`/` 与 `/index.html` 由内部改写改为 **302 跳转**到 `/web/index.html`（否则页面里的 `style.css` / `js/*.js` 会解析成旧路径而 404）；本节见第 17 节；当前有效展示规则 = 5.1~5.7；下一步见第 18 节。）*

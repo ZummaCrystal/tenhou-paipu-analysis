@@ -164,7 +164,9 @@ if (-not $SkipElectron) {
     $cli = Join-Path $Root 'node_modules\electron-builder\out\cli\cli.js'
     Must $cli 'electron-builder（先在项目根执行 npm install）'
     Must (Join-Path $Root 'build\icon.ico') '图标 build\icon.ico'
-    & $NodeExe $cli --win nsis --publish never -c.npmRebuild=false
+    # 注意：不要再写成 -c.npmRebuild=false —— 某些 shell 下 yargs 会把它当成「配置文件」路径，
+    # 报 ENOENT: open ...\.npmRebuild=false。关掉依赖重建写在 package.json 的 build.npmRebuild 里。
+    & $NodeExe $cli --win nsis --publish never
     if ($LASTEXITCODE -ne 0) { Die ('electron-builder 失败（退出码 ' + $LASTEXITCODE + '）。日志里若是 spawn EPERM / EPERM: operation not permitted，说明当前终端禁止子进程匿名管道，请换普通终端重跑。') }
     $setups = @(Get-ChildItem -LiteralPath (Join-Path $Root 'dist\electron') -Filter '*setup.exe' -ErrorAction SilentlyContinue)
     if ($setups.Count -eq 0) { Die 'electron-builder 跑完了但没找到安装包（dist\electron\*setup.exe）' }

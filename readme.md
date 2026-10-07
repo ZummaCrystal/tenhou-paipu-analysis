@@ -327,6 +327,7 @@ python tools/download_tenhou.py <url>... [-f 文件] [-o 目录] [--no-overwrite
 
 - PyInstaller 的参数只有一份，写在 `packaging\pyi_build.py`（它会打印等价命令）；受限终端里若 hook 发现报 `PermissionError [WinError 5] / create_pipe`，`build.ps1` 会自动加 `--in-process` 兜底。
 - electron-builder 需要能用匿名管道启动子进程（`npm`、`makensis`）；日志里若出现 `spawn EPERM` / `EPERM: operation not permitted`，换普通终端重跑。
+- 关掉依赖重建写在 `package.json` 的 `build.npmRebuild = false`；不要在命令行写 `-c.npmRebuild=false` —— 某些 shell 下 electron-builder 会把它当成**配置文件路径**，直接报 `ENOENT: no such file or directory, open '...\.npmRebuild=false'`。
 - 目前没有代码签名，安装时 SmartScreen 会提示「未知发布者」。
 - 只支持 Windows x64。图标可由 `tools\svg2ico.py` 从素材复现，不需要外部图片。
 
