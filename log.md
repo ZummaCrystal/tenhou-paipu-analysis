@@ -1061,6 +1061,7 @@ r = t % 3; t = (t // 3) * 4; h = [t, t, t]
 - 修法：`mjscore/server.py` 的 `do_GET` 把 `/` 与 `/index.html` 改成 **302 跳转**到 `/web/index.html`（`Location` + `Content-Length: 0`），浏览器地址变成 `/web/index.html`，相对引用才落在 `/web/` 下；`/media/tiles/*` 与 `/api/*` 不受影响。
 - 复验：`/`、`/index.html` → 302；`/web/index.html` 200；页面里的 7 个相对引用（`style.css` + 6 个 `js/*.js`）全部 200；`/media/tiles/1m.svg` 200、`/api/health` 200（`test/*.py|*.js` 里没有任何针对根路径的断言，改动不影响既有测试）。
 
+- **追加（用户 m04598 仍见 `/style.css`、`/js/*.js` 404）**：根因是**浏览器缓存了改造前的旧 HTML**（文档 URL 仍是 `/`，相对引用自然还解析成旧路径），不是服务端没改。服务端补两道保险：① 旧路径回退：根目录没有、`web/` 下有同名文件时 **302 到 `/web/…`**（实测 `/style.css` → 302 `/web/style.css`、`/js/mjsfeat.js` → 302 → 200）；② `Handler.end_headers()` 给 `text/html` 响应加 `Cache-Control: no-store, must-revalidate`。
 ## 18. 后续待办（第 1~4、6 项已完成，见第 6 节；第 17 轮完成三种向听数，见第 11 节；第 19 轮完成 12 个期望特征，见第 13 节；第 20 轮完成危险筋组 / 危险两面组，见第 14 节；第 21 轮完成第二类特征接入检索、帧特征面板、分析进度条、牌谱下载，见第 15 节；第 22 轮完成 bug 修复、版本号 v0.1.0、扩充现有数据库、readme，见第 16 节；第 23 轮完成扩充库 bug 修复、向听数 `>=3` 展示、作者信息、项目结构整理，见第 17 节；下面是第 12 轮之后的待办）
 
 - [ ] 解析 mjlog XML，按局切分（`INIT` … `AGARI`/`RYUUKYOKU`）。
@@ -1242,6 +1243,7 @@ r = t % 3; t = (t // 3) * 4; h = [t, t, t]
     `tools/download_tenhou.py` 的 `PROJECT_ROOT`、以及 `test/*.js` 里的资源路径；漏一处就是 404 或运行期错误。
 73. **静态页面搬家后不能只做「内部 URL 改写」**：`/` 若内部改写成 `/web/index.html` 而不真正跳转，页面里的相对引用（`style.css` / `js/*.js`）会按**浏览器地址**（`/`）解析到根目录 ⇒ 全部 404。
     正确做法是 302 跳转（浏览器地址随之改变），相对引用才会落在 `/web/` 下；改完只要抓一次 `/` + 页面里所有相对引用，看是否都 200。
+74. **前端搬家后浏览器会缓存旧 HTML**：相对引用按文档 URL 所在目录解析，`/` 上的旧页面会一直去取 `/style.css`、`/js/*.js`。除把 `/` 302 到 `/web/index.html`，服务端还应：根目录找不到而 `web/` 下有的文件 302 过去、并给 HTML 响应加 `Cache-Control: no-store`；否则用户即使重启服务也还是 404（用户 m04598）。
 
 
 

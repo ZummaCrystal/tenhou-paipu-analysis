@@ -273,6 +273,17 @@ class Handler(SimpleHTTPRequestHandler):
         sys.stderr.write("[server] " + (fmt % args) + "\n")
 
     # -------------------------------------------------- 路由
+    def end_headers(self):
+        # 前端页面搬家过（index.html 在 web/ 下）：HTML 一律不缓存，避免浏览器拿旧页面
+        # 里的相对引用去取 /style.css、/js/*.js 而 404（用户 m04553）。
+        try:
+            head = b"".join(self._headers_buffer)
+            if b"text/html" in head and b"Cache-Control" not in head:
+                self.send_header("Cache-Control", "no-store, must-revalidate")
+        except Exception:
+            pass
+        super().end_headers()
+
     def do_OPTIONS(self):
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -318,6 +329,19 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._send_json({"ok": False, "error": "%s: %s" % (type(exc).__name__, exc)}, 500)
         if path.startswith("/api/"):
             return self._send_json({"ok": False, "error": "未知接口：%s" % path}, 404)
+        # 兼容改造前的旧路径（浏览器缓存里可能还是旧的 index.html，其相对引用是 /style.css、/js/*.js）：
+        # 根目录没有、而 web/ 下有同名文件时，302 跳到 /web/…（用户 m04553 复盘）。
+        rel = posixpath.normpath(path.lstrip("/"))
+        legacy = os.path.join(ROOT, "web", rel)
+        if (not rel.startswith("..")) and os.path.isfile(legacy):
+            body = b""
+            self.send_response(302)
+            self.send_header("Location", "/web/" + rel)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         return super().do_GET()
 
     def do_HEAD(self):
