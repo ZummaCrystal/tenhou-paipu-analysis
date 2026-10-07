@@ -216,7 +216,7 @@ console.log('=== 1. 初始状态 ===');
 check(App && App.view === 'home', 'App 已初始化，当前视图 = ' + App.view);
 check(byId['view-replay'].classList.contains('hidden'), '播放视图初始隐藏');
 check(!byId['view-home'].classList.contains('hidden'), '首页初始可见');
-check(byId.sampleSelect.childNodes.length === 5, '示例下拉框有 ' + byId.sampleSelect.childNodes.length + ' 项');
+check(byId.sampleSelect.childNodes.length === 5, '示例下拉框有 ' + byId.sampleSelect.childNodes.length + ' 项（服务不可用时用固定清单兜底）');
 var tabs = document.querySelectorAll('.tab');
 check(tabs.filter(function (t) { return t.classList.contains('active'); }).length === 1, '恰好 1 个页签高亮');
 
@@ -468,7 +468,7 @@ check(homeHtml.indexOf('牌谱下载') < homeHtml.indexOf('牌谱播放')
       && homeHtml.indexOf('牌谱播放') < homeHtml.indexOf('牌谱分析')
       && homeHtml.indexOf('牌谱分析') < homeHtml.indexOf('牌谱检索'),
       '首页四张卡片顺序 = 下载 / 播放 / 分析 / 检索');
-check(/\.cards\s*\{[^}]*repeat\(2,/.test(cssTxt), '首页四个入口按 2 x 2 排布（.cards 两列网格）');
+check(/\.cards\s*\{[^}]*repeat\(2,/.test(cssTxt), '首页五个入口按 2 列排布（.cards 两列网格，第五张卡跨两列）');
 byId.btnGoReplay.fire('click', { target: byId.btnGoReplay });
 check(App.view === 'replay' && !byId.rpOpenBar.classList.contains('hidden'),
       '点「开始播放」进入播放视图并展开「选择牌谱文件」栏');
@@ -1213,6 +1213,258 @@ check(byId.dlList.textContent.indexOf('data/paipu/' + byId.dlSubdir.value) >= 0,
 check(byId.anSourceDir.value === 'data/paipu/' + byId.dlSubdir.value,
       '分析面板的牌谱目录预填为下载目录：' + byId.anSourceDir.value);
 
+/* ============================================================ 15. 本地数据管理（用户 m00178 第 9 条） */
+console.log('\n=== 15. 本地数据管理 ===');
+
+/* 15.1 入口与布局：页签第五位 + 首页第五张卡片（3 x 2，最后一张独占整行） */
+check(VIEWS_ATTR.length === 6 && VIEWS_ATTR[5] === 'data',
+      '页签顺序 = ' + VIEWS_ATTR.join(' / ') + '（「本地数据管理」在第五位）');
+var dmTabs = document.querySelectorAll('.tab'), dmDataTab = null;
+for (var dt = 0; dt < dmTabs.length; dt++) {
+  if (dmTabs[dt].getAttribute('data-view') === 'data') { dmDataTab = dmTabs[dt]; }
+}
+check(!!dmDataTab, '存在「本地数据管理」页签');
+var dmCards = homeHtml.match(/class="card(?: span)?"/g) || [];
+check(dmCards.length === 5 && dmCards[4] === 'class="card span"',
+      '首页 5 张卡片、第 5 张独占整行：' + dmCards.join(' / '));
+check(homeHtml.indexOf('牌谱检索') < homeHtml.indexOf('本地数据管理'),
+      '首页卡片顺序：本地数据管理排在牌谱检索之后');
+check(homeHtml.indexOf('btnGoData') >= 0 && homeHtml.indexOf('dmDirs') < 0
+      && homeHtml.indexOf('dmFiles') < 0 && homeHtml.indexOf('dmMkdir') < 0,
+      '首页只放「进入本地数据管理」入口，管理界面不直接暴露');
+check(/\.cards > \.card\.span\s*\{[^}]*grid-column:\s*1\s*\/\s*-1/.test(cssTxt),
+      '第五张卡片跨两列（.cards > .card.span）');
+check(byId['view-data'].classList.contains('hidden'), '本地数据管理视图初始隐藏');
+
+/* 15.2 假服务：健康检查 / 扫描 / 读文件 + 数据管理接口（内存里的目录树） */
+function dmJson(obj, code) {
+  return syncOk({ ok: (code || 200) < 400, status: code || 200,
+                  text: function () { return syncOk(JSON.stringify(obj)); } });
+}
+var DM_ROOT_ABS = 'C:/Users/tester/AppData/Local/tenhou-paipu-analysis';
+var DM = {
+  paipu: {
+    '': { dirs: ['20261007-165558'], files: [{ name: f, path: f, size: 1200, mtime: '2026-10-07 16:00' }] },
+    '20261007-165558': { dirs: ['sub'], files: [{ name: LOG2 + '.xml', path: '20261007-165558/' + LOG2 + '.xml', size: 900, mtime: '2026-10-07 16:01' }] },
+    '20261007-165558/sub': { dirs: [], files: [] }
+  },
+  db: { '': { dirs: [], files: [{ name: 'paipu.sqlite', path: 'paipu.sqlite', size: 4096, mtime: '2026-10-07 16:02', sqlite: true }] } }
+};
+var dmReqs = [];
+function dmListing(root, rel) {
+  var node = DM[root][rel] || { dirs: [], files: [] };
+  var dirs = node.dirs.map(function (d) {
+    var k = rel ? rel + '/' + d : d, n = DM[root][k] || { dirs: [], files: [] };
+    return { name: d, path: k, entries: n.dirs.length + n.files.length };
+  });
+  var all = [''];
+  Object.keys(DM[root]).forEach(function (k) { if (k) { all.push(k); } });
+  return { ok: true, root: root,
+           roots: [{ id: 'paipu', label: '牌谱（data/paipu）' }, { id: 'db', label: '数据库（data/db）' }],
+           root_dir: DM_ROOT_ABS + '/data/' + root, dir: rel,
+           parent: rel ? (rel.indexOf('/') < 0 ? '' : rel.slice(0, rel.lastIndexOf('/'))) : null,
+           dirs: dirs, files: node.files.slice(), all_dirs: all.sort() };
+}
+function dmLast(prefix) {
+  for (var i = dmReqs.length - 1; i >= 0; i--) { if (dmReqs[i].url.indexOf(prefix) === 0) { return dmReqs[i]; } }
+  return null;
+}
+function dmStub(url, opt) {
+  var path = String(url).replace(/^https?:\/\/[^/]+/, '');
+  var body = (opt && opt.body) ? JSON.parse(opt.body) : null;
+  dmReqs.push({ url: path, method: (opt && opt.method) || 'GET', body: body });
+  function qv(k) { var m = new RegExp('[?&]' + k + '=([^&]*)').exec(path); return m ? decodeURIComponent(m[1]) : ''; }
+  if (path.indexOf('/api/health') === 0) {
+    return dmJson({ ok: true, name: '天凤牌谱分析', version: '0.1.0', root: 'C:/app',
+                    data_root: DM_ROOT_ABS, db_dir: DM_ROOT_ABS + '/data/db',
+                    paipu_dir: DM_ROOT_ABS + '/data/paipu' });
+  }
+  if (path.indexOf('/api/scan') === 0) {
+    return dmJson({ ok: true, dir: qv('dir'), count: 2,
+                    files: [DM_ROOT_ABS + '/data/paipu/' + f, CORPUS[1]] });
+  }
+  if (path.indexOf('/api/read') === 0) {
+    var p = qv('path'), id = p.split('/').pop().replace(/\.xml$/, '');
+    return dmJson({ ok: true, path: p, text: fs.readFileSync(xmlPath(id), 'utf8') });
+  }
+  if (path.indexOf('/api/fs-list') === 0) { return dmJson(dmListing(qv('root') || 'paipu', qv('rel'))); }
+  if (path.indexOf('/api/fs-mkdir') === 0) {
+    var r0 = body.root, rel0 = body.rel || '', key0 = rel0 ? rel0 + '/' + body.name : body.name;
+    if (!body.name) { return dmJson({ ok: false, error: '目录名不能为空' }, 400); }
+    if (DM[r0][key0]) { return dmJson({ ok: false, error: '已存在同名目录：' + key0 }, 400); }
+    DM[r0][key0] = { dirs: [], files: [] };
+    DM[r0][rel0].dirs.push(body.name);
+    return dmJson({ ok: true, root: r0, dir: key0, created: body.name });
+  }
+  if (path.indexOf('/api/fs-move') === 0) {
+    var r1 = body.root, rel1 = body.rel, dest = body.dest || '';
+    if (dest === rel1) { return dmJson({ ok: false, error: '目标目录和原位置相同' }, 400); }
+    if (dest.indexOf(rel1 + '/') === 0) { return dmJson({ ok: false, error: '不能把目录移动到它自己的子目录里：' + rel1 }, 400); }
+    var par = rel1.indexOf('/') < 0 ? '' : rel1.slice(0, rel1.lastIndexOf('/'));
+    var nm = rel1.split('/').pop(), isDir = !!DM[r1][rel1];
+    if (isDir) {
+      var pi = DM[r1][par].dirs.indexOf(nm);
+      if (pi >= 0) { DM[r1][par].dirs.splice(pi, 1); }
+      Object.keys(DM[r1]).filter(function (k) { return k === rel1 || k.indexOf(rel1 + '/') === 0; })
+        .forEach(function (k) {
+          var nk = (dest ? dest + '/' : '') + nm + k.slice(rel1.length);
+          DM[r1][nk] = DM[r1][k]; delete DM[r1][k];
+        });
+      DM[r1][dest || ''].dirs.push(nm);
+    } else {
+      DM[r1][par].files = DM[r1][par].files.filter(function (x) { return x.name !== nm; });
+      DM[r1][dest || ''].files.push({ name: nm, path: (dest ? dest + '/' : '') + nm, size: 900, mtime: '2026-10-07 16:01' });
+    }
+    return dmJson({ ok: true, root: r1, moved: rel1, to: (dest ? dest + '/' : '') + nm });
+  }
+  if (path.indexOf('/api/fs-delete') === 0) {
+    var r2 = body.root, rel2 = body.rel;
+    if (DM[r2][rel2]) { return dmJson({ ok: false, error: '「' + rel2 + '」是目录，请用「删除子目录」。' }, 400); }
+    var par2 = rel2.indexOf('/') < 0 ? '' : rel2.slice(0, rel2.lastIndexOf('/'));
+    DM[r2][par2].files = DM[r2][par2].files.filter(function (x) { return x.name !== rel2.split('/').pop(); });
+    return dmJson({ ok: true, root: r2, deleted: rel2 });
+  }
+  if (path.indexOf('/api/fs-rmdir') === 0) {
+    var r3 = body.root, rel3 = body.rel;
+    if (!rel3) { return dmJson({ ok: false, error: '不能删除数据根目录' }, 400); }
+    if (!DM[r3][rel3]) { return dmJson({ ok: false, error: '目录不存在：' + rel3 }, 400); }
+    var par3 = rel3.indexOf('/') < 0 ? '' : rel3.slice(0, rel3.lastIndexOf('/'));
+    var i3 = DM[r3][par3].dirs.indexOf(rel3.split('/').pop());
+    if (i3 >= 0) { DM[r3][par3].dirs.splice(i3, 1); }
+    var n3 = 0;
+    Object.keys(DM[r3]).forEach(function (k) {
+      if (k === rel3 || k.indexOf(rel3 + '/') === 0) { n3 += DM[r3][k].files.length; delete DM[r3][k]; }
+    });
+    return dmJson({ ok: true, root: r3, deleted: rel3, files: n3 });
+  }
+  return dmJson({ ok: false, error: '未知接口 ' + path }, 404);
+}
+var dmPrevFetch = global.fetch;
+global.fetch = dmStub;
+
+/* 15.3 进入视图 + 列目录 */
+byId.btnGoData.fire('click', { target: byId.btnGoData });
+check(App.view === 'data' && !byId['view-data'].classList.contains('hidden'),
+      '点首页「进入本地数据管理」切到该视图');
+var dml = dmLast('/api/fs-list');
+check(!!dml && dml.url === '/api/fs-list?root=paipu&rel=',
+      '进入时按「牌谱区 + 数据根」列目录：' + (dml ? dml.url : '（没有请求）'));
+check(byId.dmAbs.textContent.indexOf('/data/paipu') > 0, '显示数据目录绝对路径：' + byId.dmAbs.textContent);
+check(byId.dmPath.textContent === '/', '当前位置显示为「/」：' + byId.dmPath.textContent);
+check(byId.dmDirs.textContent.indexOf('20261007-165558') > 0, '目录列表：' + byId.dmDirs.textContent);
+check(byId.dmFiles.textContent.indexOf('.xml') > 0, '文件列表：' + byId.dmFiles.textContent);
+
+/* 15.4 进入子目录（点行尾的「进入」） */
+var dmDirRow = byId.dmDirs.childNodes[0];
+check(dmDirRow.getAttribute('data-kind') === 'dir' && dmDirRow.textContent.indexOf('（2 项）') > 0,
+      '目录行带条目数：' + dmDirRow.textContent);
+var dmGo = dmDirRow.childNodes[2];
+check(dmGo.getAttribute('data-act') === 'enter', '目录行有「进入」按钮');
+dmGo.fire('click', { target: dmGo });
+check(App.dataManagerState.rel === '20261007-165558', '进入子目录：' + App.dataManagerState.rel);
+var dml2 = dmLast('/api/fs-list');
+check(!!dml2 && dml2.url === '/api/fs-list?root=paipu&rel=20261007-165558',
+      '列子目录请求：' + (dml2 ? dml2.url : ''));
+check(byId.dmPath.textContent === '/20261007-165558', '当前位置：' + byId.dmPath.textContent);
+check(byId.dmFiles.childNodes[0].textContent.indexOf(LOG2) > 0, '子目录里的文件：' + byId.dmFiles.textContent);
+
+/* 15.5 选中文件 → 移动到上一级（数据根） */
+var dmFileRow = byId.dmFiles.childNodes[0];
+dmFileRow.fire('click', { target: dmFileRow });
+check(App.dataManagerState.sel && App.dataManagerState.sel.path === '20261007-165558/' + LOG2 + '.xml',
+      '选中文件：' + JSON.stringify(App.dataManagerState.sel));
+check(byId.dmSelInfo.textContent.indexOf('已选中文件') === 0, '选中提示：' + byId.dmSelInfo.textContent);
+byId.dmDest.value = '';
+byId.dmMove.fire('click', { target: byId.dmMove });
+var dmm = dmLast('/api/fs-move');
+check(!!dmm && dmm.method === 'POST' && dmm.body.root === 'paipu'
+      && dmm.body.rel === '20261007-165558/' + LOG2 + '.xml' && dmm.body.dest === '',
+      '移动到上级（数据根）请求：' + JSON.stringify(dmm ? dmm.body : null));
+check(byId.dmMsg.textContent.indexOf('已移动到') === 0, '移动成功提示：' + byId.dmMsg.textContent);
+check(byId.dmFiles.textContent.indexOf('没有文件') > 0, '移动后该目录已无文件：' + byId.dmFiles.textContent);
+
+/* 15.6 新建目录 + 重名被拒 */
+byId.dmNewName.value = 'newdir';
+byId.dmMkdir.fire('click', { target: byId.dmMkdir });
+var dmk = dmLast('/api/fs-mkdir');
+check(!!dmk && dmk.body.root === 'paipu' && dmk.body.rel === '20261007-165558' && dmk.body.name === 'newdir',
+      '新建目录请求：' + JSON.stringify(dmk ? dmk.body : null));
+check(byId.dmNewName.value === '', '新建成功后清空输入框');
+check(byId.dmMsg.textContent.indexOf('已新建目录') === 0, '新建成功提示：' + byId.dmMsg.textContent);
+check(byId.dmDirs.textContent.indexOf('newdir') > 0, '目录列表出现新目录：' + byId.dmDirs.textContent);
+byId.dmNewName.value = 'newdir';
+byId.dmMkdir.fire('click', { target: byId.dmMkdir });
+check(byId.dmMsg.textContent.indexOf('新建目录失败') === 0 && byId.dmMsg.textContent.indexOf('已存在同名目录') > 0,
+      '重名被服务端拒绝并提示：' + byId.dmMsg.textContent);
+
+/* 15.7 「上一级」回到数据根；选中目录时「删除文件」被拦下 */
+byId.dmUp.fire('click', { target: byId.dmUp });
+check(App.dataManagerState.rel === '' && byId.dmPath.textContent === '/', '「上一级」回到数据根');
+byId.dmUp.fire('click', { target: byId.dmUp });
+check(byId.dmMsg.textContent.indexOf('已经在数据根目录了') === 0, '数据根再点「上一级」给出提示：' + byId.dmMsg.textContent);
+var dmDirRow2 = byId.dmDirs.childNodes[0];
+dmDirRow2.fire('click', { target: dmDirRow2 });
+check(App.dataManagerState.sel && App.dataManagerState.sel.kind === 'dir',
+      '选中目录：' + JSON.stringify(App.dataManagerState.sel));
+byId.dmDelete.fire('click', { target: byId.dmDelete });
+check(byId.dmMsg.textContent.indexOf('请用「删除选中子目录」') > 0,
+      '选中的是目录时「删除文件」被拦下：' + byId.dmMsg.textContent);
+
+/* 15.8 把目录移进它自己的子目录 → 服务端 400 */
+byId.dmDest.value = '20261007-165558/sub';
+byId.dmMove.fire('click', { target: byId.dmMove });
+check(byId.dmMsg.textContent.indexOf('移动失败') === 0
+      && byId.dmMsg.textContent.indexOf('不能把目录移动到它自己的子目录里') > 0,
+      '移进自己的子目录被拒：' + byId.dmMsg.textContent);
+
+/* 15.9 删除子目录（连同子目录内容） */
+byId.dmRmdir.fire('click', { target: byId.dmRmdir });
+var dmr = dmLast('/api/fs-rmdir');
+check(!!dmr && dmr.method === 'POST' && dmr.body.root === 'paipu' && dmr.body.rel === '20261007-165558',
+      '删除子目录请求：' + JSON.stringify(dmr ? dmr.body : null));
+check(byId.dmMsg.textContent.indexOf('已删除子目录') === 0, '删除成功提示：' + byId.dmMsg.textContent);
+check(byId.dmDirs.textContent.indexOf('20261007-165558') < 0 && byId.dmDirs.textContent.indexOf('没有子目录') > 0,
+      '删除后目录列表清空：' + byId.dmDirs.textContent);
+check(byId.dmFiles.textContent.indexOf(f) > 0, '数据根仍保留原有文件：' + byId.dmFiles.textContent);
+
+/* 15.10 切到数据库区：绝对路径 / 数据库标记 / 删除文件 */
+byId.dmRoot.value = 'db';
+byId.dmRoot.fire('change', { target: byId.dmRoot });
+var dml3 = dmLast('/api/fs-list');
+check(!!dml3 && dml3.url === '/api/fs-list?root=db&rel=', '切到数据库区后重新列目录：' + (dml3 ? dml3.url : ''));
+check(byId.dmAbs.textContent.indexOf('/data/db') > 0, '显示数据库目录绝对路径：' + byId.dmAbs.textContent);
+var dmDbRow = byId.dmFiles.childNodes[0];
+check(dmDbRow.textContent.indexOf('paipu.sqlite') > 0 && dmDbRow.textContent.indexOf('数据库') > 0,
+      '数据库文件行带「数据库」标记：' + dmDbRow.textContent);
+dmDbRow.fire('click', { target: dmDbRow });
+byId.dmDelete.fire('click', { target: byId.dmDelete });
+var dmd = dmLast('/api/fs-delete');
+check(!!dmd && dmd.method === 'POST' && dmd.body.root === 'db' && dmd.body.rel === 'paipu.sqlite',
+      '删除数据库文件请求：' + JSON.stringify(dmd ? dmd.body : null));
+check(byId.dmFiles.textContent.indexOf('没有文件') > 0, '删除后文件列表清空：' + byId.dmFiles.textContent);
+
+/* 15.11 用户 m00178 第 8 条：示例牌谱改走 /api/health + /api/scan + /api/read 的绝对路径 */
+App.samples = [];
+App.loadSamples();
+check(App.paipuDir === DM_ROOT_ABS + '/data/paipu', '从 /api/health 拿到牌谱目录：' + App.paipuDir);
+check(App.samples.length === 2 && App.samples.indexOf(DM_ROOT_ABS + '/data/paipu/' + f) >= 0,
+      '示例清单改成绝对路径：' + JSON.stringify(App.samples));
+check(byId.sampleSelect.childNodes.length === 2, '示例下拉框 ' + byId.sampleSelect.childNodes.length + ' 项');
+var dmSelVals = [];
+for (var oi = 0; oi < byId.sampleSelect.childNodes.length; oi++) { dmSelVals.push(byId.sampleSelect.childNodes[oi].value); }
+check(dmSelVals.indexOf(DM_ROOT_ABS + '/data/paipu/' + f) >= 0,
+      '下拉项 value = 服务端给的绝对路径：' + JSON.stringify(dmSelVals));
+var dmRelVals = dmSelVals.filter(function (v) { return !/^[A-Za-z]:[\\/]|^\//.test(v); });
+check(dmRelVals.length === 0, '下拉项里没有相对路径（旧 bug 就是裸文件名）：' + JSON.stringify(dmRelVals));
+byId.sampleSelect.value = DM_ROOT_ABS + '/data/paipu/' + f;
+byId.btnLoadSample.fire('click', { target: byId.btnLoadSample });
+var dmr2 = dmLast('/api/read');
+check(!!dmr2 && dmr2.url === '/api/read?path=' + encodeURIComponent(DM_ROOT_ABS + '/data/paipu/' + f),
+      '载入示例改走 /api/read 绝对路径：' + (dmr2 ? dmr2.url : ''));
+check(App.rounds.length === 9 && App.view === 'replay', '示例牌谱真的载入成功（' + App.rounds.length + ' 局）');
+check(byId.fileInfo.textContent.indexOf(f) >= 0, '文件信息更新：' + byId.fileInfo.textContent);
+
+global.fetch = dmPrevFetch;
 global.fetch = function () { return new SyncThen(new Error('down'), true); };
 byId.btnScan.fire('click');
 check(byId.anMsg.textContent.indexOf('连不上本地服务') >= 0, '服务没起来时给出可读提示：' + byId.anMsg.textContent);

@@ -17,12 +17,21 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+from . import paths
+
+# 资源根：源码运行 = 项目根；打包后 = PyInstaller 解包目录（node_harness.js 与 web/js/*.js 都在里面）。
+ROOT = paths.resource_root()
 HARNESS = os.path.join(ROOT, "mjscore", "node_harness.js")
 
 NODE_CANDIDATES = (
+    # 1) 环境变量显式指定
     os.environ.get("MJSCORE_NODE"),
+    # 2) 随程序分发的 node（用户 m00178 决策 1：node 打进安装包；打包时放 <资源根>/node/node.exe）
+    os.path.join(ROOT, "node", "node.exe"),
+    os.path.join(os.path.dirname(os.path.abspath(sys.executable)), "node", "node.exe"),
+    # 3) 系统里已装的 node
     r"D:\Program Files\nodejs\node.exe",
     r"C:\Program Files\nodejs\node.exe",
     r"D:\Program Files (x86)\nodejs\node.exe",

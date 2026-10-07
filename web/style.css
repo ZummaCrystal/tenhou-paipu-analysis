@@ -120,7 +120,8 @@ main { flex: 1 1 auto; overflow: auto; }
 
 /* ----------------------------------------------------------- 首页 */
 .cards {
-  /* 四个功能入口按 2 x 2 排布（顺序：下载 / 播放 / 分析 / 检索） */
+  /* 五个功能入口按 2 列排布（顺序：下载 / 播放 / 分析 / 检索 / 本地数据管理）：
+     前四个 2 x 2，第五个「本地数据管理」单独占一整行（.card.span 跨两列）。 */
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   /* 统一默认高度：每格至少 300px（比「牌谱分析」那张略高），
@@ -135,6 +136,9 @@ main { flex: 1 1 auto; overflow: auto; }
 .cards > .card { display: flex; flex-direction: column; }
 .cards > .card > button,
 .cards > .card > .row:last-child { margin-top: auto; }
+
+/* 第 5 个入口「本地数据管理」占满一行 —— 首页整体 3 行 x 2 列（用户 m00178 第 9 条） */
+.cards > .card.span { grid-column: 1 / -1; }
 
 @media (max-width: 760px) {
   /* 窄屏单列时不再强制高度，避免出现大片空白 */
@@ -654,6 +658,21 @@ legend { color: var(--fg-dim); padding: 0 6px; }
 
 .item-row.static { cursor: default; }
 .item-row.static:hover { background: transparent; }
+
+/* ---- 本地数据管理（用户 m00178 第 9 条） ---- */
+.item-row.dm-row { display: flex; align-items: center; gap: 6px; }
+.item-row.dm-row .dm-name { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
+.item-row.dm-row .dm-meta { flex: 0 0 auto; color: var(--fg-dim); }
+.item-row.dm-row .dm-go {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--fg-dim);
+}
+.item-row.dm-row:hover .dm-go { color: var(--accent); border-color: var(--accent); }
+.item-row.dm-row.sel { background: rgba(255, 255, 255, .14); }
 
 @media (max-width: 1100px) {
   .feat-panel { flex-basis: 200px; }

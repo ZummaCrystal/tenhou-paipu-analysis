@@ -10,13 +10,14 @@
 
   var $ = function (id) { return document.getElementById(id); };
 
-  /* data/ 目录下已下载的示例牌谱（第 1 轮下载所得） */
-  var SAMPLE_FILES = [
-    '2026082919gm-00a9-0000-4e40cd3e.xml',
-    '2026082920gm-00a9-0000-5db954e6.xml',
-    '2026082921gm-00a9-0000-d2e544e6.xml',
-    '2026083020gm-00a9-0000-e9ce1efe.xml',
-    '2026083021gm-00a9-0000-d0810acf.xml'
+  /* 首页「载入示例牌谱」优先列出这些牌谱（第 1 轮下载所得，按 log_id 匹配）；
+     数据目录里找不到时退化为目录里的前 5 个；服务没启动时只列清单（点选会给提示）。 */
+  var SAMPLE_IDS = [
+    '2026082919gm-00a9-0000-4e40cd3e',
+    '2026082920gm-00a9-0000-5db954e6',
+    '2026082921gm-00a9-0000-d2e544e6',
+    '2026083020gm-00a9-0000-e9ce1efe',
+    '2026083021gm-00a9-0000-d0810acf'
   ];
 
   /* 视为「关键事件」的动作：出牌 / 吃碰杠 / 立直 / 新宝牌 / 和了 / 流局 */
@@ -75,12 +76,17 @@
     items: [],         /* 当前条目列表（检索结果 或 全部浏览） */
     itemIndex: -1,     /* 当前正在查看的条目下标，-1 = 不在条目模式 */
     itemSource: '',    /* 'query' | 'browse' */
-    cache: {}          /* log_id -> 牌谱文本，切换条目时避免重复下载 */
+    cache: {},         /* log_id -> 牌谱文本，切换条目时避免重复下载 */
+    /* 首页示例牌谱 / 用户数据目录（来自 /api/health 与 /api/scan；用户 m00178 第 8、9 条） */
+    samples: [],       /* 示例牌谱的绝对路径列表（数据目录可能不在项目里，必须用绝对路径） */
+    dataRoot: '',      /* 用户数据根目录 */
+    dbDir: '',         /* data/db 的绝对路径 */
+    paipuDir: ''       /* data/paipu 的绝对路径 */
   };
 
   /* ------------------------------------------------------------ 视图 */
   var VIEWS = { home: 'view-home', replay: 'view-replay', analyze: 'view-analyze', search: 'view-search',
-                download: 'view-download' };
+                download: 'view-download', data: 'view-data' };
 
   function setView(name) {
     if (!VIEWS[name]) { name = 'home'; }
@@ -96,6 +102,7 @@
     }
     if (name !== 'replay') { stopAuto(); } else { fitBoard(); }
     if (name === 'analyze' || name === 'search') { refreshDbs(); }
+    if (name === 'data') { dmInit(); }
   }
 
   function setFileInfo(text) { $('fileInfo').textContent = text; }
@@ -152,18 +159,23 @@
     fr.readAsText(file, 'utf-8');
   }
 
+  /* 载入首页下拉框里选中的示例牌谱：走服务端接口读绝对路径。用户 m00178 第 8 条：
+     数据目录固定到 %LOCALAPPDATA% 之后，fetch('data/xxx.xml') 这种相对路径必然 404
+     （页面在 /web/ 下，实际请求 /web/data/xxx.xml，而 web/data 根本不存在）。 */
   function loadSample() {
-    var name = $('sampleSelect').value;
-    if (!name) { return; }
-    homeMsg('正在载入 data/' + name + ' …');
-    fetch('data/' + name).then(function (r) {
-      if (!r.ok) { throw new Error('HTTP ' + r.status); }
-      return r.text();
-    }).then(function (t) {
-      loadText(t, name);
-    }).catch(function (err) {
+    var sel = $('sampleSelect');
+    var path = sel ? sel.value : '';
+    if (!path) {
+      homeMsg('示例牌谱不可用（数据目录里没有牌谱，或本地服务没启动）。'
+        + '可以在播放视图里用「选择牌谱文件」。', true);
+      return;
+    }
+    homeMsg('正在载入 ' + baseName(path) + ' …');
+    api('/api/read?path=' + encodeURIComponent(path)).then(function (d) {
+      loadText(d.text || '', baseName(path));
+    })['catch'](function (err) {
       homeMsg('载入示例失败（' + (err && err.message ? err.message : err) + '）。'
-        + '若双击打开页面，请改用「选择牌谱文件」，或在本项目根目录起一个本地 HTTP 服务器。', true);
+        + '请确认本地服务已启动（python server.py），或改用「选择牌谱文件」。', true);
       setFileInfo('未载入牌谱');
     });
   }
@@ -1305,16 +1317,289 @@
     })['catch'](function (e) { setMsg('dlMsg', '列出下载目录失败：' + e.message, true); });
   }
 
-  /* -------------------------------------------------------- 初始化 */
-  function initSamples() {
-    var sel = $('sampleSelect');
-    while (sel.firstChild) { sel.removeChild(sel.firstChild); }
-    for (var i = 0; i < SAMPLE_FILES.length; i++) {
+  /* ------------------------------------------------------ 本地数据管理 */
+  /* 用户 m00178 第 9 条：数据目录将来固定在 %LOCALAPPDATA%\<AppName>\data 下，
+     用户不方便自己开资源管理器，所以这里直接管 data/paipu（牌谱）与 data/db（数据库）：
+     新建目录 / 移动到子目录或上一级目录 / 删除文件 / 删除子目录。 */
+  var Dm = {
+    root: 'paipu',      /* 当前数据区：'paipu' 牌谱 / 'db' 数据库 */
+    rel: '',            /* 当前目录（相对数据根，'' = 数据根） */
+    sel: null,          /* 选中的条目：{kind:'dir'|'file', name, path} */
+    state: null         /* 最近一次 /api/fs-list 的返回 */
+  };
+
+  function dmRelText() { return Dm.rel ? ('/' + Dm.rel) : '/'; }
+
+  function dmMsg(text, warn) { setMsg('dmMsg', text, warn); }
+
+  function dmRootLabel() { return Dm.root === 'db' ? 'data/db' : 'data/paipu'; }
+
+  function dmFmtSize(n) {
+    if (n === undefined || n === null) { return ''; }
+    if (n < 1024) { return n + ' B'; }
+    if (n < 1024 * 1024) { return (n / 1024).toFixed(1) + ' KB'; }
+    return (n / 1024 / 1024).toFixed(1) + ' MB';
+  }
+
+  /* 「移动到」下拉里要排除的目标：选中的目录本身 + 它的子目录（服务端也会拦） */
+  function dmSkipDests() {
+    var skip = {};
+    if (Dm.sel && Dm.sel.kind === 'dir' && Dm.state) {
+      skip[Dm.sel.path] = true;
+      for (var i = 0; i < Dm.state.all_dirs.length; i++) {
+        var p = Dm.state.all_dirs[i];
+        if (p && p.indexOf(Dm.sel.path + '/') === 0) { skip[p] = true; }
+      }
+    }
+    return skip;
+  }
+
+  function dmFillDest() {
+    var sel = $('dmDest');
+    if (!sel) { return; }
+    var keep = sel.value || '';
+    var opts = [{ v: '', t: '（数据根 ' + dmRootLabel() + '）' }];
+    var skip = dmSkipDests();
+    var all = (Dm.state && Dm.state.all_dirs) || [];
+    var i;
+    for (i = 0; i < all.length; i++) {
+      if (!all[i] || skip[all[i]]) { continue; }
+      opts.push({ v: all[i], t: all[i] + '/' });
+    }
+    clearNode(sel);
+    for (i = 0; i < opts.length; i++) {
       var o = document.createElement('option');
-      o.value = SAMPLE_FILES[i];
-      o.textContent = SAMPLE_FILES[i];
+      o.value = opts[i].v;
+      o.textContent = opts[i].t;
       sel.appendChild(o);
     }
+    var has = false;
+    for (i = 0; i < opts.length; i++) { if (opts[i].v === keep) { has = true; } }
+    sel.value = has ? keep : '';
+  }
+
+  function dmSelInfo() {
+    var el = $('dmSelInfo');
+    if (!el) { return; }
+    el.textContent = Dm.sel
+      ? ('已选中' + (Dm.sel.kind === 'dir' ? '目录' : '文件') + '：' + Dm.sel.path)
+      : '未选中任何条目';
+  }
+
+  function dmRow(kind, item) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'item-row dm-row';
+    btn.setAttribute('data-kind', kind);
+    btn.setAttribute('data-path', item.path);
+    if (Dm.sel && Dm.sel.kind === kind && Dm.sel.path === item.path) { btn.className += ' sel'; }
+    var nm = document.createElement('span');
+    nm.className = 'dm-name';
+    nm.textContent = (kind === 'dir' ? '[目录] ' : '[文件] ') + item.name;
+    btn.appendChild(nm);
+    var meta = document.createElement('span');
+    meta.className = 'dm-meta';
+    meta.textContent = (kind === 'dir')
+      ? ('（' + (item.entries || 0) + ' 项）')
+      : (dmFmtSize(item.size) + (item.sqlite ? ' · 数据库' : ''));
+    btn.appendChild(meta);
+    if (kind === 'dir') {
+      var go = document.createElement('span');
+      go.className = 'dm-go';
+      go.setAttribute('data-act', 'enter');
+      go.textContent = '进入';
+      btn.appendChild(go);
+    }
+    return btn;
+  }
+
+  function dmFillLists() {
+    var d = Dm.state;
+    if (!d) { return; }
+    var i;
+    var box = $('dmDirs');
+    if (box) {
+      clearNode(box);
+      if (!d.dirs.length) { box.appendChild(plainRow('（没有子目录）', 'muted')); }
+      for (i = 0; i < d.dirs.length; i++) { box.appendChild(dmRow('dir', d.dirs[i])); }
+    }
+    var fbox = $('dmFiles');
+    if (fbox) {
+      clearNode(fbox);
+      if (!d.files.length) { fbox.appendChild(plainRow('（没有文件）', 'muted')); }
+      for (i = 0; i < d.files.length; i++) { fbox.appendChild(dmRow('file', d.files[i])); }
+    }
+    var abs = $('dmAbs');
+    if (abs) { abs.textContent = d.root_dir || ''; }
+    var pth = $('dmPath');
+    if (pth) { pth.textContent = dmRelText(); }
+  }
+
+  function dmUpdate() {
+    dmFillLists();
+    dmFillDest();
+    dmSelInfo();
+  }
+
+  /* 列目录；当前目录被删掉（服务端 400）时自动退回数据根 */
+  function dmLoad(rel) {
+    if (rel !== undefined && rel !== null) { Dm.rel = rel; }
+    var url = '/api/fs-list?root=' + encodeURIComponent(Dm.root) + '&rel=' + encodeURIComponent(Dm.rel);
+    return api(url).then(function (d) {
+      Dm.state = d;
+      Dm.sel = null;
+      dmUpdate();
+      return d;
+    })['catch'](function (e) {
+      if (Dm.rel) { Dm.rel = ''; return dmLoad(''); }
+      dmMsg('读取数据目录失败：' + e.message, true);
+      return null;
+    });
+  }
+
+  function dmInit() {
+    var el = $('dmRoot');
+    if (el) { el.value = Dm.root; }
+    Dm.rel = '';
+    Dm.sel = null;
+    dmMsg('');
+    return dmLoad('');
+  }
+
+  function dmSwitchRoot() {
+    var el = $('dmRoot');
+    Dm.root = (el && el.value) ? el.value : 'paipu';
+    Dm.rel = '';
+    Dm.sel = null;
+    dmMsg('');
+    return dmLoad('');
+  }
+
+  function dmUp() {
+    if (!Dm.rel) { dmMsg('已经在数据根目录了。', true); return; }
+    var parent = (Dm.state && Dm.state.parent !== undefined)
+      ? Dm.state.parent : Dm.rel.split('/').slice(0, -1).join('/');
+    dmLoad(parent);
+  }
+
+  function dmOnListClick(e) {
+    var row = (e.target && e.target.closest) ? e.target.closest('.item-row') : null;
+    if (!row) { return; }
+    var kind = row.getAttribute('data-kind');
+    var path = row.getAttribute('data-path');
+    var act = (e.target.getAttribute && e.target.getAttribute('data-act')) || '';
+    if (act === 'enter' && kind === 'dir') { dmLoad(path); return; }
+    if (Dm.sel && Dm.sel.kind === kind && Dm.sel.path === path) {
+      Dm.sel = null;
+    } else {
+      Dm.sel = { kind: kind, name: baseName(path), path: path };
+    }
+    dmUpdate();
+  }
+
+  function dmMkdir() {
+    var name = valOf('dmNewName', '');
+    if (!name) { dmMsg('请先填「新建目录」的名字。', true); return; }
+    api('/api/fs-mkdir', { root: Dm.root, rel: Dm.rel, name: name }).then(function (d) {
+      var el = $('dmNewName');
+      if (el) { el.value = ''; }
+      dmMsg('已新建目录：' + (d.created || name));
+      return dmLoad(Dm.rel);
+    })['catch'](function (e) { dmMsg('新建目录失败：' + e.message, true); });
+  }
+
+  function dmMove() {
+    if (!Dm.sel) { dmMsg('请先选中要移动的条目。', true); return; }
+    api('/api/fs-move', { root: Dm.root, rel: Dm.sel.path, dest: valOf('dmDest', '') }).then(function (d) {
+      dmMsg('已移动到：' + (d.to ? ('/' + d.to) : (dmRootLabel() + ' 根目录')));
+      return dmLoad(Dm.rel);
+    })['catch'](function (e) { dmMsg('移动失败：' + e.message, true); });
+  }
+
+  function dmAsk(text) {
+    return (typeof window.confirm !== 'function') || window.confirm(text);
+  }
+
+  function dmDelete() {
+    if (!Dm.sel) { dmMsg('请先选中要删除的文件。', true); return; }
+    var it = Dm.sel;
+    if (it.kind !== 'file') { dmMsg('「' + it.path + '」是目录，请用「删除选中子目录」。', true); return; }
+    if (!dmAsk('确定删除文件？' + '\n' + it.path + '\n' + '删除后不可恢复。')) { return; }
+    api('/api/fs-delete', { root: Dm.root, rel: it.path }).then(function (d) {
+      dmMsg('已删除文件：' + (d.deleted || it.path));
+      return dmLoad(Dm.rel);
+    })['catch'](function (e) { dmMsg('删除失败：' + e.message, true); });
+  }
+
+  function dmRmdir() {
+    if (!Dm.sel) { dmMsg('请先选中要删除的子目录。', true); return; }
+    var it = Dm.sel;
+    if (it.kind !== 'dir') { dmMsg('「' + it.path + '」是文件，请用「删除选中文件」。', true); return; }
+    if (!dmAsk('确定删除子目录（连同里面的全部内容）？' + '\n' + it.path + '\n' + '删除后不可恢复。')) { return; }
+    api('/api/fs-rmdir', { root: Dm.root, rel: it.path }).then(function (d) {
+      dmMsg('已删除子目录：' + (d.deleted || it.path));
+      return dmLoad(Dm.rel);
+    })['catch'](function (e) { dmMsg('删除子目录失败：' + e.message, true); });
+  }
+
+  /* -------------------------------------------------------- 初始化 */
+  function baseName(p) {
+    var s = String(p === undefined || p === null ? '' : p).replace(/\\/g, '/');
+    var i = s.lastIndexOf('/');
+    return i < 0 ? s : s.slice(i + 1);
+  }
+
+  function fillSamples() {
+    var sel = $('sampleSelect');
+    if (!sel) { return; }
+    var rows = App.samples || [];
+    clearNode(sel);
+    if (!rows.length) {
+      /* 服务没启动 / 数据目录里还没有牌谱：仍然列出固定清单，保证首页结构稳定 */
+      for (var i = 0; i < SAMPLE_IDS.length; i++) {
+        var o = document.createElement('option');
+        o.value = '';
+        o.textContent = SAMPLE_IDS[i] + '.xml';
+        sel.appendChild(o);
+      }
+      return;
+    }
+    for (var j = 0; j < rows.length; j++) {
+      var op = document.createElement('option');
+      op.value = rows[j];
+      op.textContent = baseName(rows[j]);
+      sel.appendChild(op);
+    }
+  }
+
+  /* 示例牌谱清单 = /api/health 的 paipu_dir（数据目录）+ /api/scan 的文件列表。
+     用户 m00178 第 8 条：数据目录将来固定在 %LOCALAPPDATA% 下，必须用服务端给的绝对路径。 */
+  function loadSamples() {
+    return api('/api/health').then(function (h) {
+      App.dataRoot = h.data_root || '';
+      App.dbDir = h.db_dir || '';
+      App.paipuDir = h.paipu_dir || '';
+      if (!App.paipuDir) { return []; }
+      return api('/api/scan?dir=' + encodeURIComponent(App.paipuDir)).then(function (d) {
+        return (d && d.files) || [];
+      });
+    })['catch'](function () {
+      return [];
+    }).then(function (files) {
+      var list = files || [];
+      var seen = {}, i;
+      for (i = 0; i < list.length; i++) { seen[baseName(list[i]).replace(/\.xml$/i, '')] = list[i]; }
+      var picked = [];
+      for (i = 0; i < SAMPLE_IDS.length; i++) {
+        if (seen[SAMPLE_IDS[i]]) { picked.push(seen[SAMPLE_IDS[i]]); }
+      }
+      for (i = 0; i < list.length && picked.length < SAMPLE_IDS.length; i++) {
+        if (picked.indexOf(list[i]) < 0) { picked.push(list[i]); }
+      }
+      App.samples = picked;
+      fillSamples();
+      return picked;
+    });
   }
 
   function initDrop() {
@@ -1335,7 +1620,8 @@
   }
 
   function init() {
-    initSamples();
+    fillSamples();
+    loadSamples();
     initDrop();
 
     $('btnPickFile').addEventListener('click', function () { $('fileInput').click(); });
@@ -1401,6 +1687,22 @@
     renderConds();
     markUsedFeatures();
     $('btnBackHome').addEventListener('click', function () { setView('home'); });
+
+    /* 本地数据管理（用户 m00178 第 9 条） */
+    bind('btnGoData', function () { setView('data'); });
+    bind('btnDmHome', function () { setView('home'); });
+    bind('dmRefresh', function () { dmLoad(); });
+    bind('dmUp', dmUp);
+    bind('dmMkdir', dmMkdir);
+    bind('dmMove', dmMove);
+    bind('dmDelete', dmDelete);
+    bind('dmRmdir', dmRmdir);
+    var dmRootSel = $('dmRoot');
+    if (dmRootSel) { dmRootSel.addEventListener('change', dmSwitchRoot); }
+    var dmDirsBox = $('dmDirs');
+    if (dmDirsBox) { dmDirsBox.addEventListener('click', dmOnListClick); }
+    var dmFilesBox = $('dmFiles');
+    if (dmFilesBox) { dmFilesBox.addEventListener('click', dmOnListClick); }
 
     var tabs = document.querySelectorAll('.tab');
     for (var i = 0; i < tabs.length; i++) {
@@ -1478,4 +1780,22 @@
   window.App.dlReadFile = dlReadFile;
   window.App.dlStart = dlStart;
   window.App.dlPoll = dlPoll;
+  window.App.baseName = baseName;
+  window.App.fillSamples = fillSamples;
+  window.App.loadSamples = loadSamples;
+  window.App.loadSample = loadSample;
+  window.App.dataManagerState = Dm;
+  window.App.dmInit = dmInit;
+  window.App.dmLoad = dmLoad;
+  window.App.dmSwitchRoot = dmSwitchRoot;
+  window.App.dmUp = dmUp;
+  window.App.dmUpdate = dmUpdate;
+  window.App.dmMkdir = dmMkdir;
+  window.App.dmMove = dmMove;
+  window.App.dmDelete = dmDelete;
+  window.App.dmRmdir = dmRmdir;
+  window.App.dmSelect = function (kind, path) {
+    Dm.sel = (kind && path) ? { kind: kind, name: baseName(path), path: path } : null;
+    dmUpdate();
+  };
 })();

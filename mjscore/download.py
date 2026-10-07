@@ -27,7 +27,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+from . import paths
+
+ROOT = paths.resource_root()
 
 # Tenhou 的原始 mjlog 走明文 HTTP：本机 python 没有可用的 CA 包，https 会失败。
 DOWNLOAD_ENDPOINT = "http://tenhou.net/0/log/?{log_id}"
@@ -114,8 +116,8 @@ def save_log(log_id, data, output_dir, overwrite=True):
 # 存储位置
 # ---------------------------------------------------------------------------
 def paipu_root():
-    """固定的存储根 <项目根>/data/paipu。"""
-    return os.path.join(ROOT, PAIPU_SUB)
+    """固定的存储根：源码运行 = <项目根>/data/paipu；打包后 = %LOCALAPPDATA%\\<AppName>\\data\\paipu。"""
+    return paths.paipu_root()
 
 
 def default_subdir(now=None):

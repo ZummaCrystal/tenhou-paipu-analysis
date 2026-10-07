@@ -11,11 +11,13 @@ import sys
 import threading
 import time
 
-from . import feats, mjlog, nodeharness, store
+from . import feats, mjlog, nodeharness, paths, store
 from . import APP_NAME, __version__ as APP_VERSION
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB_DIR = os.path.join(ROOT, "data", "db")
+# 资源根（web/、media/、mjscore/）：源码运行 = 项目根；打包后 = PyInstaller 解包目录。
+ROOT = paths.resource_root()
+# 用户数据目录（data/db、data/paipu 的父目录）；打包后 = %LOCALAPPDATA%\<AppName>。
+DB_DIR = paths.db_dir()
 DEFAULT_DB_NAME = "paipu"
 
 
@@ -569,7 +571,7 @@ def main(argv=None):
             emit({"ok": False, "error": "文件不存在"}, "文件不存在：%s" % p)
             return 1
         if args.capture:
-            files = resolve_inputs(args.paths or [os.path.join(ROOT, "data")])
+            files = resolve_inputs(args.paths or [paths.data_dir()])
             made = capture(files, args.capture)
             emit({"ok": True, "files": made}, "已生成 %d 个 fixture 文件到 %s" % (len(made), os.path.abspath(args.capture)))
             return 0

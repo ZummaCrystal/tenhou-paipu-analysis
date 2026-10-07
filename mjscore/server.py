@@ -21,9 +21,16 @@
     POST /api/download          {url | text | url_file, subdir} -> 下载牌谱到 data/paipu/<子目录>（后台线程）
     GET  /api/download-progress 牌谱下载进度（前端轮询；{progress:{...}}）
     POST /api/delete-db         {name, db_name} -> 删除数据库
+    GET  /api/fs-list?root=paipu|db&rel=<相对路径>  本地数据管理：列目录（子目录 / 文件 / 上级）
+    POST /api/fs-mkdir          {root, rel, name} -> 新建子目录
+    POST /api/fs-move           {root, rel, dest} -> 移动文件 / 目录（dest='' 表示数据根）
+    POST /api/fs-delete         {root, rel} -> 删除文件
+    POST /api/fs-rmdir          {root, rel} -> 删除子目录（连同里面的内容）
 
 只监听本机回环地址；静态文件根目录固定为项目根（页面在 web/、前端 js 在 web/js/、
-素材在 media/，所以前端访问项目内 data/ 的相对路径可直接用）。
+素材在 media/）。用户数据（data/db、data/paipu）的根目录见 mjscore/paths.py：源码运行
+时就是项目根，打包后是 %LOCALAPPDATA%\\<AppName>；所以前端读写数据一律传**绝对路径**
+（数据管理接口用 root=paipu|db + 相对路径，由服务端自己拼根目录）。
 
 作者：Zumma Crystal <z1025zzsg@sohu.com>。
 """
@@ -36,7 +43,7 @@ import sys
 import urllib.parse
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
-from . import cli, download, feats, store
+from . import cli, datamgr, download, feats, paths, store
 from . import APP_NAME, AUTHOR, AUTHOR_EMAIL, __version__ as APP_VERSION
 
 ROOT = cli.ROOT
@@ -211,14 +218,47 @@ def api_download(payload):
     return res
 
 
+def _data_root_of(payload):
+    """取数据根参数（'paipu' 牌谱 / 'db' 数据库），缺省 paipu。"""
+    return str(payload.get("root") or "paipu")
+
+
+def api_fs_list(q):
+    """本地数据管理：列出某个数据根下的一层目录内容（用户 m00178 第 9 条）。"""
+    return datamgr.listing((q.get("root") or ["paipu"])[0], (q.get("rel") or [""])[0])
+
+
+def api_fs_mkdir(payload):
+    """在指定目录下新建一个子目录。"""
+    return datamgr.mkdir(_data_root_of(payload), payload.get("rel"), payload.get("name"))
+
+
+def api_fs_move(payload):
+    """把文件 / 目录移动到另一个目录（dest='' = 数据根，也支持上级目录 / 子目录）。"""
+    return datamgr.move(_data_root_of(payload), payload.get("rel"), payload.get("dest"))
+
+
+def api_fs_delete(payload):
+    """删除一个文件。"""
+    return datamgr.remove(_data_root_of(payload), payload.get("rel"))
+
+
+def api_fs_rmdir(payload):
+    """删除一个子目录（连同里面的内容）。"""
+    return datamgr.rmdir(_data_root_of(payload), payload.get("rel"),
+                         recursive=bool(payload.get("recursive", True)))
+
+
 GET_ROUTES = {
-    "/api/health": lambda q: {"ok": True, "root": ROOT, "name": APP_NAME, "version": APP_VERSION, "author": AUTHOR, "author_email": AUTHOR_EMAIL},
+    "/api/health": lambda q: {"ok": True, "root": ROOT, "name": APP_NAME, "version": APP_VERSION, "author": AUTHOR, "author_email": AUTHOR_EMAIL,
+                               "data_root": paths.data_root(), "db_dir": paths.db_dir(), "paipu_dir": paths.paipu_root()},
     "/api/features": lambda q: {"features": feats.FEATURES, "doukou": store.DOUKOU,
                                 "full_note": store.FULL_NOTE,
                                 "schema_version": store.SCHEMA_VERSION,
                                 "name": APP_NAME, "version": APP_VERSION, "author": AUTHOR, "author_email": AUTHOR_EMAIL},
     "/api/dbs": lambda q: {"dbs": cli.list_dbs(), "dir": cli.DB_DIR},
-    "/api/scan": lambda q: _scan_dir(_abs((q.get("dir") or [ROOT + os.sep + "data"])[0])),
+    "/api/fs-list": api_fs_list,
+    "/api/scan": lambda q: _scan_dir(_abs((q.get("dir") or [paths.data_dir()])[0])),
     "/api/analyze-progress": lambda q: {"progress": cli.progress_snapshot()},
     "/api/download-progress": lambda q: {"progress": download.download_snapshot()},
 }
@@ -232,6 +272,10 @@ POST_ROUTES = {
     "/api/frame-feats": api_frame_feats,
     "/api/download": api_download,
     "/api/delete-db": api_delete_db,
+    "/api/fs-mkdir": api_fs_mkdir,
+    "/api/fs-move": api_fs_move,
+    "/api/fs-delete": api_fs_delete,
+    "/api/fs-rmdir": api_fs_rmdir,
 }
 
 
@@ -325,6 +369,9 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._send_json(GET_ROUTES[path](q))
             except ApiError as exc:
                 return self._send_json({"ok": False, "error": str(exc)}, exc.code)
+            except ValueError as exc:
+                # datamgr.DataError 是 ValueError 子类：非法输入按 400 回，不要落 500
+                return self._send_json({"ok": False, "error": str(exc)}, 400)
             except Exception as exc:
                 return self._send_json({"ok": False, "error": "%s: %s" % (type(exc).__name__, exc)}, 500)
         if path.startswith("/api/"):

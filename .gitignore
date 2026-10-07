@@ -1,11 +1,18 @@
-# 牌谱与数据库（体积大、本地生成；需要时用 tools/download_tenhou.py 重新下载）
+# npm 依赖（约 450 MB，克隆后用 npm.cmd install 重装）
+node_modules/
+
+# 打包产物 / 图标构建中间产物（build/icon.ico 可用 tools/svg2ico.py 重新生成）
+build/
+dist/
+
+# 本地数据：牌谱与数据库（体积大，用界面里的「牌谱下载」或 tools/download_tenhou.py 重新获取）
 data/
 
 # Python 缓存
 __pycache__/
 *.py[cod]
 
-# 测试产物
+# 测试临时产物
 test/out/
 test/_tmp/
 

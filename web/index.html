@@ -16,6 +16,7 @@
     <button class="tab" data-view="replay">牌谱播放</button>
     <button class="tab" data-view="analyze">牌谱分析</button>
     <button class="tab" data-view="search">牌谱检索</button>
+    <button class="tab" data-view="data">本地数据管理</button>
   </nav>
   <div class="topbar-spacer"></div>
   <div id="appAuthor" class="app-author"></div>
@@ -59,6 +60,13 @@
         <p class="muted">指定一个本地数据库文件，按「牌谱特征」检索打点帧（摸牌帧 / 吃碰后帧），输出：
           <b>牌谱特征码 + 局况 + 本场 + 巡目 + 风位</b>，并可跳转到对应帧形态查看。</p>
         <button id="btnGoSearch">进入检索</button>
+      </div>
+
+      <div class="card span">
+        <h2>本地数据管理</h2>
+        <p class="muted">整理本机的用户数据目录：牌谱在 <code>data/paipu/</code>，分析结果数据库在
+          <code>data/db/</code>。可以新建目录、把条目移动到子目录或上一级目录、删除文件、删除子目录。</p>
+        <button id="btnGoData">进入本地数据管理</button>
       </div>
     </div>
   </section>
@@ -296,6 +304,50 @@
 
       <p id="dlMsg" class="msg"></p>
       <div id="dlList" class="item-list"></div>
+    </div>
+  </section>
+
+  <!-- ======================== 本地数据管理 ======================== -->
+  <section id="view-data" class="view hidden">
+    <div class="card wide">
+      <h2>本地数据管理</h2>
+      <p class="muted">这里管理本机的<b>用户数据目录</b>：牌谱放在 <code>data/paipu/</code>，
+        分析结果数据库放在 <code>data/db/</code>。可以新建目录、把条目移动到子目录或上一级目录、
+        删除文件、删除子目录（连同里面的内容）。<b>删除不可撤销。</b></p>
+
+      <div class="row">
+        <button id="btnDmHome" class="ghost">← 返回首页</button>
+        <label for="dmRoot">数据区</label>
+        <select id="dmRoot">
+          <option value="paipu">牌谱（data/paipu）</option>
+          <option value="db">数据库（data/db）</option>
+        </select>
+        <button id="dmUp" class="ghost">↑ 上一级</button>
+        <button id="dmRefresh" class="ghost">刷新</button>
+      </div>
+
+      <p class="muted">数据根目录：<span id="dmAbs"></span>　当前目录：<b id="dmPath">/</b></p>
+
+      <div class="row">
+        <label for="dmNewName">新建目录</label>
+        <input id="dmNewName" type="text" size="18" placeholder="目录名" />
+        <button id="dmMkdir">新建</button>
+      </div>
+
+      <div class="row">
+        <label for="dmDest">移动到</label>
+        <select id="dmDest"></select>
+        <button id="dmMove">移动选中项</button>
+        <button id="dmDelete" class="ghost">删除选中文件</button>
+        <button id="dmRmdir" class="ghost">删除选中子目录</button>
+      </div>
+      <p id="dmSelInfo" class="muted">未选中任何条目</p>
+      <p id="dmMsg" class="msg"></p>
+
+      <div class="sub-h">子目录</div>
+      <div id="dmDirs" class="item-list"></div>
+      <div class="sub-h">文件</div>
+      <div id="dmFiles" class="item-list"></div>
     </div>
   </section>
 
