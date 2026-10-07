@@ -450,7 +450,9 @@ byId.btnGoSearch.fire('click', { target: byId.btnGoSearch });
 check(App.view === 'search' && !byId['view-search'].classList.contains('hidden'), '进入检索视图（占位）');
 byId.btnBackHome.fire('click', { target: byId.btnBackHome });
 check(App.view === 'home', '返回首页');
-tabs[1].fire('click', { target: tabs[1] });
+var tabReplay = null;
+tabs.forEach(function (t) { if (t.getAttribute('data-view') === 'replay') { tabReplay = t; } });
+tabReplay.fire('click', { target: tabReplay });
 check(App.view === 'replay', '点页签回到播放视图');
 check(countTiles(byId.board) > 0, '切回后牌桌仍在（渲染 ' + countTiles(byId.board) + ' 张牌）');
 
