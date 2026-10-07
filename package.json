@@ -1,6 +1,58 @@
 {
+  "name": "tenhou-paipu-analysis",
+  "version": "0.1.0",
+  "private": true,
+  "description": "天凤牌谱分析 桌面版（Electron + PyInstaller）",
+  "author": {
+    "name": "Zumma Crystal",
+    "email": "z1025zzsg@sohu.com"
+  },
+  "main": "desktop/main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --win --dir",
+    "dist": "electron-builder --win nsis --publish never -c.npmRebuild=false",
+    "build": "powershell -ExecutionPolicy Bypass -File build.ps1"
+  },
   "devDependencies": {
     "electron": "^44.6.0",
     "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.zummacrystal.tenhou-paipu-analysis",
+    "productName": "tenhou-paipu-analysis",
+    "copyright": "Copyright © 2026 Zumma Crystal",
+    "directories": {
+      "output": "dist/electron",
+      "buildResources": "build"
+    },
+    "files": [
+      "desktop/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "dist/pyi/tenhou-paipu-analysis-server",
+        "to": "backend"
+      }
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "tenhou-paipu-analysis-${version}-setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "天凤牌谱分析",
+      "uninstallDisplayName": "天凤牌谱分析 ${version}",
+      "include": "packaging/installer.nsh",
+      "deleteAppDataOnUninstall": false
+    }
   }
 }

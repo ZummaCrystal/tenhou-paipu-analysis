@@ -302,7 +302,37 @@ python tools/download_tenhou.py <url>... [-f 文件] [-o 目录] [--no-overwrite
 
 ---
 
-## 9. 作者
+## 9. 打包发布（Windows，可选）
+
+普通用户不需要这一节；只有要把项目打成安装包（分发用）时才用到。
+
+**准备**：`D:\coding\anaconda3\envs\py314_null` 里装好 PyInstaller（`python -m pip install pyinstaller`，要 >= 6.19 才支持 Python 3.14）；在项目根执行一次 `npm install`（Electron + electron-builder，首次会下载约 100 MB）。
+
+**一键打包**（在项目根、用普通（非受限）终端）：
+
+    powershell -ExecutionPolicy Bypass -File .\build.ps1
+
+脚本依次做：检查环境 → 清理（`-Clean`）→ 生成图标（`media\tiles\6m.svg` → `build\icon.ico`）→ 跑回归（`test\apptest.js`）→ 用 PyInstaller 把后端打成 `dist\pyi\tenhou-paipu-analysis-server\`（onedir，内嵌 `node.exe`）→ 冒烟测试（`-Smoke`）→ electron-builder 打 NSIS 安装包到 `dist\electron\`。
+
+常用开关：`-SkipIcon`、`-SkipTests`、`-FullTests`（加跑需要真实数据目录的 `test\datamgr_test.py`）、`-SkipPyi`、`-SkipElectron`、`-Clean`、`-Smoke -Port 8788`、`-PythonExe <路径>`、`-NodeExe <路径>`。也可以 `npm run build` / `npm run dist`。
+
+**产物**：`dist\electron\tenhou-paipu-analysis-0.1.0-setup.exe`（NSIS，安装路径可选）。安装后：
+
+- 程序装在自选目录（默认当前用户 `%LOCALAPPDATA%\Programs\tenhou-paipu-analysis`）；
+- 后端与 Node 在 `<安装目录>\resources\backend\`；
+- 牌谱与数据库固定放 `%LOCALAPPDATA%\tenhou-paipu-analysis\data\{paipu,db}`（界面「本地数据管理」页签里管理）；
+- 卸载时会询问是否一并删除上面这个数据目录（默认保留）。
+
+**注意**
+
+- PyInstaller 的参数只有一份，写在 `packaging\pyi_build.py`（它会打印等价命令）；受限终端里若 hook 发现报 `PermissionError [WinError 5] / create_pipe`，`build.ps1` 会自动加 `--in-process` 兜底。
+- electron-builder 需要能用匿名管道启动子进程（`npm`、`makensis`）；日志里若出现 `spawn EPERM` / `EPERM: operation not permitted`，换普通终端重跑。
+- 目前没有代码签名，安装时 SmartScreen 会提示「未知发布者」。
+- 只支持 Windows x64。图标可由 `tools\svg2ico.py` 从素材复现，不需要外部图片。
+
+---
+
+## 10. 作者
 
 - **作者**：Zumma Crystal
 - **邮箱**：`z1025zzsg@sohu.com`
