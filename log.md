@@ -1280,6 +1280,66 @@ r = t % 3; t = (t // 3) * 4; h = [t, t, t]
 75. **把首页的控件搬进子视图时，别忘了同步改「页签守卫」**：原来点「牌谱播放」页签会在 `!App.game` 时弹提示并退回首页（那时控件在首页），控件搬进播放视图后这条守卫反而把入口堵死了 —— 要么放开守卫、要么把守卫的提示换成「先在这里选文件」（用户 m04628）。
 
 
+76. **`curl.exe` 的 HTTPS 失败不等于网络不通**：本机 `curl` 对任何 https 都报 `curl: (35) schannel: AcquireCredentialsHandle failed: SEC_E_NO_CREDENTIALS (0x8009030E)`（`http_code=000`），
+    而 Python（OpenSSL + certifi）与 Node 的 `fetch` 对 `github.com` / `api.github.com` / `objects.githubusercontent.com` 都能握手，并拿到 `Range` 请求的 206。
+    结论：判断「HTTPS 是否可用」要用 Python / Node 复验，别据 curl 下结论（用户 m00590 第 7 条）。
+77. **冻结后 `__file__` 不再指向项目**：PyInstaller onedir 下资源落在 `_internal/`（`sys._MEIPASS`），装到 Program Files 后又不可写。
+    所有「项目根」引用必须改走 `mjscore/paths.py`：`resource_root()`（只读资源）+ `data_root()`（用户数据）；**源码模式下两者都返回项目根**，改造才对开发/测试零影响。
+    本次接入点：`mjscore/cli.py:18`（`ROOT`）、`mjscore/cli.py:20`（`DB_DIR`）、`mjscore/server.py:49`→`:287`（静态根 `directory=ROOT`）、`mjscore/download.py:32`/`:118-120`、`mjscore/nodeharness.py:25-26`。
+78. **`tempfile.mkdtemp()` 在 TEMP 受限时会造出「自己都进不去」的目录**：建出来的目录带仅所有者 / Deny DeleteSubdirectoriesAndFiles ACL，后续写入与删除都报 `WinError 5`，`takeown` / `icacls /reset` 也救不回来。
+    测试临时目录一律用项目内 `test/_tmp/<名字>-<pid>-<uuid>` + `os.makedirs`（`test/_tmp` 已在 `.gitignore` 里）。
+79. **`subprocess` 的管道在本环境不可用**：`capture_output=True` / `PIPE` 抛 `CreatePipe: WinError 5`；要拿输出就把 stdout 重定向到**文件句柄**（`stdout=open(log, "w")`）或 `DEVNULL`，跑完再读文件。
+80. **PowerShell 的 `$pid` 是只读自动变量**：`foreach ($pid in 1,2,3) { ... }` 会让整段命令报错，**该命令块里后续语句全都不执行且零输出**（曾据此误以为补丁已写好）。循环变量一律用 `$procId`。
+81. **浏览器 headless 截图在本环境不可用**：`chrome.exe --headless=new --screenshot=...` / `--dump-dom` 不产出文件，`chrome.exe --version`、`electron.exe --version` 连退出码都拿不到（但会留下 profile 目录与挂起进程）。
+    需要「SVG → 位图」时要么用 InkScape / ImageMagick（本机都没有），要么自写光栅化 —— 见 `tools/svg2ico.py`（纯标准库、可复现）。
+82. **图标别只留本地**：`build/` 被 `.gitignore` 排除，图标应由脚本可复现生成（`tools/svg2ico.py`），打包脚本第一步就跑生成，别把二进制当唯一来源。
+83. **提交前先补 `.gitignore`**：`node_modules/`（本项目 Electron 约 450 MB）必须在列，否则 `git add -A` 会把整棵依赖树带进仓库。
+
+## 20. 第 24 轮：本地数据管理 + 打包前路径改造 + SVG→ICO 工具（用户 m00178 / m00590）
+### 20.1 要求
+- 用户 m00178（9 条）：第 1~4 条 = 准备工作就绪；第 5 条 = 用赤 5m 的素材做 `.ico`；第 6 条 = 四项决策（① 把 node 打进包；② onedir；③ 数据目录固定为 `%LOCALAPPDATA%\tenhou-paipu-analysis\data`；④ 出 NSIS 安装包、安装路径用户可选、卸载时询问是否删除数据）；第 7 条 = GitHub SSH 能否替代 HTTPS；第 8 条 = 修 bug；第 9 条 = 前端新增「本地数据管理」（第五个入口、首页改 3 x 2、子功能「牌谱管理」与「数据库管理」，可新建目录 / 移动位置（含 `..` 上级）/ 删除 / 删除子目录）。
+- 用户 m00590：数据管理里**禁止把牌谱移出 `data/paipu`、数据库移出 `data/db`**；实测 GitHub HTTPS；做 `.ico`；`<AppName>` = `tenhou-paipu-analysis`；数据根下拉切换的形态「可以」；用户已自行迁移数据、要我先实测；`.gitignore` 精简但保证克隆后能跑；**先不急着打包**。
+
+### 20.2 修 bug（第 8 条）
+`web/js/app.js` 的 `loadSample()` 原来写 `fetch('data/' + name)`，而页面在 `/web/index.html` ⇒ 实际请求 `/web/data/...`，而 `web/data/` 并不存在 ⇒ 首页「载入示例牌谱」必然失败。
+改法：`/api/health` 取 `paipu_dir` → `/api/scan?dir=<paipu_dir>` 列文件 → 按 `SAMPLE_IDS` 匹配（不足 5 个用列表前若干补齐）→ 下拉框 value 为**绝对路径**，`#btnLoadSample` 走 `/api/read?path=`。
+
+### 20.3 本地数据管理（第 9 条）
+- 前端：`web/index.html` 第 6 个页签 `data-view="data"`；首页第 5 张卡 `.card.span`（`.cards` 变 3 行 x 2 列，第五张跨两列，CSS `grid-column: 1 / -1`）；`#view-data` 内含数据根下拉（牌谱 / 数据库）、数据根绝对路径与当前相对路径、子目录/文件列表（选中高亮 + 目录「进入」）、新建目录、移动到（下拉 = 数据根或各级子目录）、删除文件、删除选中子目录。
+- 后端：新增 `mjscore/datamgr.py`，提供 `/api/fs-list`、`/api/fs-mkdir`、`/api/fs-move`、`/api/fs-delete`、`/api/fs-rmdir`；`listing()` 返回 `{root, roots, root_dir, dir, parent, dirs[{name,path,entries}], files[{name,path,size,mtime,sqlite}], all_dirs}`；所有写操作只接受该数据根内的相对路径。
+
+### 20.4 打包前的路径改造
+- 新增 `mjscore/paths.py`：`resource_root()`（源码 = 项目根；冻结 = `sys._MEIPASS`，无则 exe 所在目录）、`data_root()`（`MJSCORE_DATA_ROOT` 优先；冻结 = `%LOCALAPPDATA%\<APP_DIR_NAME>`；源码 = 项目根）、`data_dir()` / `db_dir()` / `paipu_root()`、`APP_DIR_NAME = "tenhou-paipu-analysis"`。
+- 接入点见踩坑 77。效果：**源码运行行为与改造前完全一致**；冻结后用户数据默认正好落在用户已迁移的 `%LOCALAPPDATA%\tenhou-paipu-analysis\data`，不需要 Electron 额外设环境变量。
+
+### 20.5 越界加固（用户 m00590）
+`mjscore/datamgr.py:45` `norm_rel()` 拒空 / 绝对路径与盘符 / `..` / 首尾空格 / 非法字符；`mjscore/datamgr.py:89` `_abs_of()` 用 `os.path.commonpath` + `realpath` **双重校验**，分别报 `路径越界：%s` 与 `路径越界（软链接指向数据根之外）：%s`；`ROOTS = ("paipu", "db")` + `ROOT_LABELS`；数据根目录本身不可删（`只能删除整个子目录（含里面的内容）`）。
+
+### 20.6 SVG → ICO（第 5 条 / 复核 5）
+本机无 InkScape / ImageMagick，浏览器 headless 亦不可用（踩坑 81）⇒ 自写 `tools/svg2ico.py`（约 533 行，纯标准库）：解析 `path` / `rect` / `circle` / `ellipse` / `polygon`、`transform`（translate / scale / matrix / rotate）、`fill` / `fill-opacity` / `fill-rule`，扫描线填充 + 盒式降采样 + 多尺寸 ICO（16/32/48/64 走 DIB、128/256 走 PNG），带 `--ascii` 自检；遇到不认识的绘图方式（如圆弧 `A`）**明确报错、不产出文件**。
+产物：`build/icon.ico`（40754 B，白牌面圆角，推荐）、`build/icon_plain.ico`（38746 B，透明背景）、`build/icon_{16,32,48,64,128,256}.png`。40 个素材实测：0m~9m、1z~7z、back/Front 都能转；`5z` 与 `Blank.svg` 本来就是空牌面；`5p.svg`、`1s.svg` 用圆弧会报错。
+
+### 20.7 GitHub HTTPS 实测（第 7 条）
+`curl` 全失败（schannel 凭据问题，见踩坑 76）；Python（OpenSSL 3.5.8 + certifi）与 Node v24.15.0 `fetch` 对 `github.com`、`api.github.com`、`objects.githubusercontent.com`，以及 electron 的 release zip、nsis 7z 均返回 **206（Range 100 字节）**⇒ **HTTPS 可用、不需要 SSH 替代**；electron-builder 首次打 NSIS 能自行下载 nsis / winCodeSign（缓存到 `%LOCALAPPDATA%\electron-builder\Cache`）。
+
+### 20.8 迁移数据实测（用户第 3 问）
+`C:\Users\ASUS\AppData\Local\tenhou-paipu-analysis\data\{db,paipu}` 均存在（sqlite 35,311,616 B、71 个 xml）；用 `MJSCORE_DATA_ROOT=<该目录>` 起真实服务：`/api/health` 的 `data_root` / `db_dir` / `paipu_dir` 指向正确、`/api/scan` 扫到 71 个文件（绝对路径）、`/api/fs-list` / `/api/read` 正常；项目内 `data/` 仍在（复制非移动）⇒ 源码方式运行不受影响。
+
+### 20.9 `.gitignore` 精简
+忽略：`node_modules/`、`build/`、`dist/`、`data/`、`__pycache__/`、`*.py[cod]`、`test/out/`、`test/_tmp/`、`.vscode/`、`.idea/`、`Thumbs.db`、`desktop.ini`。保留其余全部源码，克隆后只要有 Python 就能 `python server.py`。
+
+### 20.10 验证结果
+| 验证 | 结果 |
+| --- | --- |
+| `test/apptest.js`（含新增第 15 段「本地数据管理」） | 全部通过（status 0） |
+| `test/datamgr_test.py`（新增，真实服务 + 真实数据） | 67 / 67 通过 |
+| 真实服务直连（`/api/health`、`/api/scan`、`/api/read`、`/api/fs-list`） | 通过（71 个牌谱） |
+| `test/mjscore_test.py` 全量 | **未跑完**（只完成第 1 节：5 文件 / 58 局 / 5766 帧不变量 0 错） |
+
+### 20.11 未做 / 后续
+- 打包本身：本轮**未开始**；用户 m00590 要求「先不急着打包」，m00751 指示开始打包，计划见第 21 节（待补）。
+- 计划产物：`desktop/`（Electron 主进程 + 它自己的 `package.json`）、根 `package.json` 补齐 `name/version/main/scripts`、`packaging/*.spec`、`build.ps1`；产物落 `build/`、`dist/`（均已忽略）。
+- 仍待办：`test/mjscore_test.py` 全量跑完；`tools/svg2ico.py` 支持圆弧 `A`；`test/_tmp` 下 3 个 ACL 空目录删不掉（见踩坑 78）。
 
 ---
-*最后更新：第 23 轮（用户 m04115：修「扩充现有数据库」把库名拼成 `<名字>.sqlite.sqlite` 导致报「数据库不存在」的 bug（`cli.db_path_of()` + `server._db_of()`）；与向听数有关的特征内部值 3 一律显示 `>=3`（`cli.feat_value_text()` / `web/js/app.js` 的 `fmtFeatValue()`，检索仍按内部整数匹配，`3` / `3-5` / `>=3` 都命中内部值 3）；新增作者信息（`mjscore\__init__.py` 的 `AUTHOR` / `AUTHOR_EMAIL` + `/api/health` `/api/features` + 页眉 `#appAuthor`）；项目结构整理 —— 前端移到 `web/`（`index.html` / `style.css` / `js/`）、命令行移到 `tools/`（`analyze.py` / `download_tenhou.py`），根目录只留 `server.py`，并顺手修掉批量替换引入的 `\a`（BEL）/ `\d`（SyntaxWarning）缺陷；GitHub 本地已 `git init` + 提交 `ceda372`（78 文件 / 32315 行），推送待账号 / PAT。测试：`test\apptest.js` 276 OK、`test\mjscore_test.py` 全量 通过 217 项 / 失败 0 项（wall 3658.0 s ≈ 61.0 分钟，exit=0）、`test\agari_test.py` 182 / `test\danger_test.py` 29 / `test\expect_test.py` 73 / `test\shanten_test.py` 92 / `test\selftest.js` / `test\uitest.js` 全绿。追加修正（用户 m04628）：牌谱播放改为入口式，首页只留介绍 + 「开始播放」按钮；追加修正（用户 m04553）：`/` 与 `/index.html` 由内部改写改为 **302 跳转**到 `/web/index.html`（否则页面里的 `style.css` / `js/*.js` 会解析成旧路径而 404）；本节见第 17 节；当前有效展示规则 = 5.1~5.7；下一步见第 18 节。）*
+*最后更新：第 24 轮（用户 m00178 / m00590：新增「本地数据管理」第六个页签与首页第五张卡（3 x 2 布局）、修首页「载入示例牌谱」相对路径 bug（web/js/app.js 改走 /api/health + /api/scan + 绝对路径）、拆出 mjscore/paths.py（只读资源根 / 用户数据根分离；冻结后默认 %LOCALAPPDATA%\tenhou-paipu-analysis\data，与用户已迁移位置一致）、加固 data/paipu 与 data/db 的越界（..、绝对路径、跨根、软链接/目录联接一律 400）、新增 	ools/svg2ico.py 生成 uild/icon.ico、精简 .gitignore；验证：	est/apptest.js 全通过 + 新增 	est/datamgr_test.py 67/67，	est/mjscore_test.py 全量仍未跑完；见第 20 节）。上一轮：第 23 轮（用户 m04115：修「扩充现有数据库」把库名拼成 `<名字>.sqlite.sqlite` 导致报「数据库不存在」的 bug（`cli.db_path_of()` + `server._db_of()`）；与向听数有关的特征内部值 3 一律显示 `>=3`（`cli.feat_value_text()` / `web/js/app.js` 的 `fmtFeatValue()`，检索仍按内部整数匹配，`3` / `3-5` / `>=3` 都命中内部值 3）；新增作者信息（`mjscore\__init__.py` 的 `AUTHOR` / `AUTHOR_EMAIL` + `/api/health` `/api/features` + 页眉 `#appAuthor`）；项目结构整理 —— 前端移到 `web/`（`index.html` / `style.css` / `js/`）、命令行移到 `tools/`（`analyze.py` / `download_tenhou.py`），根目录只留 `server.py`，并顺手修掉批量替换引入的 `\a`（BEL）/ `\d`（SyntaxWarning）缺陷；GitHub 本地已 `git init` + 提交 `ceda372`（78 文件 / 32315 行），推送待账号 / PAT。测试：`test\apptest.js` 276 OK、`test\mjscore_test.py` 全量 通过 217 项 / 失败 0 项（wall 3658.0 s ≈ 61.0 分钟，exit=0）、`test\agari_test.py` 182 / `test\danger_test.py` 29 / `test\expect_test.py` 73 / `test\shanten_test.py` 92 / `test\selftest.js` / `test\uitest.js` 全绿。追加修正（用户 m04628）：牌谱播放改为入口式，首页只留介绍 + 「开始播放」按钮；追加修正（用户 m04553）：`/` 与 `/index.html` 由内部改写改为 **302 跳转**到 `/web/index.html`（否则页面里的 `style.css` / `js/*.js` 会解析成旧路径而 404）；本节见第 17 节；当前有效展示规则 = 5.1~5.7；下一步见第 18 节。）*
