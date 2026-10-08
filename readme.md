@@ -325,7 +325,7 @@ python tools/download_tenhou.py <url>... [-f 文件] [-o 目录] [--no-overwrite
 - 后端与 Node 在 `<安装目录>\resources\backend\`；
 - 牌谱与数据库固定放**当前 Windows 用户**的 `%LOCALAPPDATA%\tenhou-paipu-analysis\data\{paipu,db}`（多用户各一份，界面「本地数据管理」页签里管理）；
 - 「牌谱播放 → 选择牌谱文件…」由 Electron 主进程弹原生文件框，默认定位到上面的 `data\paipu`（`desktop/preload.js` 暴露 `window.tenhouDesktop`，主进程 `ipcMain.handle('pick-paipu-file')`；路径来自后端 `/api/health` 的 `paipu_dir`，目录不存在时会先建出来）；浏览器模式没有这个桥，退回浏览器自带文件框。
-- 卸载时会询问是否一并删除上面这个数据目录（默认保留）；卸载程序是提权运行的，问的是**执行卸载的那个用户**的数据目录。
+- 卸载时会询问是否一并删除上面这个数据目录，**默认不删除**（询问框的默认按钮就是「否」，直接回车即保留；静默卸载 `/S` 也一律保留）；卸载程序是提权运行的，问的是**执行卸载的那个卸载者**的数据目录。
 
 **注意**
 
@@ -335,6 +335,7 @@ python tools/download_tenhou.py <url>... [-f 文件] [-o 目录] [--no-overwrite
 - 默认装到 Program Files 由 `package.json` 的 `build.nsis.perMachine = true` 决定；改成 `false` 会退回 `%LOCALAPPDATA%\Programs\<应用名>`（并且 assisted installer 会多一个「安装模式」页，默认选「仅为我安装」）。
 - 目前没有代码签名，安装时 SmartScreen 会提示「未知发布者」。
 - 只支持 Windows x64。图标可由 `tools\svg2ico.py` 从素材复现，不需要外部图片。
+- 卸载询问写在 `packaging\installer.nsh` 的 `customUnInstall` 里。注意按「所有用户」安装时（`perMachine: true`）卸载器的 shell 变量上下文是 `all`，`$LOCALAPPDATA` 会被解析成 `C:\ProgramData` ⇒ 宏里先 `SetShellVarContext current` 再定位数据目录、之后切回 `all`，否则询问永远不会出现（细节与实测见 `log.md` 踩坑 96）。
 
 ---
 
