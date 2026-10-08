@@ -327,6 +327,8 @@ python tools/download_tenhou.py <url>... [-f 文件] [-o 目录] [--no-overwrite
 - 「牌谱播放 → 选择牌谱文件…」由 Electron 主进程弹原生文件框，默认定位到上面的 `data\paipu`（`desktop/preload.js` 暴露 `window.tenhouDesktop`，主进程 `ipcMain.handle('pick-paipu-file')`；路径来自后端 `/api/health` 的 `paipu_dir`，目录不存在时会先建出来）；浏览器模式没有这个桥，退回浏览器自带文件框。
 - 卸载时会询问是否一并删除上面这个数据目录，**默认不删除**（询问框的默认按钮就是「否」，直接回车即保留；静默卸载 `/S` 也一律保留）；卸载程序是提权运行的，问的是**执行卸载的那个卸载者**的数据目录。
 
+**参考指纹**（第 25 轮实测，用户本机构建）：`tenhou-paipu-analysis-0.1.0-setup.exe` = 142,676,228 B，SHA256 `CCFAD901B86E142B17248C34C5E645971AE05F715C84940E27BB123B86E2F2B9`（重新打包会因时间戳 / 压缩差异得到不同哈希，此值只用于核对同一次分发的产物）。同一轮的全量回归（9 个测试全绿）见 `log.md` 第 21.11 节。
+
 **注意**
 
 - PyInstaller 的参数只有一份，写在 `packaging\pyi_build.py`（它会打印等价命令）；受限终端里若 hook 发现报 `PermissionError [WinError 5] / create_pipe`，`build.ps1` 会自动加 `--in-process` 兜底。
