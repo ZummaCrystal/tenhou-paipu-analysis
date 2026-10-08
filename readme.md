@@ -318,16 +318,17 @@ python tools/download_tenhou.py <url>... [-f 文件] [-o 目录] [--no-overwrite
 
 **产物**：`dist\electron\tenhou-paipu-analysis-0.1.0-setup.exe`（NSIS，安装路径可选）。安装后：
 
-- 程序装在自选目录（默认当前用户 `%LOCALAPPDATA%\Programs\tenhou-paipu-analysis`）；
+- 程序装在自选目录（**默认 `C:\Program Files\tenhou-paipu-analysis`**，按「所有用户」安装：安装时会弹 UAC 要管理员权限；最后一步的目录页里仍可改成别的路径）；
 - 后端与 Node 在 `<安装目录>\resources\backend\`；
-- 牌谱与数据库固定放 `%LOCALAPPDATA%\tenhou-paipu-analysis\data\{paipu,db}`（界面「本地数据管理」页签里管理）；
-- 卸载时会询问是否一并删除上面这个数据目录（默认保留）。
+- 牌谱与数据库固定放**当前 Windows 用户**的 `%LOCALAPPDATA%\tenhou-paipu-analysis\data\{paipu,db}`（多用户各一份，界面「本地数据管理」页签里管理）；
+- 卸载时会询问是否一并删除上面这个数据目录（默认保留）；卸载程序是提权运行的，问的是**执行卸载的那个用户**的数据目录。
 
 **注意**
 
 - PyInstaller 的参数只有一份，写在 `packaging\pyi_build.py`（它会打印等价命令）；受限终端里若 hook 发现报 `PermissionError [WinError 5] / create_pipe`，`build.ps1` 会自动加 `--in-process` 兜底。
 - electron-builder 需要能用匿名管道启动子进程（`npm`、`makensis`）；日志里若出现 `spawn EPERM` / `EPERM: operation not permitted`，换普通终端重跑。
 - 关掉依赖重建写在 `package.json` 的 `build.npmRebuild = false`；不要在命令行写 `-c.npmRebuild=false` —— 某些 shell 下 electron-builder 会把它当成**配置文件路径**，直接报 `ENOENT: no such file or directory, open '...\.npmRebuild=false'`。
+- 默认装到 Program Files 由 `package.json` 的 `build.nsis.perMachine = true` 决定；改成 `false` 会退回 `%LOCALAPPDATA%\Programs\<应用名>`（并且 assisted installer 会多一个「安装模式」页，默认选「仅为我安装」）。
 - 目前没有代码签名，安装时 SmartScreen 会提示「未知发布者」。
 - 只支持 Windows x64。图标可由 `tools\svg2ico.py` 从素材复现，不需要外部图片。
 
