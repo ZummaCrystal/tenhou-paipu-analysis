@@ -180,6 +180,48 @@
     });
   }
 
+  /* 「选择牌谱文件…」：桌面版（Electron）走主进程的原生对话框，默认打开牌谱数据根目录
+     （用户 m01084：数据目录固定到 %LOCALAPPDATA% 之后，用户第一次使用时很难自己找到它）。
+     浏览器里没有 window.tenhouDesktop 这个桥（<input type=file> 的初始目录无法用脚本指定），
+     自动退回原来的行为 —— python server.py + 浏览器、双击 web/index.html 离线播放都不受影响。 */
+  function loadFromPath(p) {
+    homeMsg('正在载入 ' + baseName(p) + ' …');
+    return api('/api/read?path=' + encodeURIComponent(p)).then(function (d) {
+      loadText(d.text || '', baseName(p));
+    })['catch'](function (err) {
+      homeMsg('载入牌谱失败（' + (err && err.message ? err.message : err) + '）。', true);
+      setFileInfo('未载入牌谱');
+    });
+  }
+
+  function openNativePicker(defaultDir) {
+    var res;
+    try {
+      res = window.tenhouDesktop.pickPaipuFile(defaultDir || '');
+    } catch (err) {
+      homeMsg('打开牌谱失败（' + (err && err.message ? err.message : err) + '）。', true);
+      return;
+    }
+    if (!res || typeof res.then !== 'function') { return; }
+    res.then(function (r) {
+      if (!r || r.canceled || !r.filePath) { return; }
+      loadFromPath(r.filePath);
+    })['catch'](function (err) {
+      homeMsg('打开牌谱失败（' + (err && err.message ? err.message : err) + '）。', true);
+    });
+  }
+
+  function pickPaipuFile() {
+    var bridge = window.tenhouDesktop;
+    if (!bridge || typeof bridge.pickPaipuFile !== 'function') { $('fileInput').click(); return; }
+    if (App.paipuDir) { openNativePicker(App.paipuDir); return; }
+    /* 还没拿到 /api/health 的 paipu_dir 时补问一次，免得对话框退回系统上次的目录 */
+    api('/api/health').then(function (h) {
+      App.paipuDir = h.paipu_dir || '';
+      openNativePicker(App.paipuDir);
+    })['catch'](function () { openNativePicker(''); });
+  }
+
   /* -------------------------------------------------------- 局下拉框 */
   function roundSummary(round) {
     var evs = round.events, i;
@@ -1624,7 +1666,7 @@
     loadSamples();
     initDrop();
 
-    $('btnPickFile').addEventListener('click', function () { $('fileInput').click(); });
+    $('btnPickFile').addEventListener('click', pickPaipuFile);
     $('fileInput').addEventListener('change', function () {
       var f = this.files && this.files[0];
       this.value = '';

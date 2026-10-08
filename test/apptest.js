@@ -1469,6 +1469,63 @@ global.fetch = function () { return new SyncThen(new Error('down'), true); };
 byId.btnScan.fire('click');
 check(byId.anMsg.textContent.indexOf('连不上本地服务') >= 0, '服务没起来时给出可读提示：' + byId.anMsg.textContent);
 
+/* ============================================================ 16. 「选择牌谱文件…」默认目录（用户 m01084） */
+console.log('\n=== 16. 「选择牌谱文件…」默认目录 ===');
+
+/* 16.1 浏览器模式（没有 Electron 桥）：照旧点隐藏的 <input type=file>，行为不变 */
+var fileInputClicks = 0;
+byId.fileInput.click = function () { fileInputClicks++; };
+delete global.window.tenhouDesktop;
+byId.btnPickFile.fire('click', { target: byId.btnPickFile });
+check(fileInputClicks === 1, '浏览器模式退回 <input type=file>（点了 ' + fileInputClicks + ' 次）');
+
+/* 16.2 桌面模式：把 /api/health 的 paipu_dir 交给主进程当对话框默认目录，选中路径走 /api/read */
+var pickCalls = [];
+var PICKED = DM_ROOT_ABS + '/data/paipu/' + f;
+global.fetch = dmStub;
+global.window.tenhouDesktop = {
+  isDesktop: true,
+  pickPaipuFile: function (dir) { pickCalls.push(dir); return syncOk({ canceled: false, filePath: PICKED }); }
+};
+App.paipuDir = '';                       /* 模拟 /api/health 还没回来 */
+App.rounds = [];
+byId.fileInfo.textContent = '';
+byId.btnPickFile.fire('click', { target: byId.btnPickFile });
+check(pickCalls.length === 1 && pickCalls[0] === DM_ROOT_ABS + '/data/paipu',
+      '对话框默认目录 = /api/health 给的 paipu_dir：' + JSON.stringify(pickCalls));
+check(fileInputClicks === 1, '桌面模式不再点 <input type=file>');
+var pickRead = dmLast('/api/read');
+check(!!pickRead && pickRead.url === '/api/read?path=' + encodeURIComponent(PICKED),
+      '选中的绝对路径走 /api/read：' + (pickRead ? pickRead.url : ''));
+check(App.rounds.length === 9 && App.view === 'replay', '选中的牌谱真的载入（' + App.rounds.length + ' 局）');
+check(byId.fileInfo.textContent.indexOf(f) >= 0, '文件信息更新：' + byId.fileInfo.textContent);
+
+/* 16.3 取消对话框：不动当前牌谱 */
+pickCalls.length = 0;
+var roundsBefore = App.rounds.length;
+global.window.tenhouDesktop = {
+  isDesktop: true,
+  pickPaipuFile: function (dir) { pickCalls.push(dir); return syncOk({ canceled: true, filePath: '' }); }
+};
+byId.btnPickFile.fire('click', { target: byId.btnPickFile });
+check(pickCalls.length === 1 && App.rounds.length === roundsBefore, '取消对话框后保持原牌谱不变');
+
+/* 16.4 桌面壳静态检查：preload 暴露桥 + 主进程注册 IPC 并设 defaultPath + 打包带上 desktop/ */
+var mainJs = fs.readFileSync(base + '/desktop/main.js', 'utf8');
+var preloadJs = fs.readFileSync(base + '/desktop/preload.js', 'utf8');
+var pkgJson = JSON.parse(fs.readFileSync(base + '/package.json', 'utf8'));
+check(/preload:\s*path\.join\(__dirname,\s*'preload\.js'\)/.test(mainJs),
+      '主进程给 BrowserWindow 挂了 desktop/preload.js');
+check(/ipcMain\.handle\('pick-paipu-file'/.test(mainJs) && /defaultPath/.test(mainJs),
+      '主进程注册 pick-paipu-file 并设置 defaultPath');
+check(/exposeInMainWorld\('tenhouDesktop'/.test(preloadJs) && /pickPaipuFile/.test(preloadJs),
+      'preload 通过 contextBridge 暴露 pickPaipuFile');
+check((pkgJson.build.files || []).indexOf('desktop/**/*') >= 0,
+      'package.json 的 build.files 含 desktop/**/*（preload.js 会进包）');
+
+delete global.window.tenhouDesktop;
+global.fetch = dmPrevFetch;
+
 /* ============================================================ 结果 */
 console.log('\n===== 结果 =====');
 if (problems.length) {

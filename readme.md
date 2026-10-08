@@ -196,6 +196,7 @@ python tools/download_tenhou.py 2026082919gm-00a9-0000-4e40cd3e --no-overwrite
 - 牌桌：手牌、副露、牌河、宝牌指示牌、供托、各家分数 / 风位、和了信息（役种 / 符 / 番 / 得点）。
 - 事件列表：点击任意一行跳到那一帧。
 - 键盘：`←/→` 帧、`↑/↓` 事件、`Home/End` 首末帧、`PgUp/PgDn` 换局。
+- 「选择牌谱文件…」：桌面版（安装包）里会打开系统原生文件框，并**默认定位到牌谱数据目录** `%LOCALAPPDATA%\tenhou-paipu-analysis\data\paipu`，下载过的牌谱直接可见；用浏览器打开时（`python server.py` 或双击 `web/index.html`）是浏览器自带的文件框（网页不允许指定初始目录），需要自己切到该目录。
 
 ---
 
@@ -286,6 +287,8 @@ python tools/download_tenhou.py <url>... [-f 文件] [-o 目录] [--no-overwrite
   tools/       命令行工具：analyze.py（分析 / 检索 / 导出）、download_tenhou.py（牌谱下载）
   mjscore/     后端：mjlog、replay、feats、agari（和牌与点数）、shanten（向听）、
                expect（期望枚数 / 打点）、danger（危险筋组）、store、cli、server、download
+  desktop/     Electron 桌面版外壳（main.js 主进程 + preload.js 原生文件对话框桥），
+               仅打包时用；源码模式（`python server.py` / 浏览器 / `file://`）不加载
   data/paipu/    牌谱（下载默认写这里）
   data/db/       SQLite 数据库
   media/tiles/   牌面素材（svg）
@@ -321,6 +324,7 @@ python tools/download_tenhou.py <url>... [-f 文件] [-o 目录] [--no-overwrite
 - 程序装在自选目录（**默认 `C:\Program Files\tenhou-paipu-analysis`**，按「所有用户」安装：安装时会弹 UAC 要管理员权限；最后一步的目录页里仍可改成别的路径）；
 - 后端与 Node 在 `<安装目录>\resources\backend\`；
 - 牌谱与数据库固定放**当前 Windows 用户**的 `%LOCALAPPDATA%\tenhou-paipu-analysis\data\{paipu,db}`（多用户各一份，界面「本地数据管理」页签里管理）；
+- 「牌谱播放 → 选择牌谱文件…」由 Electron 主进程弹原生文件框，默认定位到上面的 `data\paipu`（`desktop/preload.js` 暴露 `window.tenhouDesktop`，主进程 `ipcMain.handle('pick-paipu-file')`；路径来自后端 `/api/health` 的 `paipu_dir`，目录不存在时会先建出来）；浏览器模式没有这个桥，退回浏览器自带文件框。
 - 卸载时会询问是否一并删除上面这个数据目录（默认保留）；卸载程序是提权运行的，问的是**执行卸载的那个用户**的数据目录。
 
 **注意**

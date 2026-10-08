@@ -5,7 +5,7 @@
  * 说明：不能用 file:// 打开 web/index.html（那样 /api/* 与 /media/tiles/ 全部失效）。
  *      后端 stdout/stderr 直接写日志文件（不经过管道，避免缓冲区/权限问题）。
  */
-const { app, BrowserWindow, Menu, dialog, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const http = require('http');
@@ -116,6 +116,47 @@ function stopBackend() {
   } catch (e) { /* ignore */ }
 }
 
+/* 「选择牌谱文件…」对话框的默认目录（用户 m01084）：前端把 /api/health 报的 paipu_dir 传进来。
+   首次运行时 data/paipu 可能还不存在：先试着建出来，建不了就往上找到第一个存在的父目录，
+   这样点按钮至少能落在数据目录附近，而不是系统上次用过的某个目录。 */
+function defaultPickDir(candidate) {
+  const dir = String(candidate || '');
+  if (!dir || !path.isAbsolute(dir)) return '';
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    return dir;
+  } catch (e) { /* 没有写权限：退回存在的父目录 */ }
+  let cur = dir;
+  for (;;) {
+    if (fs.existsSync(cur)) return cur;
+    const up = path.dirname(cur);
+    if (up === cur) return '';
+    cur = up;
+  }
+}
+
+/* 渲染进程 -> 主进程：原生文件选择框（默认定位到牌谱数据根目录）。
+   只开一个窗口，直接挂在 win 上当模态对话框。 */
+function registerIpc() {
+  ipcMain.handle('pick-paipu-file', async (event, defaultPath) => {
+    const opts = {
+      title: '选择牌谱文件',
+      buttonLabel: '打开牌谱',
+      properties: ['openFile'],
+      filters: [
+        { name: '牌谱文件 (*.xml, *.mjlog)', extensions: ['xml', 'mjlog'] },
+        { name: '所有文件', extensions: ['*'] },
+      ],
+    };
+    const dir = defaultPickDir(defaultPath);
+    if (dir) opts.defaultPath = dir;
+    const owner = BrowserWindow.fromWebContents(event.sender) || win;
+    const r = owner ? await dialog.showOpenDialog(owner, opts) : await dialog.showOpenDialog(opts);
+    if (!r || r.canceled || !r.filePaths || !r.filePaths.length) return { canceled: true, filePath: '' };
+    return { canceled: false, filePath: r.filePaths[0] };
+  });
+}
+
 function createWindow(port) {
   win = new BrowserWindow({
     width: 1440,
@@ -127,7 +168,10 @@ function createWindow(port) {
     autoHideMenuBar: true,
     icon: path.join(__dirname, '..', 'build', 'icon.ico'),
     show: false,
-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: false },
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: false,
+    },
   });
   win.setMenuBarVisibility(false);
   win.once('ready-to-show', () => win.show());
@@ -143,6 +187,7 @@ function createWindow(port) {
 }
 
 async function boot() {
+  registerIpc();
   const port = await freePort();
   backend = startBackend(port);
   if (!backend) { app.quit(); return; }
