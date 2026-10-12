@@ -268,6 +268,48 @@ else:
         httpd.server_close()
         os.environ.pop("MJSCORE_DATA_ROOT", None)
 
+# ================= 4. 数据根 != 项目根：data/... 相对写法（用户 m08918） =================
+sec("4. 用户 m08918：数据根 != 项目根时，data/... 相对写法仍解析到用户数据目录")
+alt = os.path.join(tmp, "altroot")                      # 模拟打包后的 %LOCALAPPDATA% 数据根
+alt_sub = os.path.join(alt, "data", "paipu", "release-20261013-005531")
+os.makedirs(alt_sub, exist_ok=True)
+for nm in ("a.tenhou", "b.naga"):
+    with open(os.path.join(alt_sub, nm), "w", encoding="utf-8") as fh:
+        fh.write("x")
+old_root = os.environ.get("MJSCORE_DATA_ROOT")
+os.environ["MJSCORE_DATA_ROOT"] = alt
+httpd = server.make_server(0, "127.0.0.1")
+port = httpd.server_address[1]
+threading.Thread(target=httpd.serve_forever, daemon=True).start()
+try:
+    def get(path):
+        with urllib.request.urlopen("http://127.0.0.1:%d%s" % (port, path), timeout=60) as resp:
+            return resp.status, json.loads(resp.read().decode("utf-8"))
+
+    st, pb = get("/api/paipu-browse?dir=" + urllib.parse.quote("data/paipu"))
+    ok(st == 200, "data/paipu 相对写法应能浏览（实际 %s）" % st)
+    if st == 200:
+        ok(os.path.normcase(pb.get("dir", "")) == os.path.normcase(os.path.join(alt, "data", "paipu")),
+           "应解析到数据根下的 data/paipu（实际 %s）" % pb.get("dir"))
+        ok("release-20261013-005531" in [os.path.basename(d) for d in (pb.get("dirs") or [])],
+           "相对写法应能列出牌谱子目录")
+    st, pb2 = get("/api/paipu-browse?dir=" + urllib.parse.quote("data/paipu/release-20261013-005531"))
+    ok(st == 200, "data/paipu/<子目录> 相对写法应能选中子目录（实际 %s）" % st)
+    if st == 200:
+        ok(sorted(os.path.basename(f) for f in (pb2.get("files") or [])) == ["a.tenhou", "b.naga"],
+           "子目录里的牌谱文件应被列出")
+    st, sc = get("/api/scan?dir=" + urllib.parse.quote("data/paipu") + "&kind=all")
+    ok(st == 200 and sc.get("count") == 2, "/api/scan 相对写法同样解析到数据根（count=%s）" % sc.get("count"))
+    st, rd = get("/api/read?path=" + urllib.parse.quote("data/paipu/release-20261013-005531/a.tenhou"))
+    ok(st == 200, "/api/read 相对写法应能读到文件（实际 %s）" % st)
+finally:
+    httpd.shutdown()
+    httpd.server_close()
+    if old_root is None:
+        os.environ.pop("MJSCORE_DATA_ROOT", None)
+    else:
+        os.environ["MJSCORE_DATA_ROOT"] = old_root
+
 shutil.rmtree(tmp, ignore_errors=True)
 
 sec("结果")

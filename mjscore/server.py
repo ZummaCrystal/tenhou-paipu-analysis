@@ -76,13 +76,33 @@ class ApiError(Exception):
         self.code = code
 
 
+def _user_path(p):
+    """把前端传来的路径解析成**用户数据目录**下的绝对路径。
+
+    源码运行时 ``paths.data_root()`` == 项目根（ROOT），与改造前完全一致；打包后用户数据在
+    ``%LOCALAPPDATA%/tenhou-paipu-analysis``，而前端仍按「data/paipu/...」这种相对写法传值
+    ⇒ 必须先试数据根，否则 Release 版「牌谱分析」页列不出任何牌谱子目录（用户 m08918）。
+    本地已存在的 ROOT 相对路径仍然认（开发期 / 绿色版 / data_extra）。
+    """
+    s = str(p or "").strip()
+    if not s:
+        return paths.data_root()
+    if os.path.isabs(s):
+        return os.path.abspath(s)
+    under_data = os.path.abspath(os.path.join(paths.data_root(), s))
+    if os.path.exists(under_data):
+        return under_data
+    under_root = os.path.abspath(os.path.join(ROOT, s))
+    if os.path.exists(under_root):
+        return under_root
+    return under_data
+
+
 def _abs(p):
     p = str(p or "")
     if not p:
         raise ApiError("路径为空")
-    if not os.path.isabs(p):
-        p = os.path.join(ROOT, p)
-    return os.path.abspath(p)
+    return _user_path(p)
 
 
 def _db_of(payload):
@@ -157,7 +177,7 @@ def _paipu_browse(dir_arg=None):
     root = os.path.abspath(paths.paipu_root())
     if not os.path.isdir(root):
         raise ApiError("牌谱目录不存在：%s" % root)
-    cur = os.path.abspath(os.path.join(ROOT, str(dir_arg))) if dir_arg else root
+    cur = _user_path(dir_arg) if dir_arg else root
     if os.path.isfile(cur):
         cur = os.path.dirname(cur)
     if not os.path.isdir(cur):
