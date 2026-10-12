@@ -2245,12 +2245,20 @@ function redMarkOf(st) {
     return out;
   }
 
-  function nagaOptions(nf, st, seat) {                        // 只保留 >10% 的选项（用户 m00198 ③）
+  function nagaOptions(nf, st, seat, mode) {                   // 默认只保留 >10% 的选项（用户 m00198 ③）；mode='raw' 只用于关键帧判定：鸣牌选项不过滤
+    var raw = (mode === 'raw');
     var list = [];
     if (!nf) { return list; }
-    function push(tiles, word, p, pass) {                   // pass = 只是「过」，不算真决策（用户 m02007 ③）
+    function push(tiles, word, p, pass) {                   // 打牌 / 杠：只保留 >10% 的选项（用户 m00198 ③）
       if (!p || p <= 1000) { return; }
       list.push({ tiles: tiles || [], word: word, pct: p, pctText: nagaPctText(p), pass: !!pass });
+    }
+    /* 鸣牌（吃 / 碰 / 大明杠 / 过）：报告里**列出的键**就是这一帧的合法选项（概率可能是 0）。
+       mode='raw' 时全部收下（给 renderNagaPanel 判定「可选策略是否只有 PASS」），
+       显示用的默认模式仍套 >10% 门槛（用户 m09110：门槛保留、判定顺序颠倒）。 */
+    function pushHuro(tiles, word, p, pass) {
+      if (!raw && !(p > 1000)) { return; }
+      list.push({ tiles: tiles || [], word: word, pct: p || 0, pctText: nagaPctText(p || 0), pass: !!pass });
     }
     if (nf.msg === 'dahai') {                                 // 鸣牌决策：huro（0 过 / 1-3 吃 / 4 碰 / 5 大明杠）
       var m = (nf.huro || {})[String(seat)] || {};
@@ -2258,10 +2266,10 @@ function redMarkOf(st) {
       for (var i in m) {
         if (!Object.prototype.hasOwnProperty.call(m, i)) { continue; }
         var idx = Number(i), p = m[i] || 0;
-        if (idx === 0) { push([], 'PASS', p, true); }
-        else if (idx === 4) { push(dk === null ? [] : [dk, dk], '碰', p); }
-        else if (idx === 5) { push(dk === null ? [] : [dk], '大明杠', p); }
-        else if (dk !== null) { var pr = nagaChiPair(dk, idx); if (pr) { push(pr, '吃', p); } }
+        if (idx === 0) { pushHuro([], 'PASS', p, true); }
+        else if (idx === 4) { pushHuro(dk === null ? [] : [dk, dk], '碰', p); }
+        else if (idx === 5) { pushHuro(dk === null ? [] : [dk], '大明杠', p); }
+        else if (dk !== null) { var pr = nagaChiPair(dk, idx); if (pr) { pushHuro(pr, '吃', p); } }
       }
     } else {                                                  // 打牌决策：dahai_pred / reach / kan
       var dp = nf.dahai_pred || [];
@@ -2354,18 +2362,22 @@ function redMarkOf(st) {
     /* 隐藏他家手牌时只有「别家」的决策表留空、只保留标题；主视角自己的决策照旧显示（用户 m03343 ①） */
     if (App.hideOthers && seat !== App.selfSeat) { return; }
     var name = (seat !== null && st.players[seat]) ? st.players[seat].name : '';
-    var list = nagaOptions(nf, st, seat);
-    /* 没有决策分支的展示帧（报告里没有 dahai_pred / huro，或只剩 PASS）：整块留空、只留标题
-       「NAGA 决策」，否则会只剩下「其它 100%」这种没有信息量的行（用户 m02007 ③）。 */
+    /* 关键帧判定先做、概率过滤后做（用户 m09110）：报告给这一帧的决策者列出的可选策略不止 PASS
+       ⇒ 关键帧 ⇒ 必须显示 AI 分析结果（当前决策 / 选项表 / 5 项数据）；可选策略只有 PASS、或报告
+       根本没给选项（没有决策分支的展示帧）⇒ 非关键帧 ⇒ 整块留空、只留标题「NAGA 决策」（用户 m02007 ③）。 */
+    var avail = nagaOptions(nf, st, seat, 'raw');
     var real = false;
-    for (var q = 0; q < list.length; q++) { if (!list[q].pass) { real = true; break; } }
+    for (var q = 0; q < avail.length; q++) { if (!avail[q].pass) { real = true; break; } }
     if (!real) { return; }
+    var list = nagaOptions(nf, st, seat);
     whoEl.textContent = (seat === null) ? '当前没有决策' : ('当前决策：' + name);
     whoEl.title = whoEl.textContent;
     var shown = 0;
     // 立直与打牌（dahai_pred）是同一帧里两个独立的边缘量，「其它」只算打牌 / 鸣牌选项的残差（用户 m01903 ③）
     for (var i = 0; i < list.length; i++) { if (!list[i].reach) { shown += list[i].pct; } }
-    if (shown < 10000) {                                      // 「其它」= 1 − 已显示概率合计（用户 m01810 ②）
+    /* 「其它」= 1 − 已显示概率合计（用户 m01810 ②）；一个选项都没过门槛时不再补「其它 100%」
+       这种没有信息量的行（用户 m02007 ③、m09110）。 */
+    if (list.length && (10000 - shown) >= 50) {          // 残差不足 0.5% 就省略（否则会出现「其它 0.0%」）
       list.push({ tiles: [], word: '其它', pct: 10000 - shown, pctText: nagaPctText(10000 - shown), other: true });
     }
     for (i = 0; i < list.length; i++) { optsEl.appendChild(nagaOptEl(list[i])); }

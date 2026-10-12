@@ -190,11 +190,17 @@ mig_paipu, mig_db = os.path.join(mig_data, "paipu"), os.path.join(mig_data, "db"
 if not (os.path.isdir(mig_paipu) and os.path.isdir(mig_db)):
     print("   （跳过：%s 不存在）" % mig_data)
 else:
-    xmls = []
+    tenhou, allpaipu = [], []
+    _all_suffixes = paths.TENHOU_SUFFIXES + paths.NAGA_SUFFIXES + paths.MORTAL_SUFFIXES
     for dirpath, _dirs, files in os.walk(mig_paipu):
-        xmls += [os.path.join(dirpath, f) for f in files if f.lower().endswith(".xml")]
+        for f in files:
+            if f.lower().endswith(paths.TENHOU_SUFFIXES):
+                tenhou.append(os.path.join(dirpath, f))
+            if f.lower().endswith(_all_suffixes):
+                allpaipu.append(os.path.join(dirpath, f))
     sqlites = [f for f in os.listdir(mig_db) if f.lower().endswith(".sqlite")]
-    print("   迁移目录: %s 牌谱 %d 个 / 数据库 %d 个" % (mig_data, len(xmls), len(sqlites)))
+    print("   迁移目录: %s 天凤牌谱 %d 个 / 全类型牌谱 %d 个 / 数据库 %d 个"
+          % (mig_data, len(tenhou), len(allpaipu), len(sqlites)))
     os.environ["MJSCORE_DATA_ROOT"] = local
     httpd = server.make_server(0, "127.0.0.1")
     port = httpd.server_address[1]
@@ -230,20 +236,45 @@ else:
 
         st, scan = req("/api/scan?dir=" + urllib.parse.quote(mig_paipu))
         ok(st == 200, "/api/scan 正常")
-        ok(scan.get("count") == len(xmls), "scan 数量应与磁盘一致（%s vs %s）" % (scan.get("count"), len(xmls)))
+        ok(scan.get("count") == len(tenhou),
+           "scan（默认天凤）数量应与磁盘一致（%s vs %s）" % (scan.get("count"), len(tenhou)))
+        st, scanAll = req("/api/scan?dir=" + urllib.parse.quote(mig_paipu) + "&kind=all")
+        ok(st == 200 and scanAll.get("count") == len(allpaipu),
+           "scan(kind=all) 数量应与磁盘一致（%s vs %s）" % (scanAll.get("count"), len(allpaipu)))
         ok(all(os.path.isabs(f) for f in (scan.get("files") or [])), "scan 应返回绝对路径")
 
         st, dl = req("/api/fs-list?root=paipu&rel=")
         ok(st == 200 and dl.get("root_dir") and os.path.normcase(dl["root_dir"]) == os.path.normcase(mig_paipu),
            "fs-list(paipu) 根路径正确")
-        ok("20261007-165558" in [d["name"] for d in dl.get("dirs", [])], "fs-list(paipu) 有牌谱子目录")
+        dir_names = [d["name"] for d in dl.get("dirs", [])]
+        has_paipu = any(
+            os.path.isdir(os.path.join(mig_paipu, n)) and any(
+                f.lower().endswith(_all_suffixes) for f in os.listdir(os.path.join(mig_paipu, n)))
+            for n in dir_names)
+        ok(bool(dir_names) and has_paipu, "fs-list(paipu) 至少有一个含牌谱的子目录（%s）" % dir_names)
+
+        # 用户 m09228（打包实测）：数据在 C:、程序在 D: 时 relpath 会抛 ValueError ⇒ 接口不能 400
+        st, pb = req("/api/paipu-browse?dir=data/paipu")
+        ok(st == 200 and bool(pb.get("dirs") or pb.get("files")),
+           "/api/paipu-browse?dir=data/paipu 可用（跨盘符也不应 400，实际 %s）" % st)
+        ok(st == 200 and all(str(v).startswith("data/paipu") for v in (pb.get("dirs") or [])[:5]),
+           "paipu-browse 返回 data/paipu/... 写法（实际 %s）" % (pb.get("dirs") or [])[:2])
+        _saved_root = server.ROOT
+        server.ROOT = "Z:\\__cross_drive__"
+        try:
+            _r = server._rel_or_abs(paths.paipu_root())
+            ok(bool(_r), "_rel_or_abs 跨盘符不抛 ValueError（%s）" % _r)
+        except ValueError as _exc:
+            ok(False, "_rel_or_abs 跨盘符抛了 ValueError（%s）" % _exc)
+        finally:
+            server.ROOT = _saved_root
         st, ldb = req("/api/fs-list?root=db&rel=")
         ok(st == 200 and sqlites and sqlites[0] in [f["name"] for f in ldb.get("files", [])],
            "fs-list(db) 能看到数据库文件")
 
         # 必须被拒的越界请求（拒绝时不得改动任何文件）
         before = sorted(os.listdir(mig_db))
-        st, e1 = req("/api/fs-move", {"root": "paipu", "rel": "20261007-165558/../..", "dest": ""})
+        st, e1 = req("/api/fs-move", {"root": "paipu", "rel": "../..", "dest": ""})
         ok(st == 400, "fs-move rel 带 .. 应 400（实际 %s）" % st)
         st, e2 = req("/api/fs-move", {"root": "db", "rel": sqlites[0], "dest": "../../paipu"})
         ok(st == 400, "数据库跨根移动应 400（实际 %s）" % st)

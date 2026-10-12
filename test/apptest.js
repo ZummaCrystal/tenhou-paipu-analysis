@@ -276,6 +276,43 @@ check(html.indexOf('\u23ae\u25c0') < 0 && html.indexOf('\u23ae\u25b6') < 0,
   '按钮上不再用 \u23ae（积分延长符，字形偏高 ⇒ 竖线看起来上移；用户 m05131 ③）');
 check(boardPlayer(0).querySelector('.tiles') !== null, '自家面板存在手牌区');
 
+/* ============================================================ 2a. 天凤谱：AI 面板恒为空（用户 m09161）*/
+console.log('\n=== 2a. 天凤谱：AI 决策面板恒为空、关键帧判定与 AI 无关 ===');
+var nfTotal = 0, nfNull = 0;
+for (var nri = 0; nri < App.rounds.length; nri++) {
+  for (var nfi = 0; nfi < App.rounds[nri].length; nfi++) {
+    App.roundIndex = nri; App.frameIndex = nfi; nfTotal++;
+    if (App.aiFrame() === null) { nfNull++; }
+  }
+}
+check(nfTotal > 0 && nfNull === nfTotal, '天凤谱 ' + nfTotal + ' 帧全部没有 AI 数据（aiFrame() = null，' + nfNull + ' 帧）');
+App.roundIndex = 0;
+var panelFrames = 0, panelEmpty = true;
+for (var pfi = 0; pfi < App.rounds[0].length; pfi++) {
+  App.frameIndex = pfi; App.renderNagaPanel(); panelFrames++;
+  if (byId.nagaOptions.childNodes.length !== 0 || byId.nagaWho.textContent !== '' || byId.nagaHud.childNodes.length !== 0) { panelEmpty = false; }
+}
+check(panelEmpty, '天凤谱第 1 局 ' + panelFrames + ' 帧逐帧渲染后 AI 面板三块全空（用户 m00198 ⑤ / m09161）');
+var fr0a = App.rounds[0], kfCount = 0, kfBad = 0, decOk = true;
+for (var kfi = 1; kfi < fr0a.length; kfi++) {
+  var kEv = fr0a[kfi].ev, kNext = fr0a[kfi + 1] ? fr0a[kfi + 1].ev : null, want = false;
+  if (kEv.type === 'draw') {
+    want = !(kNext && kNext.type === 'agari' && kNext.winner === kEv.player && kNext.fromWho === kEv.player);
+  } else if (kEv.type === 'call') {
+    want = (kEv.callType === 'chi' || kEv.callType === 'pon');
+  } else if (kEv.type === 'discard') {
+    want = MJSFEAT.responders(fr0a[kfi].state, kEv.player, MJLOG.kindOf(kEv.tile)).length > 0;
+  }
+  if (App.isKeyFrame(fr0a, kfi) !== want) { kfBad++; }
+  if (want) { kfCount++; if (App.decisionSeats(fr0a, kfi).length === 0) { decOk = false; } }
+  else if (App.decisionSeats(fr0a, kfi).length !== 0) { decOk = false; }
+}
+check(kfBad === 0 && kfCount > 0, '天凤谱关键帧判定只由牌局决定（' + kfCount + ' 个关键帧，' + kfBad + ' 处与期望不符）');
+check(decOk, '天凤谱关键帧都有决策者、非关键帧没有（判定与 AI 数据无关）');
+App.setFrame(0); App.stepSelfKey(1);
+check(App.frameIndex > 0 && App.decisionSeats(App.rounds[App.roundIndex], App.frameIndex).indexOf(App.selfSeat) >= 0,
+      '天凤谱「下一自家决策」照常可用（停在第 ' + App.frameIndex + ' 帧，自家 ' + App.selfSeat + ' 是决策者）');
+App.setFrame(0);
 /* ============================================================ 2b. NAGA 报告 */
 console.log('\n=== 2b. 载入 NAGA 报告（服务端转出的内部 JSON） ===');
 /* naga / ricochet 的报告是 gzip 压的 JSON（.json.gz），前端解析不了：/api/read 会先用
@@ -536,6 +573,34 @@ check(App.nagaKindOfName('5pr') === 13 && App.nagaKindOfName('0m') === 4 && App.
   'mjai 牌名 → kind：赤 5（5pr→13 / 0m→4）、数牌、字牌、非法名');
 check(App.nagaChiPair(21, 1).join(',') === '22,23' && App.nagaChiPair(21, 2).join(',') === '20,22'
   && App.nagaChiPair(21, 3).join(',') === '19,20', '吃的三种牌对下标映射（打出牌作 最小/中间/最大）');
+
+/* 关键帧判定先于概率过滤（用户 m09110）：报告给这一帧的决策者列出的可选策略不止 PASS ⇒ 关键帧，
+   必须显示 AI 分析结果；表格本身仍按 >10% 过滤，所以 0.0% 的吃 / 碰选项进不了表格。
+   m09045 看到的例：上家打出 3s、我方手里有 2s3s3s4s5s ⇒ 报告给了 4s5s 吃 / 2s4s 吃 / 3s3s 碰 / PASS。 */
+var savedNfHuro = App.naga.rounds[0][2];
+App.naga.rounds[0][2] = { msg: 'dahai', actor: 0, pai: '3s',
+  huro: { '0': { '0': 9999, '1': 0, '2': 0, '4': 0 } }, end_type: NAGA_ET, game_rank: NAGA_GR };
+App.setFrame(2);
+check(byId.nagaWho.textContent.indexOf('当前决策：A') >= 0 && byId.nagaOptions.textContent.indexOf('PASS') >= 0
+  && byId.nagaOptions.textContent.indexOf('100.0%') >= 0,
+  '可选策略不止 PASS ⇒ 关键帧，照旧显示 AI 分析结果（用户 m09110）= ' + byId.nagaWho.textContent
+  + ' / ' + byId.nagaOptions.textContent);
+check(byId.nagaOptions.childNodes.length === 1 && byId.nagaOptions.textContent.indexOf('碰') < 0
+  && byId.nagaOptions.textContent.indexOf('吃') < 0 && countCls(byId.nagaOptions, 'other') === 0,
+  '10% 门槛保留：0.0% 的吃 / 碰选项不进表格，残差不足 0.5% 也不补「其它」（用户 m09110）= '
+  + byId.nagaOptions.textContent);
+check(byId.nagaHud.childNodes.length === 5,
+  '关键帧照旧给出 5 项 AI 分析数据（流局率 / 横移率 / 放铳率 / 和了率 / 期待顺位）= '
+  + byId.nagaHud.childNodes.length);
+App.naga.rounds[0][2] = { msg: 'dahai', actor: 0, pai: '3s',
+  huro: { '0': { '0': 10000 } }, end_type: NAGA_ET, game_rank: NAGA_GR };
+App.setFrame(2);
+check(byId.nagaOptions.childNodes.length === 0 && byId.nagaWho.textContent === ''
+  && byId.nagaHud.childNodes.length === 0,
+  '可选策略只有 PASS ⇒ 非关键帧、整块留空（用户 m09110）= 选项 ' + byId.nagaOptions.childNodes.length
+  + ' / 玩家「' + byId.nagaWho.textContent + '」');
+App.naga.rounds[0][2] = savedNfHuro;
+App.setFrame(2);
 
 /* ② 概率条按「轮到谁决策就显示谁的」（用户 m02007 ②）：本局最后一帧是家 B（座位 1）摸牌，
    打牌预测柱应当画在座位 1 的手上；自家手牌上只有自家的危险条，没有别家的预测柱。 */

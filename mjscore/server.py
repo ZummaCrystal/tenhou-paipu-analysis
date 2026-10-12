@@ -161,11 +161,34 @@ def _scan_dir(path, kind=None):
 
 
 def _rel_or_abs(p):
-    """优先返回相对项目根的路径（前端一直用 data/paipu/... 这种写法），不属于项目根时返回绝对路径。"""
-    rel = os.path.relpath(p, ROOT)
+    """优先返回相对项目根的路径（前端一直用 data/paipu/... 这种写法），不属于项目根时返回绝对路径。
+
+    用户 m09228（打包实测）：用户数据在 %LOCALAPPDATA%（C:）而程序在安装目录（可能是 D:）时，
+    ``os.path.relpath`` 抛 ``ValueError: path is on mount 'C:', start on mount 'D:'`` ⇒ 必须兜住，
+    否则「牌谱分析」页的牌谱目录下拉会 400。
+    """
+    try:
+        rel = os.path.relpath(p, ROOT)
+    except ValueError:
+        return os.path.abspath(p)
     if rel.startswith("..") or os.path.isabs(rel):
         return os.path.abspath(p)
     return rel.replace(os.sep, "/")
+
+
+def _paipu_rel(p):
+    """牌谱目录里的绝对路径 -> 前端用的 ``data/paipu/...`` 写法（relpath 只在本数据根内做，跨盘符也安全）。"""
+    root = os.path.abspath(paths.paipu_root())
+    ap = os.path.abspath(p)
+    try:
+        rel = os.path.relpath(ap, root)
+    except ValueError:
+        return _rel_or_abs(ap)
+    if rel == ".":
+        return "data/paipu"
+    if rel == ".." or rel.startswith(".." + os.sep) or os.path.isabs(rel):
+        return _rel_or_abs(ap)
+    return "data/paipu/" + rel.replace(os.sep, "/")
 
 
 def _paipu_browse(dir_arg=None):
@@ -203,8 +226,8 @@ def _paipu_browse(dir_arg=None):
             files.append(fp)
             if len(files) >= 2000:
                 break
-    return {"root": root, "root_rel": _rel_or_abs(root), "dir": cur, "dir_rel": _rel_or_abs(cur),
-            "dirs": [_rel_or_abs(p) for p in dirs], "files": [_rel_or_abs(p) for p in files]}
+    return {"root": root, "root_rel": _paipu_rel(root), "dir": cur, "dir_rel": _paipu_rel(cur),
+            "dirs": [_paipu_rel(p) for p in dirs], "files": [_paipu_rel(p) for p in files]}
 
 
 def _browse(conn, limit, offset):
