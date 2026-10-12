@@ -465,6 +465,8 @@ def main():
     ap.add_argument("--master", type=int, default=1024)
     ap.add_argument("--face", default="#ffffff", help="牌面底色，none=透明")
     ap.add_argument("--radius", type=float, default=0.09, help="圆角比例(相对牌宽)")
+    ap.add_argument("--content-scale", type=float, default=1.0,
+                    help="牌面图案相对牌面矩形的缩放（1 = 铺满；<1 让四周白边更宽）")
     ap.add_argument("--preview-size", type=int, default=48)
     ap.add_argument("--ascii", action="store_true")
     ap.add_argument("--png-dir", default="")
@@ -482,9 +484,15 @@ def main():
     scale = min(S / vw, S / vh)
     tx = (S - vw * scale) / 2.0 - vx * scale
     ty = (S - vh * scale) / 2.0 - vy * scale
-    canvas_m = (scale, 0.0, 0.0, scale, tx, ty)
-    print("viewBox=(%g,%g,%g,%g) master=%d scale=%.6f 牌面像素=%.0fx%.0f"
-          % (vx, vy, vw, vh, S, scale, vw * scale, vh * scale))
+    # 牌面白底（--face）仍按原尺寸铺满，只有图案按 --content-scale 围绕牌面中心收缩，
+    # 于是四周留出更宽的白边（用户 m08700：和界面里牌图的白边一致）。
+    cs = args.content_scale if args.content_scale > 0 else 1.0
+    ms = scale * cs
+    cx0 = tx + vx * scale + vw * scale / 2.0
+    cy0 = ty + vy * scale + vh * scale / 2.0
+    canvas_m = (ms, 0.0, 0.0, ms, cx0 - ms * (vx + vw / 2.0), cy0 - ms * (vy + vh / 2.0))
+    print("viewBox=(%g,%g,%g,%g) master=%d scale=%.6f 牌面像素=%.0fx%.0f 图案缩放=%.3f"
+          % (vx, vy, vw, vh, S, scale, vw * scale, vh * scale, cs))
 
     canv = Canvas(S, S)
     if args.face and args.face.lower() != "none":

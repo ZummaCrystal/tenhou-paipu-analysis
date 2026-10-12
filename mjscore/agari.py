@@ -86,11 +86,28 @@ def yaku_name(yid):
 
 
 def merge_ctx(ctx=None):
-    """把外部场况合并进默认 ctx（不修改入参）。"""
+    """把外部场况合并进默认 ctx（不修改入参），并施加偶发 / 特殊役的互斥规则（用户 m02227 ③）。"""
     out = dict(DEFAULT_CTX)
     if ctx:
         out.update(ctx)
-    return out
+    return rule_ctx(out)
+
+
+def rule_ctx(ctx):
+    """偶发 / 特殊役的互斥规则（用户 m02227 ③）：算役之前先把不可能复合的场况互相消掉。
+
+    * 嶺上開花 と 一発 は複合しない：自家が槓した時点で一発は切れている
+      （立直後すぐ暗槓した場合、その自摸は嶺上開花だけを数える）；
+    * 嶺上開花 と 海底摸月 は複合しない（写死特例）；
+    * 海底では槓ができない ⇒ 槍槓 と 河底撈魚 は同時に起こらない；
+    * 槍槓 + 一発 / 一発 + 海底・河底 は複合しうるので、そのまま残す。
+    """
+    if ctx.get("rinshan"):
+        ctx["ippatsu"] = False
+        ctx["haitei"] = False
+    if ctx.get("chankan"):
+        ctx["houtei"] = False
+    return ctx
 
 
 # ---------------------------------------------------------------- 牌张小工具

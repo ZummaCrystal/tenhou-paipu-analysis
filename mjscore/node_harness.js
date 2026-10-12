@@ -3,10 +3,10 @@
  *
  * 复用前端同款 web/js/mjlog.js + web/js/replay.js + web/js/mjsfeat.js，因此 Node 这一路
  * 与浏览器里跑的代码是同一份，用来：
- *   --records  <牌谱.xml>...  逐行输出「非自摸摸牌帧」打点行（JSONL）-> tools/analyze.py --tool node 入库
- *   --frames   <牌谱.xml>...  逐行输出每一帧的状态快照（JSONL）-> 测试 fixture / 算法交叉校验
- *   --invariants <牌谱.xml>... 逐帧校验牌张不变量，输出 {log_id, frames, errors}
- *   --summary  <牌谱.xml>...  逐行输出每个牌谱的事件统计
+ *   --records  <牌谱.tenhou>...  逐行输出打点行（非自摸摸牌帧 / 吃碰副露帧 / 等待鸣牌帧，JSONL）-> tools/analyze.py --tool node 入库
+ *   --frames   <牌谱.tenhou>...  逐行输出每一帧的状态快照（JSONL）-> 测试 fixture / 算法交叉校验
+ *   --invariants <牌谱.tenhou>... 逐帧校验牌张不变量，输出 {log_id, frames, errors}
+ *   --summary  <牌谱.tenhou>...  逐行输出每个牌谱的事件统计
  * 参数：
  *   --out FILE   写入文件（默认 stdout）—— 本环境 PowerShell 无法捕获原生命令 stdout，务必用 --out
  *   --pretty     人类可读的 JSON（仅 --summary / --invariants 建议使用）
@@ -27,7 +27,7 @@ function loadGame(file) {
   var text = fs.readFileSync(file, 'utf8');
   var game = MJLOG.parse(text);
   game.path = path.resolve(file);
-  game.logId = path.basename(file).replace(/\.xml$/i, '');
+  game.logId = path.basename(file).replace(/\.(tenhou|xml|mjlog)$/i, '');
   return game;
 }
 
@@ -83,7 +83,7 @@ function main(argv) {
     if (a === '--records' || a === '--frames' || a === '--summary' || a === '--invariants') { mode = a.slice(2); }
     else if (a === '--out') { out = argv[++i]; }
     else if (a === '--help' || a === '-h') {
-      process.stdout.write('用法: node mjscore/node_harness.js [--records|--frames|--summary|--invariants] [--out FILE] <牌谱.xml>...\n');
+      process.stdout.write('用法: node mjscore/node_harness.js [--records|--frames|--summary|--invariants] [--out FILE] <牌谱.tenhou>...\n');
       return 0;
     } else { files.push(a); }
   }

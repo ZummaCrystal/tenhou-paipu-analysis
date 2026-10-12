@@ -144,7 +144,14 @@ function registerIpc() {
       buttonLabel: '打开牌谱',
       properties: ['openFile'],
       filters: [
-        { name: '牌谱文件 (*.xml, *.mjlog)', extensions: ['xml', 'mjlog'] },
+        // 后缀按来源区分（用户 m05545 ②、m05806 ②）：天凤 .tenhou、NAGA .naga、
+        // Mortal .mortal-a / -b / -c（按风格：4.1a 避四 / 4.1b 平衡 / 4.1c 争一）；
+        // 旧的 .xml / .mjlog / .json.gz / .json 仍然认。
+        // NAGA / ricochet 报告正文是 gzip，但扩展名过滤器只能按最后一段写（旧文件是 .json.gz）。
+        {
+          name: '牌谱文件 (*.tenhou, *.naga, *.mortal-*)',
+          extensions: ['tenhou', 'naga', 'mortal', 'mortal-a', 'mortal-b', 'mortal-c', 'xml', 'mjlog', 'gz', 'json'],
+        },
         { name: '所有文件', extensions: ['*'] },
       ],
     };

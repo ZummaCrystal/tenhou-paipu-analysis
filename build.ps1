@@ -17,6 +17,7 @@
     * 决策 3：用户数据固定放 %LOCALAPPDATA%\tenhou-paipu-analysis\data（代码里就是这套路径）；
     * 决策 4：NSIS 安装包，安装路径用户可选；卸载时由 packaging\installer.nsh 询问是否删数据；
     * 图标由 tools\svg2ico.py 从 media\tiles\6m.svg 可复现生成（-SkipIcon 沿用现有 build\icon.ico）；
+     图案按 --content-scale 0.84 围绕牌面中心收缩，四周留出统一白边（用户 m08700）；
     * 受限终端（禁止子进程匿名管道）里，PyInstaller 的 hook 发现会报 WinError 5 —— 本脚本会自动
       改用 packaging\pyi_build.py --in-process 兜底；electron-builder 那步则必须换普通终端。
 #>
@@ -95,7 +96,7 @@ if ($SkipIcon) {
     Must $Icon '图标（-SkipIcon 时要求它已存在）'
     Ok ('沿用现有图标 ' + (FSize $Icon))
 } else {
-    & $PythonExe (Join-Path $Root 'tools\svg2ico.py') --svg (Join-Path $Root 'media\tiles\6m.svg') --out $Icon --png-dir (Join-Path $Root 'build')
+    & $PythonExe (Join-Path $Root 'tools\svg2ico.py') --svg (Join-Path $Root 'media\tiles\6m.svg') --out $Icon --png-dir (Join-Path $Root 'build') --content-scale 0.84
     if ($LASTEXITCODE -ne 0) { Die ('图标生成失败（tools\svg2ico.py 退出码 ' + $LASTEXITCODE + '）') }
     Ok ('build\icon.ico ' + (FSize $Icon) + '（16/32/48/64/128/256）')
 }
@@ -106,6 +107,12 @@ if (-not $SkipTests) {
     & $NodeExe (Join-Path $Root 'test\apptest.js')
     if ($LASTEXITCODE -ne 0) { Die ('test\apptest.js 未通过（退出码 ' + $LASTEXITCODE + '）') }
     Ok 'test\apptest.js 通过'
+    & $PythonExe (Join-Path $Root 'test\naga_test.py')
+    if ($LASTEXITCODE -ne 0) { Die ('test\naga_test.py 未通过（退出码 ' + $LASTEXITCODE + '）') }
+    Ok 'test\naga_test.py 通过'
+    & $PythonExe (Join-Path $Root 'test\mortal_test.py')
+    if ($LASTEXITCODE -ne 0) { Die ('test\mortal_test.py 未通过（退出码 ' + $LASTEXITCODE + '）') }
+    Ok 'test\mortal_test.py 通过'
     if ($FullTests) {
         & $PythonExe (Join-Path $Root 'test\datamgr_test.py')
         if ($LASTEXITCODE -ne 0) { Die ('test\datamgr_test.py 未通过（退出码 ' + $LASTEXITCODE + '）。它要读 %LOCALAPPDATA%\tenhou-paipu-analysis\data 下的真实数据；本机没有就改用 -SkipTests 或去掉 -FullTests') }
@@ -141,7 +148,7 @@ if (-not $SkipPyi) {
 }
 Must $ServerExe '后端 exe（别加 -SkipPyi，或者先跑一次不带 -SkipPyi 的）'
 $Internal = Join-Path $BackendDir '_internal'
-foreach ($rel in @('web\index.html', 'media\tiles\6m.svg', 'mjscore\node_harness.js')) { Must (Join-Path $Internal $rel) ('后端资源 ' + $rel) }
+foreach ($rel in @('web\index.html', 'media\tiles\6m.svg', 'media\fonts\NotoSansJP-Black.subset.otf', 'mjscore\node_harness.js')) { Must (Join-Path $Internal $rel) ('后端资源 ' + $rel) }
 Ok ('后端 exe ' + (FSize $ServerExe))
 if ($SkipNodeEmbed) {
     Warn '没有内嵌 node（后端会退回 PATH / 常见安装路径里的 node.exe）'

@@ -1,5 +1,17 @@
 /* style.css — 天凤牌谱分析 前端样式（无框架、无动画） */
 
+/* 大字字体（用户 m04160 ①）：把官方 viewer 用的 Noto Sans JP Black 打成子集随包发布，
+ * 只含「チ ー ポ ン カ ツ モ ロ ン リ」（9 个字形，5.5 KB），由 tools/subset_font.py 从
+ * https://naga.dmv.nico/static/fonts/NotoSansJP-Black.9a73d583.otf 生成（SIL OFL 1.1，
+ * 许可证见 media/fonts/LICENSE-NotoSansJP-OFL.txt）。相对路径 ../media/… 对 http 与
+ * file:// 两种打开方式都成立（页面在 web/ 下，素材在 media/ 下）。 */
+@font-face {
+  font-family: "vocalization";
+  src: url("../media/fonts/NotoSansJP-Black.subset.otf") format("opentype");
+  font-weight: 900;
+  font-display: swap;
+}
+
 :root {
   --bg:        #14201b;
   --bg-panel:  #1d2f27;
@@ -82,7 +94,11 @@ code {
   font-weight: 600;
 }
 
-.file-info { color: var(--fg-dim); font-size: 12px; }
+/* 顶栏文件名单行省略号：长文件名折行会改变顶栏高度 ⇒ 播放视图可用高度变化 ⇒ 牌桌缩放跳（用户 m01386） */
+.file-info {
+  color: var(--fg-dim); font-size: 12px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 32vw;
+}
 
 /* ----------------------------------------------------------- 按钮 */
 button {
@@ -116,7 +132,8 @@ label.chk { display: inline-flex; align-items: center; gap: 4px; cursor: pointer
 /* ----------------------------------------------------------- 视图 */
 main { flex: 1 1 auto; overflow: auto; }
 .view { padding: 18px; height: 100%; }
-#view-replay { display: flex; flex-direction: column; height: 100%; padding: 10px 14px; }
+/* position: relative 是给「回放警告」绝对定位浮层用的（.warn-bar），用户 m01386 */
+#view-replay { position: relative; display: flex; flex-direction: column; height: 100%; padding: 10px 14px; }
 
 /* ----------------------------------------------------------- 首页 */
 .cards {
@@ -164,7 +181,40 @@ main { flex: 1 1 auto; overflow: auto; }
   background: var(--bg-panel);
 }
 .open-bar .row { margin: 6px 0; }
-.open-bar .drop-zone { margin: 8px 0 6px; }
+
+/* 按特征码搜索（用户 m03175 ④⑤）：输入框要放得下一整个 NAGA 特征码
+ * （128 位 hex + v2_2 后缀 = 133 字符），放不下时输入框自身横向滚动。 */
+.code-input {
+  flex: 1 1 420px;
+  min-width: 260px;
+  max-width: 900px;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+}
+/* 搜索结果：高度固定、只显示牌谱名（单行不换行，超长靠容器横向滚动），结果多时纵向滚动 */
+.code-results {
+  height: 132px;
+  overflow: auto;
+  margin: 6px 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+}
+.code-row {
+  padding: 3px 10px;
+  font-size: 12px;
+  font-family: Consolas, "Courier New", monospace;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.code-row:hover { background: var(--bg-cell); color: var(--accent); }
+/* 结果里与输入匹配的那一段（用户 m03319） */
+.code-hit {
+  background: #ffd54a;
+  color: #14201b;
+  border-radius: 2px;
+}
+.code-none { padding: 6px 10px; color: var(--fg-dim); font-size: 12px; }
 
 .drop-zone {
   margin: 12px 0;
@@ -182,6 +232,8 @@ main { flex: 1 1 auto; overflow: auto; }
 .hint code { font-size: 11px; }
 .hint > p { margin: 6px 0 0 0; line-height: 1.55; }
 #anExtendRow select { min-width: 240px; }
+#anSourceDir { min-width: 260px; }   /* 牌谱目录下拉（用户 m01171 第 2 条） */
+#anSourceFile { min-width: 220px; }  /* 牌谱文件下拉 */
 #anExtendInfo { color: var(--fg-dim); font-size: 12px; }
 
 fieldset {
@@ -193,15 +245,27 @@ fieldset {
 legend { color: var(--fg-dim); padding: 0 6px; }
 
 /* ----------------------------------------------------- 播放工具栏 */
+/* 工具栏固定 46px 一行：按钮文字变化（自动播放/暂停、隐藏/显示他家手牌）不再折行把牌桌往下推（用户 m01386） */
 .replay-toolbar {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 0 10px;
-  flex: 0 0 auto;
-  flex-wrap: wrap;
+  padding: 6px 0;
+  flex: 0 0 46px;
+  height: 46px;
+  flex-wrap: nowrap;
+  overflow: hidden;
 }
-.file-name { color: var(--fg-dim); font-size: 12px; }
+.replay-toolbar > * { flex: 0 0 auto; }
+.replay-toolbar > .topbar-spacer { flex: 1 1 auto; min-width: 0; }
+.replay-toolbar > .file-name { flex: 0 1 auto; min-width: 0; }
+.file-name {
+  color: var(--fg-dim); font-size: 11px; line-height: 15px;
+  /* 特征码完整显示、不再省略：允许换行 + 固定两行高度，完整文本另有 title（用户 m01518 ①） */
+  white-space: normal; word-break: break-all;
+  max-height: 30px; overflow: hidden;
+  -webkit-user-select: text; user-select: text;
+}
 .frame-info { color: var(--fg-dim); font-size: 12px; font-variant-numeric: tabular-nums; }
 
 .warn-bar {
@@ -211,7 +275,14 @@ legend { color: var(--fg-dim); padding: 0 6px; }
   border-radius: 6px;
   padding: 6px 10px;
   font-size: 12px;
-  margin-bottom: 8px;
+  /* 出现/消失不参与布局：绝对定位浮在牌桌下缘（用户 m01386） */
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 94px;
+  z-index: 30;
+  margin: 0;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, .5);
 }
 
 /* -------------------------------------------------------- 播放主体 */
@@ -227,13 +298,28 @@ legend { color: var(--fg-dim); padding: 0 6px; }
 
 /* 牌桌容器：牌桌按可用空间等比缩放（见 app.js 的 fitBoard），四周留 2px 余量 */
 .board-box {
+  position: relative;                  /* 拖放区以它为基准绝对定位（用户 m03175 ⑥） */
   flex: 1 1 auto;
   display: flex;
   align-items: center;
   justify-content: center;
   min-width: 0;
   min-height: 0;
-  overflow: auto;
+  /* 不滚动：牌桌尺寸已完全由固定轨道决定，滚动条出现/消失都会改变可用宽度（用户 m01386） */
+  overflow: hidden;
+}
+
+/* 拖放区覆盖整个牌桌区域（用户 m03175 ⑥）：pointer-events:none 让拖放事件落到 .board-box 上，
+ * 没有载入牌谱时显示（载入后由 app.js 加 .hidden）。 */
+.board-box .drop-zone {
+  position: absolute;
+  inset: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0 16px;
+  pointer-events: none;
 }
 
 /* 牌桌：上=対面 左=上家 右=下家 下=自家；下家一行横跨整宽（自家手牌最大）
@@ -243,9 +329,14 @@ legend { color: var(--fg-dim); padding: 0 6px; }
  * 格子宽度写死（不用 1fr / auto），牌桌才会紧贴内容，不会在高分屏上被拉出一片空白。 */
 .board {
   display: grid;
-  gap: calc(var(--tile-w) * .45);
+  position: relative;                  /* 大字（vocalization）的定位基准（用户 m03978 ②） */
+  gap: calc(var(--tile-w) * .25);
   grid-template-columns: calc(var(--tile-w) * 9.5) calc(var(--tile-w) * 8.6) calc(var(--tile-w) * 9.5);
-  grid-template-rows: auto auto auto;
+  /* 固定三行高度：只随 --tile-h 缩放，与帧内容（是否插入和了结果、文本长短）无关。
+   * 原来是 auto，和了帧插入 .c-result 会撑高牌桌 ⇒ fitBoard() 每帧算出不同缩放率 ⇒ 播放时画面一直跳（用户 m01386）。
+   * 上下两行要放下「抬头 + 牌河 4 行 + 手牌 + 手牌下方的铳率条 + 最外侧的听牌率条」（用户 m03479 ②），
+   * 所以比中行高一截。 */
+  grid-template-rows: calc(var(--tile-h) * 7.4) calc(var(--tile-h) * 4.6) calc(var(--tile-h) * 7.4);
   grid-template-areas:
     "top    top    top"
     "left   center right"
@@ -259,12 +350,14 @@ legend { color: var(--fg-dim); padding: 0 6px; }
 /* 左右两格按「面板旋转 90° 后的实际占位」定尺寸：宽 = 面板高度，高 = 中央区高度。
  * 面板未旋转时是 14 张牌宽，比本格宽得多，靠 .cell 的居中 + overflow:visible 溢出到上下两行，
  * 这与天凤里「两侧手牌比中央区长」的样子一致。 */
-.cell-left, .cell-right { height: calc(var(--tile-h) * 4.6); }
-.cell-top    { grid-area: top; }
+/* 中行高度已由 .board 的固定 grid-template-rows 给出，左右两格直接铺满（不再单独定高） */
+/* 上下的面板贴向中央信息框（用户 m03479 ②：四家 ID 紧贴中央、手牌更贴近中央），
+ * 左右两格的距离是垂直方向、由 .cell 的居中决定。 */
+.cell-top    { grid-area: top; align-items: flex-end; }
 .cell-left   { grid-area: left; }
 .cell-center { grid-area: center; }
 .cell-right  { grid-area: right; }
-.cell-bottom { grid-area: bottom; }
+.cell-bottom { grid-area: bottom; align-items: flex-start; }
 
 /* ---------------------------------------------------------- 玩家面板 */
 /* 玩家面板：统一按「自家视角」排版后整体旋转到自己的方位
@@ -278,6 +371,28 @@ legend { color: var(--fg-dim); padding: 0 6px; }
   padding: 2px;
   transform-origin: center center;
 }
+/* 听牌率条（用户 m03479 ② / m03799 ①）：竖着贴在「这一家」手牌的左端外侧，与手牌垂直 ——
+ * 长度 1.5 牌高（手牌带上下各伸出 .25 牌高）、宽度 = 一条铳率条的宽度（官方 9px ÷ 牌宽 29.3px
+ * ≈ 30.7%）。**边框** = 与主视角的相对关系（位置 1 下家绿 / 位置 2 対面黄 / 位置 3 上家蓝），
+ * 边框不随内部变红（用户 m03627）；内部**透明**、只有随听牌率从下往上生长的红段（用户 m04422）。
+ * .tp-red 的 bottom: 0 就是「该家自己的下方」= 远离牌桌中心那一侧，高度 = 听牌率。
+ * 定位参照 .p-hand .tiles（position: relative）⇒ 随面板一起旋转、不会被 .board-box 的 overflow 裁掉。 */
+.p-tenpai {
+  position: absolute;
+  right: calc(100% + var(--tile-w) * .8);   /* 与手牌留出 0.8 倍牌宽的间隔（用户 m03978 ① / m04160 ③） */
+  bottom: calc(var(--tile-h) * -.25);
+  box-sizing: border-box;
+  width: calc(var(--tile-w) * .307);
+  height: calc(var(--tile-h) * 1.5);
+  border: 2px solid #4CAF50;          /* 基色边框（用户 m03627）：内部可以全红，边框保持基色 */
+  border-radius: 2px;
+  background: transparent;            /* 内部透明（用户 m04422）：只留边框 + 听牌率红段 */
+  overflow: hidden;
+}
+.p-tenpai.tp-t { border-color: #FFEB3B; }   /* 対面：黄框，内部同样透明 */
+.p-tenpai.tp-k { border-color: #2196F3; }   /* 上家：蓝框，内部同样透明 */
+.p-tenpai .tp-red { position: absolute; left: 0; right: 0; bottom: 0; background: var(--danger); }
+
 .p-rot.r90  { transform: rotate(90deg); }
 .p-rot.r180 { transform: rotate(180deg); }
 .p-rot.r270 { transform: rotate(270deg); }
@@ -314,8 +429,15 @@ legend { color: var(--fg-dim); padding: 0 6px; }
 
 /* 手牌：最外侧一排；摸到的牌单独放在面板末端（旋转后即天凤的「自摸牌错开」效果） */
 .p-hand { display: flex; align-items: flex-end; gap: 6px; flex-wrap: nowrap; }
-.p-hand .tiles { display: flex; flex-wrap: nowrap; }
-.p-hand .drawn { margin-left: calc(var(--tile-w) * .35); }
+/* 手牌容器：听牌率条（.p-tenpai）以它为定位参照，竖着贴在手牌左端外侧（用户 m03799 ①） */
+.p-hand .tiles { display: flex; flex-wrap: nowrap; position: relative; }
+/* 摸牌槽位永远存在（没摸到时由 ui.js 加 .empty，只占位不可见）：
+ * 否则「摸牌前 / 摸牌后」两帧的手牌行宽度不同，整行（以及旋转后的两侧面板）会左右摆（用户 m01386）。 */
+/* 槽位里的牌按底对齐（整行由 .p-hand 的 align-items: flex-end 定底）：否则当槽位比里面的牌高时，
+ * 牌会被顶到槽位上沿，看起来比别的手牌高出一截（用户 m02007 ①）。
+ * 第 66 轮（用户 m08319 ③）：桌面上所有牌一律同尺寸，摸牌槽位不再放大 1.15 倍（原来的 .drawn.self 规则已删）。 */
+.p-hand .drawn { margin-left: calc(var(--tile-w) * .35); min-width: var(--tile-w); align-items: flex-end; }
+.p-hand .drawn.empty { visibility: hidden; }
 
 /* 最外侧一行 = 手牌 + 副露：副露在手牌右侧（DOM 里先鸣的排在最后 = 最右），
  * 后鸣的依次向左延伸；整块旋转到各家方位后左右关系自动与真实牌桌一致。 */
@@ -329,16 +451,11 @@ legend { color: var(--fg-dim); padding: 0 6px; }
 .p-bottom > * { flex: 0 0 auto; }
 .p-melds { display: flex; flex-wrap: nowrap; align-items: flex-end; gap: calc(var(--tile-w) * .35); }
 .meld { display: flex; align-items: center; gap: 3px; }
-.meld-tag {
-  font-size: 10px;
-  color: var(--fg-dim);
-  background: rgba(255, 255, 255, .06);
-  border-radius: 3px;
-  padding: 0 3px;
-}
 .meld .tiles { display: flex; }
 
-/* 牌河：6 张一排、从靠近中心的一侧向外侧生长；预留 4 排高度
+/* 牌河：6 张一排、从靠近中心的一侧向外侧生长
+ * 前 2 排各 6 张，**第 13 张起全部在第 3 排向右延伸**（用户 m08576：不再放入第 4 排）；
+ * 这里仍按 4 排预留高度 —— 第 4 排只留白，这样牌河变长时手牌位置不跳（用户 m01386）。
  * 第 1 排（DOM 里最前）贴着中央信息框那一侧，第 2 排起朝手牌方向（外侧）延伸 */
 .p-river {
   display: flex;
@@ -360,17 +477,77 @@ legend { color: var(--fg-dim); padding: 0 6px; }
   background: #f3f6f4;
   border-radius: 3px;
   overflow: hidden;
+  /* 牌面四周留一圈白底：图案不再贴边，几张牌挨在一起也分得开（用户 m01518 ②）。
+     全局 box-sizing: border-box ⇒ 内边距不会把牌变大；img 用百分比，自动缩进。 */
+  padding: calc(var(--tile-w) * .09);
 }
 .tile img { display: block; width: 100%; height: 100%; }
 
+/* NAGA 决策条（用户 m00198 ③ / m03799 ①）：牌上方 = 打牌预测柱，牌下方 = 三条危险条（铳率条）。
+   两条都画在牌框之外，所以带条的牌改成 overflow: visible；尺寸一律用百分比（随牌宽缩放，含 .tile.big）。 */
+.tile.bars { overflow: visible; }
+.tbar { position: absolute; pointer-events: none; }
+
+/* 打牌预测柱：画在牌上方，宽 35%（官方截图：条 16px ÷ 牌宽 46px）；left 32.5% + 宽 35% ⇒ 水平居中。
+ * 注意：绝对定位子元素的包含块 = 祖先的 padding edge，而 .tile 没有边框 ⇒ padding box 就是整张牌的
+ * 外框，百分比本来就按牌宽 / 牌高算（用户 m03799 ②：不要给牌加定位层，那会把柱子推偏一个白边）。
+ * 还要注意：第 33 轮改这一行时把注释的结尾（星号 + 斜线）吃掉了，浏览器会把后面直到下一个结尾之间的
+ * 规则全部当作注释 —— 概率条 / .tile.big / .tile.tsumogiri 因此全部失效（第 35 轮修，用户 m02007 ①②）。 */
+.tbar.up { bottom: 100%; left: 32.5%; width: 35%; background: #9C27B0; }
+.tbar.up.max { background: rgb(124, 59, 230); box-shadow: 0 0 0 1px rgb(201, 146, 211); }
+
+/* 铳率条（用户 m03710 ① / m03799 ① 回滚）：画在牌下方，三条并排 = 上家 K 蓝 / 対面 T 黄 /
+ * 下家 S 绿（与官方 renderTehai 同序；每条宽 30.7% 牌宽、左偏移 3.4% / 34.1% / 64.8%，高 = 万分比）。
+ * 只画在「当前决策者」手上，同种牌只画最靠左那张（见 ui.js 的 addNagaBars）。 */
+.tbar.down { top: 100%; width: 30.7%; }
+.tbar.down.k { background: #2196F3; left: 3.4%; }
+.tbar.down.t { background: #FFEB3B; left: 34.1%; }
+.tbar.down.s { background: #4CAF50; left: 64.8%; }
+
+/* 大字（vocalization，用户 m03978 ②）：仿官方 viewer 的 renderBa —— 吃 / 碰 / 杠 / 和了帧在
+ * 桌面上画「チー / ポン / カン / ツモ / ロン」。官方常量换算：字号 60 ÷ 牌高 40 = 1.5 倍牌高；
+ * 位置 = vocalization_pos ÷ 桌面 (700×650) 的百分比（下 50%/76.9%、右 80%/49.2%、上 50%/24.6%、
+ * 左 20%/49.2%，由 ui.js 的 VOCAL_POS 给出，再统一向左平移以避开牌河（见 ui.js 的 VOCAL_DX，
+ * 用户 m04386））；白色实心 + 右下偏移 2 单位(=.05 牌高)的黑影 + 0.1 单位(=.003 牌高)细黑描边；
+ * 永远水平（官方不 rotate），画在所有牌之上、和了结算框之下。 */
+.vocal {
+  position: absolute;
+  z-index: 1;
+  transform: translate(-50%, -100%);      /* left/top 给的是「文字中线 x」与「基线 y」 */
+  pointer-events: none;
+  white-space: nowrap;
+  font-family: "vocalization", "Noto Sans JP", "Noto Sans JP Variable", "Yu Gothic", "Meiryo", sans-serif;
+  font-weight: 900;
+  font-size: calc(var(--tile-h) * 1.5);
+  line-height: 1;
+  color: #fff;                            /* 全实心白字（用户 m04386：从空心字改回实心） */
+  -webkit-text-stroke: calc(var(--tile-h) * .003) #000;
+  paint-order: stroke fill;
+  text-shadow: calc(var(--tile-h) * .05) calc(var(--tile-h) * .05) 0 #000;
+}
+
+/* 第 66 轮（用户 m08319 ③）起桌面上所有牌一律同尺寸，播放界面不再使用 .big；规则留给需要放大的场合。 */
 .tile.big { width: calc(var(--tile-w) * 1.15); height: calc(var(--tile-h) * 1.15); }
 
 .tile.tsumogiri { opacity: .5; }
 /* 被鸣走的牌：不从牌河移除，改用红框标出（摸切用透明度，红框不会混淆） */
 /* m00635 ③ 红框（被鸣走的牌）/ 绿框（荣和的铳牌）加粗：外面一圈 + 牌面内嵌一圈，
- * 宽度都随 --tile-w 缩放 —— 自适应缩放后在小牌上也一样看得清（不再是写死的 2px）。 */
-.tile.called    { box-shadow: 0 0 0 calc(var(--tile-w) * .17) #e0503a, inset 0 0 0 calc(var(--tile-w) * .11) #e0503a; }
-.tile.win  { box-shadow: 0 0 0 calc(var(--tile-w) * .17) var(--accent), inset 0 0 0 calc(var(--tile-w) * .11) var(--accent); }
+ * 宽度都随 --tile-w 缩放 —— 自适应缩放后在小牌上也一样看得清（不再是写死的 2px）。
+ * 第 64 轮（用户 m07820 补充 1）：三种牌框统一提到「牌层」之上（z-index: 1 —— 高于默认的牌，
+ * 仍低于大字 .vocal 与完场结算框 .final-box），不同牌的框之间按 DOM 顺序（后打出 / 后出现的在上）；
+ * 尺寸统一略微缩一圈（外圈 .17 -> .14、内圈 .11 -> .08，线宽不变，不会显得太细）。 */
+.tile.called    { z-index: 1; box-shadow: 0 0 0 calc(var(--tile-w) * .14) #e0503a, inset 0 0 0 calc(var(--tile-w) * .08) #e0503a; }
+.tile.win  { z-index: 1; box-shadow: 0 0 0 calc(var(--tile-w) * .14) var(--accent), inset 0 0 0 calc(var(--tile-w) * .08) var(--accent); }
+/* 黄框（用户 m07820 补充 2）：牌谱检索的静态帧、且本帧是「鸣牌响应局面」时，标出主视角正在
+ * 等着回应（吃 / 碰 / 杠）的那张被打出的牌；尺寸与图层同红框 / 绿框。 */
+.tile.mark { z-index: 1; box-shadow: 0 0 0 calc(var(--tile-w) * .14) #ffd54a, inset 0 0 0 calc(var(--tile-w) * .08) #ffd54a; }
+/* 细红框（用户 m08125 ② / m08178）：牌谱播放与静态帧里，主视角本人这一帧要做的事 ——
+ *   打牌（立直宣言算打出的宣言牌）= 即将打出的那一张；同 kind 有多张时只框一张，与紫色条同一套
+ *     筛选逻辑（优先普通 5、避开赤 5）；
+ *   暗杠 / 加杠 = 准备杠的 4 张牌（暗杠是手里 4 张，加杠是手里 1 张 + 副露区那 3 张）。
+ * 图层逻辑与牌河红框一致：位于牌层之上（z-index: 1），同一处多张之间按 DOM 顺序、后出现的在上。
+ * 线宽 .06 比牌河红框的内圈 .08 更细。 */
+.tile.next { z-index: 1; box-shadow: inset 0 0 0 calc(var(--tile-w) * .06) #e0503a; }
 .tile.back { background: #4a6b58; }
 
 /* 横放（立直宣言牌 / 吃碰杠里被鸣的那张）：从竖放位置逆时针转 90°、下缘与同排对齐。
@@ -380,10 +557,11 @@ legend { color: var(--fg-dim); padding: 0 6px; }
   margin-left:  calc((var(--tile-h) - var(--tile-w)) / 2);
   margin-right: calc((var(--tile-h) - var(--tile-w)) / 2);
 }
-/* 加杠：第 4 张横着叠在原先那张横牌上（格子宽度不变，只往上偏一点） */
+/* 加杠：第 4 张与原先那张横牌同列、正上方错开一整张牌宽（官方 viewer renderPon 的 kanPai 画法，
+ * 用户 m08319 ④；格子宽度不变，上移的那张向上溢出、由 .meld 的横向空间容纳） */
 .tile-stack { position: relative; width: var(--tile-w); height: var(--tile-h); flex: 0 0 auto; }
 .tile-stack .tile { position: absolute; left: 0; top: 0; margin: 0; }
-.tile-stack .tile.added { left: calc(var(--tile-w) * .30); top: calc(var(--tile-h) * -.18); }
+.tile-stack .tile.added { left: 0; top: calc(var(--tile-w) * -1); }
 
 /* ----------------------------------------------------------- 中央信息 */
 /* 中央：只放 局数 / 剩余牌数 / 供托 / 宝牌指示牌 / 本局结果（四家信息已移到各家面板） */
@@ -398,7 +576,12 @@ legend { color: var(--fg-dim); padding: 0 6px; }
   justify-content: center;
   gap: 6px;
   min-width: 0;
-  min-height: 118px;
+  /* 铺满固定的中行；本局结果改成绝对定位浮层后，中央框内容多少都不再改变自身高度（用户 m01386） */
+  height: 100%;
+  /* 也铺满中央列的宽度：役名 / 宝牌信息不再挤在 ~120px 里换行，中央框就不会出滚动条（用户 m02801 ③） */
+  width: 100%;
+  position: relative;
+  overflow: hidden auto;
 }
 .c-round {
   font-size: 17px;
@@ -425,35 +608,135 @@ legend { color: var(--fg-dim); padding: 0 6px; }
 .c-dora { display: flex; align-items: center; gap: 8px; }
 .c-dora .tiles { display: flex; }
 .c-dora .tile { width: calc(var(--tile-w) * .95); height: calc(var(--tile-h) * .95); }
+/* 本局结果：绝对定位盖在中央信息框上，不再把中央框（也就是整个牌桌）撑高（用户 m01386） */
 .c-result {
-  border-top: 1px solid var(--line);
-  padding-top: 6px;
+  position: absolute;
+  z-index: 2;                  /* 盖在大字之上：官方 renderBa 的图层顺序 = 牌 → 大字 → 结算窗 */
+  left: 2px;
+  right: 2px;
+  top: 2px;
+  bottom: 2px;
+  background: #16241e;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 12px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* 安全居中：内容不满时靠 auto 外边距居中，内容超高时从顶部开始滚。
+   * 不能用 justify-content: center —— 溢出部分会被顶到上边、滚不到，
+   * 结算标题（自摸 / 放铳的绿字）就会被裁掉（用户 m02801 ③）。 */
+  justify-content: flex-start;
+  gap: 3px;
   font-size: 12px;
 }
+.c-result > :first-child { margin-top: auto; }
+.c-result > :last-child { margin-bottom: auto; }
+/* 宝牌 / 里宝指示牌：标签与牌同排，省下一行高度（用户 m02801 ③） */
+.c-dora-show { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; }
+.c-dora-show .tiles { margin-top: 0; }
+/* 结果里的指示牌比手牌小一圈，两行宝牌也放得下 */
+.c-result .tiles .tile { width: calc(var(--tile-w) * .8); height: calc(var(--tile-h) * .8); }
 .c-result-title { color: var(--accent); font-weight: 600; margin-bottom: 3px; }
 .c-yaku { color: var(--fg); }
 .c-ten  { color: var(--fg-dim); }
 .c-result .tiles { display: flex; margin-top: 3px; }
 
 /* -------------------------------------------------------- 控制按钮 */
+/* 控制条两行七列（用户 m05131 ③④）：整块仍占 50px，牌桌尺寸与位置不变。
+ * 上排 = 跨局 / 决策跳转 / 单步 / 主视角；下排 = 整个牌谱的开局与完场、本局的开始与结算、
+ * 自家决策跳转、他家手牌开关。删掉了「自动播放」与描述条。
+ * 第 7 列给 1.5 倍宽度（切换主视角的按钮文字里带玩家 ID，需要单行放得下）。 */
 .controls {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  padding: 8px 0 6px;
-  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr)) minmax(0, 1.5fr);
+  grid-auto-rows: 20px;
+  gap: 2px 6px;
+  align-content: center;
+  padding: 4px 0;
+  flex: 0 0 50px;
+  height: 50px;
+  overflow: hidden;
 }
-.controls button { white-space: nowrap; }
+.controls button {
+  white-space: nowrap;
+  overflow: hidden;
+  min-width: 0;
+  padding: 0 6px;
+  font-size: 11px;
+  line-height: 1;
+}
+/* 切换主视角按钮（用户 m03343 ②）：在上排第七列（1.5 倍宽）单行显示完整 ID；
+ * 列数变少后空间足够，不再需要 200px 的最小宽度（用户 m05131 ④）。 */
+#btnView { min-width: 0; }
+/* 静态帧（检索结果 / 全部浏览的条目）：整块禁用，只能用右上角的条目导航（用户 m03089 ①） */
+#controls.locked button { opacity: .45; pointer-events: none; cursor: not-allowed; }
+.controls::-webkit-scrollbar { height: 6px; }
+.controls::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
 
-.desc-bar {
-  flex: 0 0 auto;
+/* 切换主视角上拉框（用户 m03343 ②）：4 行 = 東 > 南 > 西 > 北，点一行即换主视角。
+ * 挂着 #view-replay（position: relative）绝对定位、浮在控制条上方；实际 left/bottom 由 JS
+ * placeViewMenu() 按「切换主视角」按钮的实时位置算出来（用户 m03498：原先只用 CSS 的
+ * right/bottom，会跑到整个界面的右下角）；行内不换行，
+ * 再长的玩家 ID 也能单行显示（超宽时由 max-width 兜底）。 */
+.view-menu {
+  position: absolute;
+  left: 14px;                 /* 兜底值；开着的时候由 placeViewMenu() 贴着按钮改（用户 m03498） */
+  bottom: 96px;               /* 兜底值：浮在控制条上方 */
+  z-index: 40;
+  min-width: 240px;
+  width: max-content;
+  max-width: 90vw;
   background: var(--bg-panel);
   border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 6px 10px;
-  min-height: 30px;
-  font-size: 13px;
+  border-radius: 8px;
+  box-shadow: 0 -2px 14px rgba(0, 0, 0, .55);
+  overflow: hidden;
 }
+.view-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 12px;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.view-row:hover { background: var(--bg-cell); color: var(--accent); }
+.view-row.cur { color: var(--accent); font-weight: 600; }
+.view-row .vw-wind { flex: 0 0 auto; color: var(--fg-dim); }
+.view-row.cur .vw-wind { color: var(--accent); }
+.view-row .vw-id { flex: 1 1 auto; }
+
+/* 完场结算框（用户 m05131 ②）：黑底半透明 + 白字大字号（中 / 日文字符都能显示），
+ * 绝对定位在牌桌正中央（.board 是 position: relative）；只在牌谱最终帧之后再点一次
+ * 「下一步」时出现，机制与日语大字一样是浮层（不是帧）⇒ 不进检索结果、不改步进计数。 */
+.final-box {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  min-width: calc(var(--tile-w) * 15);            /* 加宽：容纳更长的玩家 ID（用户 m05277 ①） */
+  max-width: calc(100% - 24px);                  /* 再长也不越出牌桌 */
+  padding: calc(var(--tile-h) * .7) calc(var(--tile-w) * 1.2);   /* 文字上下的留白与左右内边距加大（用户 m05277 ①） */
+  background: rgba(0, 0, 0, .78);
+  border: 2px solid rgba(255, 255, 255, .5);
+  border-radius: 10px;
+  box-shadow: 0 6px 30px rgba(0, 0, 0, .65);
+  color: #fff;
+  font-family: "Noto Sans JP", "Noto Sans JP Variable", "Yu Gothic", "Meiryo", "Microsoft YaHei", sans-serif;
+  font-size: calc(var(--tile-h) * .62);
+  line-height: 2;                                  /* 行间距加大（用户 m05277 ①） */
+  letter-spacing: 1px;
+}
+.final-box .fb-row { display: flex; align-items: baseline; gap: calc(var(--tile-w) * 1.4); white-space: nowrap; }
+.final-box .fb-rank { flex: 0 0 auto; }
+.final-box .fb-id { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.final-box .fb-score { flex: 0 0 auto; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* 描述条（.desc-bar）已按用户 m05131 ④ 删除：当前事件信息不再显示。 */
 
 /* ---------------------------------------------------------- 事件列表 */
 .event-list {
@@ -461,6 +744,7 @@ legend { color: var(--fg-dim); padding: 0 6px; }
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;   /* 长事件文本不许把侧栏撑宽（用户 m01386） */
   background: var(--bg-panel);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -482,7 +766,9 @@ legend { color: var(--fg-dim); padding: 0 6px; }
   font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
+  overflow: hidden;
 }
+.ev-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .ev-row:hover { background: rgba(255, 255, 255, .06); }
 .ev-row.cur { background: var(--accent-2); color: #eafff5; }
 .ev-idx { color: var(--fg-dim); min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; }
@@ -498,13 +784,18 @@ legend { color: var(--fg-dim); padding: 0 6px; }
   }
   .cell { min-height: 310px; }
   .cell-left, .cell-right { height: auto; }
+  .naga-panel { flex-basis: 150px; }
   .event-list { flex-basis: 200px; }
 }
 /* ------------------------------------------------ 静态帧里的特征串（可复制） */
 .frame-key {
-  flex: 0 0 auto;
+  /* 固定 28px：特征码条出现/消失（静态帧 vs 打点帧）不再让牌桌上下跳（用户 m01386） */
+  /* 固定两行高：特征码完整换行显示，出现/消失也不再让牌桌上下跳（用户 m01518 ①） */
+  flex: 0 0 46px;
+  height: 46px;
   margin: 0 0 6px;
-  padding: 4px 10px;
+  padding: 3px 10px;
+  line-height: 19px;
   background: var(--bg-panel);
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -512,14 +803,15 @@ legend { color: var(--fg-dim); padding: 0 6px; }
   font-size: 12px;
   font-family: Consolas, "Courier New", monospace;
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+  /* 特征码不省略：自动换行、整串可见（用户 m01518 ①） */
+  white-space: normal;
+  word-break: break-all;
   overflow: hidden;
-  text-overflow: ellipsis;
   cursor: copy;
   -webkit-user-select: text;
   user-select: text;
 }
-.frame-key:empty { display: none; }
+.frame-key:empty { visibility: hidden; }   /* 只占位不消失，尺寸恒定（用户 m01386） */
 .frame-key.copied { border-color: var(--accent); background: rgba(70, 201, 138, .14); }
 
 /* ---------------------------------------- 条目导航（检索结果 / 全部浏览） */
@@ -558,6 +850,31 @@ legend { color: var(--fg-dim); padding: 0 6px; }
 }
 .db-row:last-child { border-bottom: 0; }
 .db-row b { color: var(--fg); }
+
+/* --------------------------- 第零类特征检索方案（用户 m04556 ③）
+ * 四种互斥方案（任意AI决策 / NAGA决策 / Mortal决策 / 同时具有）；「同时具有」时显示三个方形多选框。
+ * 与第一、二类特征条件同时满足（服务端 AND）。
+ * 标题「是否具有AI决策」；框的右端是第三类「出牌 / 鸣牌响应」必选单选（第 63 轮，用户 m07289 的补充要求）。 */
+.ai-plan {
+  margin: 0 0 10px 0; padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--bg-panel);
+  display: flex; align-items: stretch; gap: 12px;
+}
+.ai-plan-main { flex: 1 1 auto; min-width: 0; }
+/* 第三类「出牌 / 鸣牌响应」：只放上下两行两个选项，不写标题与说明文字 */
+.wait-plan {
+  flex: 0 0 auto;
+  display: flex; flex-direction: column; justify-content: center; gap: 5px;
+  padding-left: 12px; border-left: 1px solid var(--line);
+  font-size: 12px;
+}
+.wait-plan label { display: flex; align-items: center; gap: 4px; cursor: pointer; white-space: nowrap; }
+.ai-plan-head { display: flex; align-items: baseline; gap: 8px; font-size: 12px; margin-bottom: 5px; }
+.ai-plan-head .muted { font-size: 11px; }
+.ai-modes { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.ai-modes label { display: flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer; }
+.ai-picks { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 5px; }
+.ai-picks label { display: flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer; }
 
 /* -------------------------------------- 牌谱检索：条件列表 / 结果条目 */
 .cond-list { margin-top: 6px; }
@@ -603,26 +920,131 @@ legend { color: var(--fg-dim); padding: 0 6px; }
 
 /* ---- 第 21 轮（m02959）：帧特征面板 / 进度条 / 牌谱下载 ---- */
 
+/* ------------------------------------------------ NAGA 决策面板（用户 m00198 / m01518 ③） */
+/* 常驻固定宽度：非 NAGA 牌谱留空 ⇒ 切换牌谱时牌桌不会横向错位（用户 m01518 ⑤） */
+.naga-panel {
+  flex: 0 0 200px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-panel);
+}
+.naga-head {
+  flex: 0 0 28px; height: 28px; display: flex; align-items: center;
+  padding: 0 9px; border-bottom: 1px solid var(--line);
+  color: var(--fg); font-size: 12px;
+}
+/* 决策表标题改成 AI 模型下拉按钮（用户 m04556 ①）：占满整行，点击向下生长选项列表 */
+.naga-model-btn {
+  flex: 0 0 28px; height: 28px; width: 100%;
+  display: flex; align-items: center;
+  padding: 0 9px;
+  border: 0; border-bottom: 1px solid var(--line); border-radius: 0;
+  background: transparent; color: var(--fg); font-size: 12px;
+  text-align: left; cursor: pointer;
+}
+.naga-model-btn:hover { background: var(--bg-cell); color: var(--accent); }
+.naga-model-menu {
+  flex: 0 0 auto; max-height: 180px; overflow: auto;
+  border-bottom: 1px solid var(--line); background: var(--bg-cell);
+}
+.naga-model-menu .ai-row {
+  padding: 5px 9px; font-size: 12px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  cursor: pointer;
+}
+.naga-model-menu .ai-row:hover { background: var(--bg-panel); color: var(--accent); }
+.naga-model-menu .ai-row.cur { color: var(--accent); font-weight: 600; }
+/* 报告里没有这个模型 ⇒ 灰显、不可点（用户 m04556 ①） */
+.naga-model-menu .ai-row.disabled { color: var(--fg-dim); opacity: .5; pointer-events: none; }
+.naga-who {
+  flex: 0 0 20px; height: 20px; line-height: 20px; padding: 0 9px;
+  color: var(--fg-dim); font-size: 11px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.naga-options { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 2px 0; }
+.naga-opt { display: flex; align-items: center; gap: 4px; padding: 2px 8px; font-size: 12px; }
+.naga-opt .naga-opt-tiles { display: flex; gap: 1px; flex: 0 0 auto; }
+.naga-opt .naga-opt-tiles img {
+  display: block;
+  width: calc(var(--tile-w) * .82); height: calc(var(--tile-h) * .82);
+  padding: calc(var(--tile-w) * .06); border-radius: 2px;
+  background: #f3f6f4;
+}
+.naga-opt .naga-opt-word { flex: 0 0 auto; }
+/* 「其它」行（残差概率）弱化显示，和具体选项区分开（用户 m01810 ②） */
+.naga-opt.other .naga-opt-word, .naga-opt.other .naga-opt-pct { color: var(--fg-dim); }
+/* 立直行（用户 m01903 ③）：只要有立直选项就显示、永远排第一，用不同颜色与打牌 / 鸣牌选项区分 */
+.naga-opt.reach .naga-opt-word, .naga-opt.reach .naga-opt-pct { color: var(--danger); }
+.naga-opt-pct {
+  margin-left: auto; flex: 0 0 auto;
+  color: var(--accent); font-variant-numeric: tabular-nums;
+}
+.naga-hud {
+  flex: 0 0 auto; min-height: 70px;
+  border-top: 1px solid var(--line); padding: 6px 8px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 2px 6px;
+  font-size: 12px; font-variant-numeric: tabular-nums;
+}
+.naga-hud .nh-cell { display: flex; justify-content: space-between; gap: 4px; }
+.naga-hud .nh-wide { grid-column: 1 / span 2; }
+.naga-hud .nh-k { color: var(--fg-dim); }
+
 .feat-panel {
   flex: 0 0 268px;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  /* min-width:0 是必须的：flex 项默认 min-width:auto，长特征码会把面板顶宽、挤走牌桌列（用户 m01386） */
+  min-width: 0;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--bg-panel);
 }
+/* 标题行固定 32px 单行：特征码再长也只在本行内省略，不会撑大面板 / 把标题压成竖排（用户 m01386） */
 .feat-panel-head {
   padding: 6px 9px;
   border-bottom: 1px solid var(--line);
   color: var(--fg);
   font-size: 12px;
   display: flex;
-  gap: 6px;
-  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+  align-content: flex-start;
+  /* 固定高度 = 标题行 + 预留 5 行特征码：特征码完整换行显示，帧与帧之间不跳（用户 m01518 ①） */
+  flex: 0 0 106px;
+  height: 106px;
+  overflow: hidden;
 }
-.feat-panel-head .muted { font-weight: 400; }
+.feat-panel-head .fp-title { flex: 0 0 auto; }
+.feat-panel-head .muted {
+  font-weight: 400;
+  /* 特征码另起一行、占满面板宽度，完整显示（自动换行、不省略）（用户 m01518 ①） */
+  flex: 1 1 100%; min-width: 0;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 11px; line-height: 15px;
+  white-space: normal; word-break: break-all;
+  max-height: 75px; overflow: hidden;
+  -webkit-user-select: text; user-select: text;
+}
 .feat-panel-body { overflow: auto; flex: 1 1 auto; padding: 4px 0; }
+/* 局面（第三类特征「等待鸣牌」的展示，用户 m07289）：大号、醒目的居中文字，固定在面板底部
+   （flex: 0 0 auto ⇒ 不参与滚动、不顶出滚动条，正文区自己收缩） */
+.feat-panel-mode {
+  flex: 0 0 auto;
+  padding: 7px 4px;
+  border-top: 1px solid var(--line);
+  text-align: center;
+  font-size: 21px; font-weight: 700; letter-spacing: 3px;
+  color: var(--accent);
+  -webkit-user-select: text; user-select: text;
+}
+.feat-panel-mode.hidden { display: none; }
 .feat-row {
   display: flex;
   align-items: baseline;
@@ -630,8 +1052,13 @@ legend { color: var(--fg-dim); padding: 0 6px; }
   padding: 2px 9px 2px 6px;
   font-size: 12px;
   border-left: 3px solid transparent;
+  overflow: hidden;
 }
-.feat-row .feat-name { flex: 1 1 auto; color: var(--fg-dim); }
+.feat-row .feat-name {
+  flex: 1 1 auto; min-width: 0;
+  color: var(--fg-dim);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .feat-row .feat-value { flex: 0 0 auto; color: var(--fg); font-variant-numeric: tabular-nums; }
 .feat-row.used {
   border-left-color: var(--accent);
@@ -676,4 +1103,5 @@ legend { color: var(--fg-dim); padding: 0 6px; }
 
 @media (max-width: 1100px) {
   .feat-panel { flex-basis: 200px; }
+  .naga-panel { flex-basis: 150px; }
 }

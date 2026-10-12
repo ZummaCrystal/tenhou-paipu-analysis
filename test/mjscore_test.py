@@ -3,12 +3,21 @@ r"""mjscore 正式测试。
 
 覆盖：
   1. 解析口径（牌谱数 / 局数 / 帧数 / 逐帧牌张不变量）
-  2. 打点口径（非自摸摸牌帧 + 吃/碰副露帧、巡目按出牌计、33 个特征 = 16 第一类 + 17 第二类、条目名格式）
+  2. 打点口径（非自摸摸牌帧 + 吃/碰副露帧 + 鸣牌响应帧、巡目按出牌计、40 个特征 = 5 第零类 + 17 第一类 + 17 第二类 + 1 第三类、条目名格式）
   3. 写库 + 检索（analyze / query / 条件错误提示 / 特征值域）
   4. 双工具交叉校验（node 与 python 打点全字段逐项一致 —— readme 硬约束）
   5. 本地服务接口（server.py 的 GET/POST 路由与错误码）
   6. 第 21 轮：17 个第二类特征、帧特征接口、分析与下载进度、下载模块（离线）
-  7. 第 22 轮：软件版本 v0.1.0（meta.app_version + 库版本校验）、扩充现有数据库（按特征码跳过已有牌谱）
+  7. 第 22 轮：软件版本（meta.app_version + 库版本校验）、扩充现有数据库（按特征码跳过已有牌谱）；
+     第 36 轮：v0.2.0 / schema 5 / 第一类 18 项（用户 m02227 ②③④、m02356 改名、m02357 顺序）；
+     第 52 轮：第零类 3 项（用户 m04556 ②③，第一类回到 17 项）；第 59 轮：v1.0.0 / schema 7 /
+     第零类 5 项（补 Mortal-4.1-避四 / Mortal-4.1-争一，用户 m05937 ②）；
+     第 60 轮：v1.1.0 / schema 8，第零类改为**按帧判定**（这一帧的决策者是否有概率表，用户 m06323 ①；
+     口径按用户 m06560 更正：去掉「必须是牌谱初始主视角」这一条）；
+     第 62 轮：v1.2.0 / schema 9 / 40 个特征：第一类新增「等待鸣牌」、检索新增 kind='wait' 行（用户 m06801 / m06832）；
+     第 63 轮：v1.3.0 / schema 10（用户 m07289）：关键帧判据改成「这张牌可能被他家鸣牌」（含食替），
+     kind='wait' 行改为「鸣牌响应帧」（可能鸣牌的那一家各一行）、「等待鸣牌」编为第三类特征 1 项（不进检索下拉 /
+     不列进当前帧特征），检索新增必选单选「出牌 / 鸣牌响应」（默认「出牌」= 只检索出牌帧）
 
 运行：
   & 'D:\coding\anaconda3\envs\py314_null\python.exe' test\mjscore_test.py
@@ -31,7 +40,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from mjscore import cli, download, feats, mjlog, nodeharness, replay, server, store  # noqa: E402
+from mjscore import ai_models, cli, download, feats, mjlog, nodeharness, replay, server, store  # noqa: E402
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -75,7 +84,8 @@ SUBSET_IDS = ("2026082919gm-00a9-0000-4e40cd3e", "2026082920gm-00a9-0000-5db954e
 
 def corpus():
     """data 下（含 data/paipu/<子目录>/）的全部牌谱 + 可选的 data_extra。"""
-    out = sorted(glob.glob(os.path.join(DATA, "**", "*.xml"), recursive=True))
+    out = sorted(glob.glob(os.path.join(DATA, "**", "*.tenhou"), recursive=True))
+    out += sorted(glob.glob(os.path.join(DATA, "**", "*.xml"), recursive=True))
     out += sorted(glob.glob(os.path.join(ROOT, "data_extra", "*.xml")))
     return out
 
@@ -109,27 +119,119 @@ for g in GAMES:
 eq(n_all, 5766, "逐帧校验覆盖帧数")
 eq(len(errs_all), 0, "逐帧牌张不变量错误数（首例：%s）" % (errs_all[0] if errs_all else "-"))
 
+# 第 65 轮（用户 m08125 ①）：杠副露必须是 4 张同种牌 —— 加杠的报告事件只带「加进去的那一张」，
+# 早先 replay 用它覆盖了碰的 3 张 ⇒ 牌桌上整组消失；这里对全量语料加一层形状回归
+_meld_cnt = {}
+_meld_bad = []
+for _p in corpus():
+    try:
+        _g = mjlog.game_from_file(_p)
+    except Exception:
+        continue
+    for _ri in range(len(_g["rounds"])):
+        _st = replay.initial_state(_g, _ri)
+        for _ev in _g["rounds"][_ri]["events"]:
+            replay.apply_event(_st, _ev)
+        for _s in range(4):
+            for _m in _st["players"][_s]["melds"]:
+                _t = _m["callType"]
+                _meld_cnt[_t] = _meld_cnt.get(_t, 0) + 1
+                _want = 4 if _t in ("kakan", "ankan", "daiminkan") else 3
+                _same = (_t == "chi") or len(set(_x // 4 for _x in _m["tiles"])) == 1
+                if len(_m["tiles"]) != _want or not _same:
+                    _meld_bad.append((os.path.basename(_p), _ri + 1, _s, _t, _m["tiles"]))
+print("      副露统计：%s" % _meld_cnt)
+check(_meld_cnt.get("kakan", 0) > 0 and _meld_cnt.get("daiminkan", 0) > 0,
+      "全量语料里加杠 %d 次 / 大明杠 %d 次（都要有样本）"
+      % (_meld_cnt.get("kakan", 0), _meld_cnt.get("daiminkan", 0)))
+eq(_meld_bad, [], "加杠 / 暗杠 / 大明杠 4 张同种牌、碰 / 吃 3 张（加杠曾只带 1 张，用户 m08125 ①）")
+
 # ------------------------------------------------------------------ 2
 print("=== 2. 打点口径 ===")
 ALL = []
 for g in GAMES:
     ALL.extend(feats.records_for_game(g))
-eq(len(ALL), 2786, "打点行总数（摸牌帧 2679 + 吃碰副露帧 107）")
+eq(len(ALL), 3466, "打点行总数（摸牌帧 2679 + 吃碰副露帧 107 + 鸣牌响应帧 680）")
 KINDS = {}
 for _r in ALL:
     KINDS[_r["kind"]] = KINDS.get(_r["kind"], 0) + 1
-eq(KINDS, {"draw": 2679, "chi": 50, "pon": 57}, "打点行 kind 分布")
+eq(KINDS, {"draw": 2679, "chi": 50, "pon": 57, "wait": 680}, "打点行 kind 分布")
 per_file = sorted(len(feats.records_for_game(g)) for g in GAMES)
-eq(per_file, [364, 530, 531, 576, 785], "各牌谱打点行数（升序）")
+eq(per_file, [458, 660, 676, 699, 973], "各牌谱打点行数（升序）")
 
 # --- 2c. 第 21 轮：17 个第二类特征 -----------------------------------------
 print("=== 2c. 第二类特征（第 21 轮） ===")
-eq(len(feats.FEATURES), 33, "特征注册表 33 项（16 第一类 + 17 第二类）")
+eq(len(feats.FEATURES), 40, "特征注册表 40 项（5 第零类 + 17 第一类 + 17 第二类 + 1 第三类）")
 eq(len(feats.SECOND_KEYS), 17, "第二类特征 17 项")
-eq([f["key"] for f in feats.FEATURES][16:], list(feats.SECOND_KEYS), "后 17 项就是第二类特征（顺序一致）")
+eq([f["key"] for f in feats.FEATURES][:5],
+   ["ai_balance", "ai_superhuro", "ai_mortal41a", "ai_mortal41b", "ai_mortal41c"],
+   "前 5 项 = 第零类特征（用户 m04556 ② / m05937 ②）")
+eq([f["name"] for f in feats.AI_FEATURES],
+   ["NAGA-平衡 分析", "NAGA-超副露 分析", "Mortal-4.1-避四 分析", "Mortal-4.1-平衡 分析", "Mortal-4.1-争一 分析"],
+   "第零类 5 项特征名")
+eq([f["col"] for f in feats.AI_FEATURES],
+   ["f_ai_balance", "f_ai_superhuro", "f_ai_mortal41a", "f_ai_mortal41b", "f_ai_mortal41c"], "第零类列名 = f_ai_*")
+eq(feats.AI_FEATURES[0]["values"], [feats.YES, feats.NO], "第零类取值 = 是/否")
+eq([f["key"] for f in feats.FEATURES][5], "joukyoku", "第零类之后紧跟第一类第 1 项「局况」")
+eq(len(feats.FIRST_KEYS), 17, "第一类特征 17 项（原「NAGA决策」已移入第零类；「等待鸣牌」已移到第三类）")
+eq(len(feats.THIRD_KEYS), 1, "第三类特征 1 项（用户 m07289：从第一类移出，不进检索下拉 / 不列进当前帧特征）")
+eq(feats.THIRD_KEYS[0], "meld_wait", "第三类第 1 项 = 等待鸣牌")
+eq(feats.FIRST_KEYS[6], "riichi_self", "第一类第 7 项 = 自家立直状态（「等待鸣牌」已移到第三类）")
+eq(feats.BY_KEY["meld_wait"]["name"], "等待鸣牌", "等待鸣牌特征名")
+eq(feats.BY_KEY["meld_wait"]["col"], "f_meld_wait", "等待鸣牌列名 = f_meld_wait")
+eq(feats.BY_KEY["meld_wait"]["values"], [feats.YES, feats.NO], "等待鸣牌取值 = 是/否")
+eq([f["key"] for f in feats.FEATURES][-1], "meld_wait", "注册表末项 = 第三类（列顺序 5 + 17 + 17 + 1）")
+_st_wait = replay.initial_state(GAMES[0], 0)
+eq(feats.extract(_st_wait, 0, "wait")["meld_wait"], "是", "等待鸣牌帧（kind='wait'）⇒ 是")
+eq(feats.extract(_st_wait, 0)["meld_wait"], "否", "不传 kind 的普通帧 ⇒ 否")
+eq(feats.FIRST_KEYS[9], "riichi_others_n", "第一类第 10 项 = 立直家（他家）数量")
+eq(feats.FIRST_KEYS[10], "ippatsu", "第一类第 11 项 = 立直家（他家）一发巡（紧随「立直家（他家）数量」，用户 m02357）")
+eq(feats.BY_KEY["ippatsu"]["name"], "立直家（他家）一发巡", "一发巡特征名（用户 m02356 改名）")
+eq(feats.BY_KEY["ippatsu"]["col"], "f_ippatsu", "一发巡列名 = f_ippatsu")
+eq(feats.BY_KEY["ippatsu"]["values"], [feats.YES, feats.NO], "一发巡取值 = 是/否")
+_st_ipp = replay.initial_state(GAMES[0], 0)
+_st_ipp["ippatsu"] = [False, False, True, False]
+eq(feats.extract(_st_ipp, 0)["ippatsu"], "是", "另外三家有一发 ⇒ 是")
+_st_ipp["ippatsu"] = [True, False, False, False]
+eq(feats.extract(_st_ipp, 0)["ippatsu"], "否", "只有自己有一发 ⇒ 否（只看另外三家）")
+eq(feats.ai_values({"naga": {"types": {"0": "ニシキ"}}}),
+   {"ai_balance": "是", "ai_superhuro": "否", "ai_mortal41a": "否", "ai_mortal41b": "否", "ai_mortal41c": "否"},
+   "只含「ニシキ」的报告 → 只有 ai_balance = 是")
+eq(feats.ai_values({}),
+   {"ai_balance": "否", "ai_superhuro": "否", "ai_mortal41a": "否", "ai_mortal41b": "否", "ai_mortal41c": "否"},
+   "天凤牌谱 → 第零类五项全「否」")
+eq(feats.ai_series_text({"naga": {"types": {"0": "ニシキ", "2": "4.1b"}}}), "NAGA, Mortal",
+   "ai_series 辅助列 = 系列去重串")
+# 第 60 轮（用户 m06323 ①；口径按用户 m06560 更正）：第零类按帧判定 —— 「这一帧做决策的那名玩家」
+# 带该模型的决策概率表才是「是」，与该玩家是不是「牌谱初始的主视角」无关
+# （mortal 报告只复盘一家 ⇒ 别家的帧没有数据，永远判「否」）。
+_fg = {"meta": {"viewer_seat": 1},
+       "naga": {"models": [{"index": 0, "raw": "ニシキ", "name": "NAGA-平衡", "series": "NAGA"}],
+                "rounds": [[{"msg": "start_kyoku"},
+                            {"msg": "tsumo", "actor": 0, "dahai_pred": [[1000] + [0] * 33]},
+                            {"msg": "dahai", "actor": 0, "huro": {"1": [{"0": 4000, "4": 6000}]}},
+                            {"msg": "pon", "actor": 1}]]}}
+eq(feats.viewer_seat(_fg), 1, "viewer_seat 取 meta.viewer_seat（缺省 / 非法值 ⇒ 0）")
+eq(feats.viewer_seat({}), 0, "没有 meta 时主视角按 0")
+eq(feats.ai_frame_keys(_fg, 0, 0, 0), ["ai_balance"],
+   "0 号家决策 + 该帧有概率表 ⇒ 是（他不是 meta.viewer_seat 也算，用户 m06560）")
+eq(feats.ai_frame_keys(_fg, 0, 0, 1), [],
+   "同一帧里 1 号家没有数据 ⇒ 否（帧级 dahai_pred 只属于这一帧的 actor）")
+eq(feats.ai_frame_keys(_fg, 0, 1, 1), ["ai_balance"],
+   "huro 按座位给：这一帧的决策者是 1 号家 ⇒ 是（用户 m06560）")
+eq(feats.ai_frame_keys(_fg, 0, 1, 0), [], "同一帧里 0 号家没有数据 ⇒ 否")
+eq(feats.ai_frame_keys(_fg, 0, 2, 1), [], "没有概率表的帧 → 空（该帧五项全「否」）")
+eq(feats.ai_frame_keys(_fg, 0, 0), ["ai_balance"], "不传 seat 时不做座位过滤（只看这一帧有没有数据）")
+eq([k for k, v in feats.ai_frame_values(_fg, 0, 0, 0)[0].items() if v == "是"], ["ai_balance"],
+   "决策者那一行（seat = 0）⇒ 该项 = 是（用户 m06560）")
+eq([k for k, v in feats.ai_frame_values(_fg, 0, 0, 1)[0].items() if v == "是"], [],
+   "不是决策者的行 ⇒ 五项全「否」（与牌谱里有没有该模型无关）")
+_eq_am = feats.ai_frame_values(_fg, 0, 0, 0)
+eq((_eq_am[1], _eq_am[2]), ("NAGA-平衡", "NAGA"), "辅助列 ai_models / ai_series 也按帧给")
+eq([f["key"] for f in feats.FEATURES][22:39], list(feats.SECOND_KEYS), "第 23 项起 17 项就是第二类特征（顺序一致；末项是第三类）")
 eq(sorted(f["col"] for f in feats.FEATURES if f["col"].startswith("s_")),
    sorted("s_" + k for k in feats.SECOND_KEYS), "第二类列名 = s_<key>")
-eq(sorted(set(f["kind"] for f in feats.FEATURES[16:])), ["float", "int"], "第二类特征只有 int / float")
+eq(sorted(set(f["kind"] for f in feats.FEATURES[22:39])), ["float", "int"], "第二类特征只有 int / float")
 miss_keys = [(feats.row_label(r), k) for r in ALL for k in feats.SECOND_KEYS if k not in r["feats"]]
 eq(len(miss_keys), 0, "每行都带 17 个第二类特征（首例 %s）" % (miss_keys[0] if miss_keys else "-"))
 nulls = [(feats.row_label(r), k) for r in ALL for k in feats.SECOND_KEYS if r["feats"][k] is None]
@@ -183,7 +285,8 @@ for g in GAMES:
                 tsumo += 1
 eq(draws, 2701, "摸牌帧总数（含自摸和了）")
 eq(tsumo, 22, "自摸和了帧数（打点排除）")
-eq(draws - tsumo + 107, len(ALL), "摸牌帧 − 自摸和了 + 吃碰副露帧 = 打点行数")
+wait_n = sum(1 for _r in ALL if _r["kind"] == "wait")
+eq(draws - tsumo + 107 + wait_n, len(ALL), "摸牌帧 − 自摸和了 + 吃碰副露帧 + 等待鸣牌帧 = 打点行数")
 chi_pon = 0
 for _g in GAMES:
     for _rnd in _g["rounds"]:
@@ -197,14 +300,21 @@ print("=== 2b. 副露帧 / 巡目口径 ===")
 expect = {}
 for _g in GAMES:
     for _ri in range(len(_g["rounds"])):
+        _evs = _g["rounds"][_ri]["events"]
         for _i, _ev, _st in replay.iter_events(_g, _ri):
             if _ev["type"] == "draw":
-                expect[(_g["log_id"], _ri, _i)] = _st["players"][_ev["player"]]["turns"] + 1
+                expect[(_g["log_id"], _ri, _i, None)] = _st["players"][_ev["player"]]["turns"] + 1
             elif _ev["type"] == "call" and _ev["callType"] in ("chi", "pon"):
-                expect[(_g["log_id"], _ri, _i)] = _st["players"][_ev["player"]]["turns"] + 1
-eq(len(expect), draws + 107, "独立重算表 = 摸牌帧 %d + 吃碰帧 107" % draws)
+                expect[(_g["log_id"], _ri, _i, None)] = _st["players"][_ev["player"]]["turns"] + 1
+            elif _ev["type"] == "discard":
+                # 第 63 轮（用户 m07289 ①）：判据 = 「这张牌可能被他家鸣牌」（含食替 / 立直家不能鸣牌），
+                # 与 mjscore.feats.responders 同源；可能鸣牌的那一家各一行。
+                for _s in feats.responders(_st, _ev["player"], mjlog.kind_of(_ev["tile"])):
+                    expect[(_g["log_id"], _ri, _i, _s)] = _st["players"][_s]["turns"] + 1
+eq(len(expect), draws + 107 + 680, "独立重算表 = 摸牌帧 %d + 吃碰帧 107 + 鸣牌响应帧 680" % draws)
 miss = [r for r in ALL
-        if expect.get((r["log_id"], r["round_index"], r["ev_index"])) != r["junme"]]
+        if expect.get((r["log_id"], r["round_index"], r["ev_index"],
+                       (r["seat"] if r["kind"] == "wait" else None))) != r["junme"]]
 eq(len(miss), 0, "巡目独立重算全部一致（首例 %s）"
    % (feats.row_label(miss[0]) if miss else "-"))
 
@@ -243,7 +353,7 @@ replay.apply_call(_s3, {"type": "call", "player": 2, "callee": 3, "rel": 1, "m":
                         "callType": "kakan", "tiles": [0]})
 eq(_s3["players"][2]["turns"], _t0 + 2, "构造：加杠 +1 巡目")
 
-calls = [r for r in ALL if r["kind"] != "draw"]
+calls = [r for r in ALL if r["kind"] in ("chi", "pon")]
 eq(len(calls), 107, "副露帧行数")
 eq(sorted(set(r["kind"] for r in calls)), ["chi", "pon"], "副露帧 kind 只有 chi/pon")
 eq(sorted(set(r["drawn"] for r in calls)), [None], "副露帧没有摸到的牌（drawn=None）")
@@ -251,6 +361,17 @@ eq(sum(1 for r in calls if r["frame_index"] != r["ev_index"] + 1), 0,
    "副露帧 frame_index = ev_index + 1")
 eq(sum(1 for r in calls if not LABEL_RE.match(feats.row_label(r))), 0, "副露帧条目名格式一致")
 eq(sum(1 for r in calls if not (5 <= r["hand_size"] <= 11)), 0, "副露帧手牌数 5..11")
+# --- 第 62 轮：等待鸣牌帧（kind='wait'，用户 m06801 / m06832）-------------------------
+waits = [r for r in ALL if r["kind"] == "wait"]
+eq(len(waits), 680, "鸣牌响应帧行数（可能鸣牌的那一家各一行，用户 m07289 ①）")
+eq(sorted(set(r["drawn"] for r in waits)), [None], "鸣牌响应帧没有摸到的牌（drawn=None）")
+eq(sum(1 for r in waits if r["frame_index"] != r["ev_index"] + 1), 0,
+"鸣牌响应帧 frame_index = ev_index + 1（= 播放里显示这张出牌的那一帧）")
+eq(sum(1 for r in waits if r["feats"]["meld_wait"] != feats.YES), 0, "鸣牌响应帧 meld_wait 全为「是」")
+eq(sum(1 for r in ALL if r["kind"] != "wait" and r["feats"]["meld_wait"] != feats.NO), 0,
+"非鸣牌响应帧 meld_wait 全为「否」")
+eq(sum(1 for r in waits if not LABEL_RE.match(feats.row_label(r))), 0, "鸣牌响应帧条目名格式一致")
+eq(sum(1 for r in waits if not (1 <= r["hand_size"] <= 13)), 0, "鸣牌响应帧手牌数 1..13")
 eq(sum(1 for r in ALL if r["kind"] == "draw" and r["hand_size"] > 14), 0, "摸牌帧手牌数 <= 14")
 
 bad = {}
@@ -318,31 +439,33 @@ res = cli.analyze(FILES, db=py_db, tool="python", full=True)
 eq(res["ok"], True, "analyze 返回 ok")
 eq(res["tool"], "python", "指定 --tool python")
 eq(res["logs"], 5, "analyze 牌谱数")
-eq(res["annotations"], 2786, "本次打点数")
-eq(res["db_total"], 2786, "库内总行数")
-eq((res.get("rows_draw"), res.get("rows_call")), (2679, 107), "analyze 返回摸牌帧/副露帧拆分")
+eq(res["annotations"], 3466, "本次打点数")
+eq(res["db_total"], 3466, "库内总行数")
+eq((res.get("rows_draw"), res.get("rows_call"), res.get("rows_wait")), (2679, 107, 680),
+"analyze 返回摸牌帧/副露帧/鸣牌响应帧拆分")
 eq(res["rounds"], 58, "库内对局数")
 eq(res["warnings"], [], "analyze 无警告")
 eq(len(res["detail"]), 5, "detail 每条牌谱一项")
-eq(sorted(d["annotations"] for d in res["detail"]), [364, 530, 531, 576, 785], "detail 打点数")
+eq(sorted(d["annotations"] for d in res["detail"]), [458, 660, 676, 699, 973], "detail 打点数")
 
 conn = store.connect(py_db, create=False)
 _m = store.get_meta(conn)
 check(len(_m) >= 5, "meta 可读（%d 项）" % len(_m))
 eq(store.get_meta(conn).get("schema_version"), str(store.SCHEMA_VERSION), "meta schema_version")
-eq(store.SCHEMA_VERSION, 3, "结构版本 = 3（第 21 轮新增 17 个第二类特征列）")
+eq(store.SCHEMA_VERSION, 10, "结构版本 = 10（第 63 轮：wait 行改判据 + 拆出第三类，用户 m07289）")
 conn.execute("UPDATE meta SET v = '1' WHERE k = 'schema_version'")
 conn.commit()
 try:
     store.connect(py_db, create=False)
     check(False, "旧结构版本库应拒绝打开")
 except ValueError as _exc:
-    check("请删除后重新分析" in str(_exc), "旧结构版本提示：%s" % _exc)
+    check("数据库版本过低" in str(_exc) and "请删除后重新分析" in str(_exc),
+          "旧结构版本提示写明「数据库版本过低」：%s" % _exc)
 conn.execute("UPDATE meta SET v = ? WHERE k = 'schema_version'", (str(store.SCHEMA_VERSION),))
 conn.commit()
 eq(store.get_meta(conn).get("app_version"), store.APP_VERSION, "meta 记录生成该库的软件版本")
 eq(store.app_version_of(conn), store.APP_VERSION, "app_version_of")
-eq(store.APP_VERSION, "0.1.0", "软件版本 = 0.1.0（第 22 轮起写进 meta.app_version）")
+eq(store.APP_VERSION, "1.3.0", "软件版本 = 1.3.0（第 63 轮；schema ≤9 的库不再支持）")
 conn.execute("UPDATE meta SET v = '0.0.9' WHERE k = 'app_version'")
 conn.commit()
 conn.close()
@@ -350,7 +473,7 @@ try:
     store.connect(py_db, create=False)
     check(False, "软件版本不匹配的库应拒绝打开")
 except ValueError as _exc:
-    check("数据库由软件版本" in str(_exc) and "0.0.9" in str(_exc), "软件版本不匹配提示：%s" % _exc)
+    check("数据库版本不匹配" in str(_exc) and "0.0.9" in str(_exc), "软件版本不匹配提示：%s" % _exc)
 _raw = sqlite3.connect(py_db)
 _raw.execute("UPDATE meta SET v = ? WHERE k = 'app_version'", (store.APP_VERSION,))
 _raw.commit()
@@ -415,27 +538,29 @@ q = store.query(conn, [
 eq(q["total"], 1, "检索 巡目=3 且 供托>=1000 且 自家立直状态=是")
 if q["rows"]:
     row = q["rows"][0]
-    eq(row["idx"], 2167, "命中行 idx")
+    eq(row["idx"], 2696, "命中行 idx")
     eq(row["log_id"], "2026083021gm-00a9-0000-d0810acf", "命中行牌谱")
     eq(row["joukyoku"], "東三局", "命中行局况")
     eq(row["ev_index"], 22, "命中行事件下标")
     eq(row["frame_index"], 23, "命中行帧下标 = ev_index+1")
     eq(row["label"], feats.row_label(row), "命中行条目名")
-    eq(row["log_path"].endswith("d0810acf.xml"), True, "命中行 log_path")
+    eq(row["log_path"].endswith("d0810acf.tenhou"), True, "命中行 log_path")
 eq(q["used"], ["巡目", "供托", "自家立直状态"], "compile_query 用到的特征名")
 allq = store.query(conn, [{"key": "junme", "expr": ">=1"}], limit=5000)
-eq(allq["total"], 2786, "巡目>=1 覆盖全部打点行")
+eq(allq["total"], 2786, "巡目>=1 且第三类默认「出牌」= 出牌帧 2786 行（2679 摸牌 + 107 副露，不含 680 行鸣牌响应帧）")
 eq(sum(1 for r in allq["rows"] if r["label"] == feats.row_label(r)), 2786, "全部行的 label 与条目名格式一致")
-eq(sorted(set(r["kind"] for r in allq["rows"])), ["chi", "draw", "pon"], "检索结果行带 kind")
+eq(sorted(set(r["kind"] for r in allq["rows"])), ["chi", "draw", "pon"], "默认「出牌」的检索结果行不带 wait（用户 m07289）")
+eq(store.query(conn, [{"key": "junme", "expr": ">=1"}], limit=5000,
+               wait=store.WAIT_CALL)["total"], 680, "切到「鸣牌响应」= 680 行")
 _chi = [r for r in allq["rows"] if r["kind"] == "chi"][0]
 eq(_chi["kind"], "chi", "副露帧行 kind：%s" % _chi["label"])
 one = store.query_detail(conn, allq["rows"][0]["idx"])
-eq(len(one["feats"]), 33, "query_detail 展开 33 个特征（16 + 17）")
+eq(len(one["feats"]), 40, "query_detail 展开 40 个特征（5 + 17 + 17 + 1）")
 rf = store.round_frames(conn, allq["rows"][0]["log_id"], 0)
 eq(len(rf) > 0, True, "round_frames 返回本局帧")
 check("kind" in rf[0], "round_frames 行含 kind")
 _exp = store.export_json(conn, limit=3)
-eq((len(_exp["frames"]), len(_exp["features"]), len(_exp["source"])), (3, 33, 5),
+eq((len(_exp["frames"]), len(_exp["features"]), len(_exp["source"])), (3, 40, 5),
    "export_json 结构 meta/features/source/frames")
 conn.close()
 
@@ -447,6 +572,37 @@ for bad_cond, frag in [([{"key": "junme", "expr": "boom"}], "可接受条件"),
         check(False, "坏条件应报错：%r" % bad_cond)
     except ValueError as exc:
         check(frag in str(exc), "坏条件提示（%s）：%s" % (frag, exc))
+# --- 2d. 第 52 轮：第零类特征与四种检索方案（用户 m04556 ②③） ---------------
+print("=== 2d. 第零类特征与检索方案（第 52 轮） ===")
+eq([k for k, _n in ai_models.MODES], ["any", "naga", "mortal", "multi"],
+   "四种互斥检索方案：任意AI决策 / NAGA决策 / Mortal决策 / 同时具有")
+eq([n for _k, n in ai_models.MODES], ["任意AI决策", "NAGA决策", "Mortal决策", "同时具有"], "四种方案的中文名")
+_base = [{"key": "junme", "expr": ">=1"}]        # 「不筛选」的基准查询（空条件会报错，必须带一条）
+_tot = cli.run_query(py_db, _base)["total"]
+for _ai, _want, _lab in [({"mode": "any", "picks": []}, 0, "任意AI决策"),
+                         ({"mode": "naga", "picks": []}, 0, "NAGA决策"),
+                         ({"mode": "mortal", "picks": []}, 0, "Mortal决策"),
+                         ({"mode": "multi", "picks": []}, _tot, "同时具有（不勾 = 不筛选）")]:
+    eq(cli.run_query(py_db, _base, ai=_ai)["total"], _want,
+       "天凤库里第零类方案「%s」命中 %d 行" % (_lab, _want))
+try:
+    cli.run_query(py_db, [])
+    check(False, "既无条件也无第零类方案应报错")
+except ValueError as exc:
+    check("至少" in str(exc), "空条件 / 空方案提示：%s" % exc)
+for _ai, _frag in [({"mode": "nope", "picks": []}, "未知的第零类检索方案"),
+                   ({"mode": "multi", "picks": ["nope"]}, "未知的第零类特征")]:
+    try:
+        cli.run_query(py_db, [], ai=_ai)
+        check(False, "坏的第零类方案应报错：%r" % _ai)
+    except ValueError as exc:
+        check(_frag in str(exc), "坏方案提示（%s）：%s" % (_frag, exc))
+try:
+    cli.run_query(py_db, [{"key": "ai_balance", "expr": "是"}])
+    check(False, "第零类特征走「特征词条」应报错")
+except ValueError as exc:
+    check("第零类" in str(exc), "第零类特征不能走特征词条：%s" % exc)
+
 try:
     cli.resolve_feature("巡目")
     check(True, "resolve_feature 支持中文名")
@@ -483,7 +639,7 @@ eq(nodeharness.available(), True, "检测到 node 运行时")
 node_db = os.path.join(TMP, "node.sqlite")
 res_n = cli.analyze(FILES, db=node_db, tool="node", full=True)
 eq(res_n["tool"], "node", "指定 --tool node")
-eq(res_n["annotations"], 2786, "node 打点数与 python 一致")
+eq(res_n["annotations"], 3466, "node 打点数与 python 一致")
 auto_db = os.path.join(TMP, "auto.sqlite")
 res_a = cli.analyze([FILES[0]], db=auto_db, tool="auto")
 eq(res_a["tool"], "node", "--tool auto 优先 node")
@@ -504,8 +660,8 @@ def dump(db_path):
 
 keep, rows_n, full_n = dump(node_db)
 _, rows_p, full_p = dump(py_db)
-eq(len(rows_n), 2786, "node 库 frame 行数")
-eq(len(rows_p), 2786, "python 库 frame 行数")
+eq(len(rows_n), 3466, "node 库 frame 行数")
+eq(len(rows_p), 3466, "python 库 frame 行数")
 eq(sum(1 for c in keep if c.startswith("s_")), 17, "交叉校验覆盖 17 个第二类特征列")
 diffs = 0
 first = ""
@@ -520,9 +676,9 @@ eq(full_n > 0, True, "full=True 写了 frame_full")
 
 # --- 4b. 第 14 轮：同一牌谱重分析不留孤儿 frame_full ------------------------
 res_re = cli.analyze(FILES, db=py_db, tool="python", full=True)
-eq(res_re["db_total"], 2786, "重分析后库内总行数不变")
+eq(res_re["db_total"], 3466, "重分析后库内总行数不变")
 _, rows_re, full_re = dump(py_db)
-eq(len(rows_re), 2786, "重分析后 frame 行数不变")
+eq(len(rows_re), 3466, "重分析后 frame 行数不变")
 eq(full_re, full_p, "重分析后 frame_full 行数不膨胀（%d）" % full_re)
 _c = sqlite3.connect(py_db)
 _orph = _c.execute("SELECT COUNT(*) c FROM frame_full WHERE frame_idx NOT IN"
@@ -571,7 +727,7 @@ eq(download.looks_like_mjlog(b'<mjloggm ver="2.3"></mjloggm>'), True, "mjlog 内
 eq(download.looks_like_mjlog(b"<html>nope</html>"), False, "非牌谱内容识别")
 _dl_tmp = os.path.join(TMP, "dl")
 _p1, _w1 = download.save_log(LOGID, b'<mjloggm ver="2.3"></mjloggm>', _dl_tmp, overwrite=True)
-eq((os.path.isfile(_p1), _w1), (True, True), "save_log 写入 <log_id>.xml")
+eq((os.path.isfile(_p1), _w1), (True, True), "save_log 写入 <log_id>.tenhou")
 _p2, _w2 = download.save_log(LOGID, b"second", _dl_tmp, overwrite=False)
 eq((_p2, _w2), (_p1, False), "save_log overwrite=False 时跳过")
 eq(open(_p1, "rb").read().startswith(b"<mjloggm"), True, "overwrite=False 保留原内容")
@@ -612,7 +768,10 @@ try:
     eq((d.get("author"), d.get("author_email")), ("Zumma Crystal", "z1025zzsg@sohu.com"),
        "health 带作者信息（m04115③）")
     st, d = http("/api/features")
-    eq((st, len(d.get("features") or [])), (200, 33), "GET /api/features 33 项（16 + 17）")
+    eq((st, len(d.get("features") or [])), (200, 40), "GET /api/features 40 项（5 + 17 + 17 + 1）")
+    eq(len(d.get("ai_features") or []), 5, "features 带 ai_features 5 项（第零类）")
+    eq([m["key"] for m in (d.get("ai_modes") or [])], ["any", "naga", "mortal", "multi"],
+       "features 带 4 种第零类检索方案")
     eq(d.get("schema_version"), store.SCHEMA_VERSION, "features 带 schema_version")
     eq(d.get("version"), store.APP_VERSION, "features 带软件版本")
     check(bool(d.get("name")), "features 带软件名：%s" % d.get("name"))
@@ -620,8 +779,8 @@ try:
        "features 带作者信息（m04115③）")
     eq(bool(d.get("doukou")), True, "features 带口径说明")
     _enums = [f for f in (d.get("features") or []) if f.get("kind") == "enum"]
-    eq((len(_enums), all(bool(f.get("values")) for f in _enums)), (7, True),
-       "7 个互斥取值特征都带 values（前端据此渲染下拉）")
+    eq((len(_enums), all(bool(f.get("values")) for f in _enums)), (14, True),
+       "14 个互斥取值特征都带 values（第零类 5 项 + 第一类 8 项 + 第三类 1 项；前端据此渲染下拉）")
     eq(feats.BY_KEY["oya_meld"]["name"], "亲家（他家）副露状态", "特征 15 显示名已修正")
     # --- 第 23 轮：向听数对外显示 >=3（显示口径；检索仍按内部整数匹配，见第 6 节 5 条）---
     eq(cli.feat_value_text("shanten_mentsu", 3), ">=3", "向听数内部值 3 显示为 >=3")
@@ -651,7 +810,7 @@ try:
     print("  -- POST /api/analyze（5 个基础牌谱 + node，含第二类特征补列，耗时较长）")
     st, d = http("/api/analyze", {"paths": FILES, "db_name": "__mjtest__", "tool": "node"}, timeout=3600)
     eq((st, d.get("ok")), (200, True), "POST /api/analyze（文件列表 + node）")
-    eq((d.get("logs"), d.get("db_total")), (5, 2786), "analyze 摘要")
+    eq((d.get("logs"), d.get("db_total")), (5, 3466), "analyze 摘要")
     eq(d.get("warnings"),
        ["--tool node：第一类特征来自 node，第二类 17 项由 python 补齐（js 侧没有实现）"],
        "analyze 带 node 路径的第二类特征补齐警告")
@@ -669,7 +828,7 @@ try:
     check("都已经在数据库里了" in str(d5.get("error")), "扩充重复提示：%s" % d5.get("error"))
     st5, d5 = http("/api/detail", {"db_name": "__mjtest_ver__", "idx": 1})
     eq(st5, 400, "版本不匹配的库拒绝加载 400")
-    check("数据库由软件版本" in str(d5.get("error")), "版本不匹配提示：%s" % d5.get("error"))
+    check("数据库版本不匹配" in str(d5.get("error")), "版本不匹配提示：%s" % d5.get("error"))
     st, d = http("/api/download-progress")
     eq((st, isinstance(d.get("progress"), dict)), (200, True), "GET /api/download-progress")
 
@@ -684,7 +843,7 @@ try:
                                       "round_index": _pick["round_index"], "frame_index": _pick["frame_index"]})
     eq((st, (d.get("row") or {}).get("frame_index")), (200, _pick["frame_index"]),
        "POST /api/frame-feats 命中帧（round %d / frame %d）" % (_pick["round_index"], _pick["frame_index"]))
-    eq(len(((d.get("row") or {}).get("feats") or {})), 33, "frame-feats 行带 33 个特征")
+    eq(len(((d.get("row") or {}).get("feats") or {})), 40, "frame-feats 行带 40 个特征")
     st, d = http("/api/frame-feats", {"db_name": "__mjtest__", "log_id": "nope",
                                       "round_index": 0, "frame_index": 1})
     eq((st, d.get("row")), (200, None), "POST /api/frame-feats 未命中返回 null")
@@ -732,14 +891,14 @@ try:
           "检索不存在的库不会顺手建库")
 
     st, d = http("/api/browse", {"db_name": "__mjtest__", "limit": 0})
-    eq((st, d.get("total"), len(d.get("rows") or [])), (200, 2786, 2786), "POST /api/browse limit=0 取全 2786 行")
+    eq((st, d.get("total"), len(d.get("rows") or [])), (200, 3466, 3466), "POST /api/browse limit=0 取全 3466 行")
     eq(set(d["rows"][0].keys()) >= {"idx", "log_id", "frame_index", "seat", "label", "log_path", "kind"}, True,
        "browse 行含定位/条目/牌谱路径/kind 字段")
     st, d = http("/api/browse", {"db_name": "__mjtest__", "limit": 100, "offset": 10})
     eq((st, len(d.get("rows") or [])), (200, 100), "POST /api/browse 分页")
 
     st, d = http("/api/detail", {"db_name": "__mjtest__", "idx": 2076})
-    eq((st, len(((d.get("row") or {}).get("feats") or {}))), (200, 33), "POST /api/detail 展开 33 特征")
+    eq((st, len(((d.get("row") or {}).get("feats") or {}))), (200, 40), "POST /api/detail 展开 40 特征")
     st, d = http("/api/round-frames", {"db_name": "__mjtest__", "log_id": "2026083021gm-00a9-0000-d0810acf",
                                        "round_index": 0})
     eq((st, len(d.get("rows") or []) > 0), (200, True), "POST /api/round-frames")

@@ -18,7 +18,7 @@ function walkXml(root, out, baseRoot) {
   ents.forEach(function (e) {
     var p = path.join(root, e.name);
     if (e.isDirectory()) { walkXml(p, out, base); }
-    else if (/\.xml$/i.test(e.name)) { out.push(path.relative(base, p)); }
+    else if (/\.(tenhou|xml|mjlog)$/i.test(e.name)) { out.push(path.relative(base, p)); }   /* 用户 m05545 ② 后本地牌谱多为 .tenhou */
   });
   return out.sort();
 }
@@ -31,7 +31,7 @@ var BASE_IDS = ['2026082919gm-00a9-0000-4e40cd3e', '2026082920gm-00a9-0000-5db95
 function pickBase(all) {
   var pick = [];
   BASE_IDS.forEach(function (id) {
-    var hit = all.filter(function (p) { return path.basename(p) === id + '.xml'; })[0];
+    var hit = all.filter(function (p) { return path.basename(p).replace(/\.(tenhou|xml|mjlog)$/i, '') === id; })[0];
     if (hit) { pick.push(hit); }
   });
   return pick.length ? pick : all;

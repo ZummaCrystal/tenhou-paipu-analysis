@@ -25,7 +25,8 @@
   var WINDS = ['東', '南', '西', '北'];
   var CALL_NAME = { chi: '吃', pon: '碰', kakan: '加杠', daiminkan: '大明杠', ankan: '暗杠', nuki: '拔北' };
   var RIVER_COLS = 6;          /* 牌河每排张数 */
-  var RIVER_ROWS = 4;          /* 牌河预留排数 */
+  var RIVER_TILE_ROWS = 3;     /* 牌最多占几排：第 13 张起全在第 3 排向右延伸（用户 m08576） */
+  var RIVER_ROWS = 4;          /* 牌河预留排数（第 4 排只留白：布局固定，手牌位置不跳） */
 
   /* 天凤 log 的役 id（0..54）。未知 id 退化为「役#id」。 */
   var YAKU = {
@@ -105,14 +106,20 @@
     var r = tbl[rel];
     return (r === undefined) ? 0 : r;
   }
-  function meldEl(m, seat) {
+  /* nextIds = 本帧主视角「准备杠（暗杠 / 加杠）」的牌 id 列表（用户 m08178）：落在副露区的
+   * 那几张也要框细红框（加杠 = 手里 1 张 + 副露区那 3 张）。打牌那一张不在这里，由手牌循环处理。 */
+  function meldEl(m, seat, nextIds) {
     var box = el('div', 'meld meld-' + m.callType);
-    box.appendChild(el('span', 'meld-tag', CALL_NAME[m.callType] || m.callType));
+    /* 副露区不再写「吃 / 碰 / 杠」文字（用户 m04160 ②）：牌型本身 + 牌河里的红框已足够，
+     * 文字标签只会占宽度。副露种类仍在 DOM 的 class（meld-chi / meld-pon / …）与事件列表里。 */
     var t = el('div', 'tiles'), i, list, rot;
+    var nx = nextIds || [];
+    function ncls(id) { return (nx.indexOf(id) >= 0) ? ' next' : ''; }
     if (m.callType === 'ankan') {
       /* 暗杠：第一、四张反扣，第二、三张正面朝上，全部竖放 */
       for (i = 0; i < m.tiles.length; i++) {
-        t.appendChild(tileEl(m.tiles[i], { back: (i === 0 || i === m.tiles.length - 1) }));
+        t.appendChild(tileEl(m.tiles[i], {
+          back: (i === 0 || i === m.tiles.length - 1), cls: ncls(m.tiles[i]) }));
       }
     } else if (m.callType === 'kakan') {
       /* 加杠：[0] 是加进去的那张，横着叠在原先碰出来的那张横牌上 */
@@ -121,11 +128,11 @@
       for (i = 0; i < list.length; i++) {
         if (i === rot) {
           var stack = el('div', 'tile-stack');
-          stack.appendChild(tileEl(list[i], { cls: 'rot' }));
-          stack.appendChild(tileEl(m.tiles[0], { cls: 'rot added' }));
+          stack.appendChild(tileEl(list[i], { cls: 'rot' + ncls(list[i]) }));
+          stack.appendChild(tileEl(m.tiles[0], { cls: 'rot added' + ncls(m.tiles[0]) }));
           t.appendChild(stack);
         } else {
-          t.appendChild(tileEl(list[i]));
+          t.appendChild(tileEl(list[i], { cls: ncls(list[i]) }));
         }
       }
     } else {
@@ -139,7 +146,7 @@
       }
       rot = rotIndexOf(m, list, seat);
       for (i = 0; i < list.length; i++) {
-        t.appendChild(tileEl(list[i], { cls: (i === rot ? 'rot' : '') }));
+        t.appendChild(tileEl(list[i], { cls: (i === rot ? 'rot' : '') + ncls(list[i]) }));
       }
     }
     box.appendChild(t);
@@ -151,24 +158,41 @@
   var SEAT_ROT = { 0: 'r0', 1: 'r270', 2: 'r180', 3: 'r90' };
   var ROT_NAME = { r0: '下（自家）', r90: '左（上家）', r180: '上（対面）', r270: '右（下家）' };
 
+  /* 大字（vocalization）的「展示位置 → 桌面百分比坐标」（用户 m03978 ②）。
+   * 官方 viewer 的 vocalization_pos = [[350,500],[560,320],[350,160],[140,320]]、桌面 700×650、
+   * 字号 60 ÷ 牌高 40 = 1.5 倍牌高（见 build/_scratch/naga_samples/_viewer_index.js 的 renderBa）。
+   * 下标 = 展示位置：0 下（主视角）/ 1 右 / 2 上 / 3 左 —— 与 .board 的 grid 区域一一对应。 */
+  var VOCAL_POS = [[50, 76.92], [80, 49.23], [50, 24.62], [20, 49.23]];
+
   /**
-   * 牌河：每 RIVER_COLS 张一排。DOM 里第 1 排在前、CSS 用 column 排列，
-   * 让第 1 排贴着中央信息框，后续排朝外侧（手牌方向）生长（CSS 预留 RIVER_ROWS 排高度）。
+   * 牌河：每排最多 RIVER_COLS 张、最多 RIVER_TILE_ROWS 排（用户 m08576）。
+   * 前 6 张进第 1 排、再 6 张进第 2 排，**第 13 张起全部放在第 3 排、向右延伸**（不再放入第 4 排）；
+   * CSS 仍按 RIVER_ROWS 排预留高度 ⇒ 牌河变长时手牌位置不跳（m01386）。
+   * DOM 里第 1 排在前、CSS 用 column 排列，让第 1 排贴着中央信息框、后续排朝外侧（手牌方向）生长。
+   * markLast = true 时把这一家的最后一张牌加黄框（牌谱检索 / 全部浏览的「鸣牌响应局面」，
+   * 用户 m07820 补充 2：主视角正在等着回应吃 / 碰 / 杠的那张被打出的牌）。
    */
-  function riverEl(river) {
+  function riverEl(river, markLast) {
     var box = el('div', 'p-river river');
-    for (var r = 0; r < river.length; r += RIVER_COLS) {
+    var start = 0, rowNo = 0;
+    while (start < river.length) {
       var row = el('div', 'river-row');
-      var end = Math.min(r + RIVER_COLS, river.length);
-      for (var c = r; c < end; c++) {
+      /* 最后一排（第 RIVER_TILE_ROWS 排）把剩下的牌全部装下、不再折行（用户 m08576） */
+      var end = (rowNo >= RIVER_TILE_ROWS - 1)
+        ? river.length
+        : Math.min(start + RIVER_COLS, river.length);
+      for (var c = start; c < end; c++) {
         var e = river[c], cls = [];
         if (e.tsumogiri) { cls.push('tsumogiri'); }
         if (e.riichi) { cls.push('rot'); }     /* 立直宣言牌：只横放，不加方框也不加文字 */
         if (e.called) { cls.push('called'); }   /* 被鸣走的牌：留在牌河里，用红框标出 */
         if (e.win) { cls.push('win'); }          /* 荣和的铳牌：留在放铳者牌河最后一张，用绿框标出（m00569 ①） */
+        if (markLast && c === river.length - 1) { cls.push('mark'); }   /* 黄框（用户 m07820 补充 2） */
         row.appendChild(tileEl(e.tile, { cls: cls.join(' ') }));
       }
       box.appendChild(row);
+      start = end;
+      rowNo += 1;
     }
     return box;
   }
@@ -178,9 +202,64 @@
    * renderPlayer(cellEl, state, seat, opts)
    * 依 DOM 顺序（即自家视角「从中心到外侧」）：抬头 -> 牌河 -> 手牌+副露
    */
-  function renderPlayer(cellEl, st, seat, opts) {
+    // ---- NAGA 决策条（用户 m00198 ③）------------------------------------------
+    // 牌上方 = 打牌预测柱（官方 renderDahaiGraph：柱高 = 牌高 × 概率，最大项再叠高亮框）；
+    // 牌下方 = 三条危险条（官方 renderTehai：上家 K 蓝 / 対面 T 黄 / 下家 S 绿，每条宽 30.7% 牌宽）。
+    // 两条都只画在「当前决策者」手上（用户 m02007 ② / m03710 ①），别家一律不画。
+    // 第 43 轮一度把危险条挪成「手牌左侧的竖条」，用户 m03799 ① 要求回滚：危险条回到手牌下方
+    // （本函数），那套「竖条 + 基色边框 + 红色自下而上」的形态改用到听牌率条上（见 .p-tenpai）。
+    function nagaPctText(p) {                      // 万分比 → 统一一位小数（用户 m02227 ①）
+      var v = (Number(p) || 0) / 100;
+      return v.toFixed(1) + '%';
+    }
+
+    /* 决策条：牌上方 = 打牌预测柱，牌下方 = 三条危险条（用户 m00198 ③ / m03710 ①②）。
+     * 两条都只画在「当前决策者」手上（轮到谁决策就显示谁的，用户 m02007 ②），同种牌只在最靠左
+     * 那张画（用户 m00198 ③）。危险条的取值 = danger_*[手牌主人][kind]，0 不画（与官方一致）。
+     * 尺寸一律用百分比：绝对定位子元素的包含块 = 祖先的 padding edge，而 .tile 没有边框
+     * ⇒ padding box 就是整张牌的外框，百分比按牌宽 / 牌高算（用户 m03799 ②：不要给牌加定位层）。 */
+    function addNagaBars(node, id, nf, seen, mode, obs) {
+      if (!nf) { return; }
+      var kind = Tiles.kindOf(id);
+      if (seen[kind]) { return; }
+      seen[kind] = true;
+      if (mode === 'down') {
+        /* 危险条：三条并排画在牌下方（官方：每条宽 30.7% 牌宽，左偏移 3.4% / 34.1% / 64.8%） */
+        var oc = (typeof obs === 'number' && obs >= 0) ? obs : 0;
+        var combos = [['k', nf.danger_k, '上家'], ['t', nf.danger_t, '対面'], ['s', nf.danger_s, '下家']];
+        for (var i = 0; i < combos.length; i++) {
+          var arr = combos[i][1];
+          var row = (arr && arr.length) ? (arr[oc] || arr[0]) : null;
+          var val = (row && row.length) ? (row[kind] || 0) : 0;
+          if (!(val > 0)) { continue; }
+          var dn = el('span', 'tbar down ' + combos[i][0]);
+          dn.style.height = (val / 100).toFixed(2) + '%';
+          dn.title = Tiles.tileLabel(id) + ' ' + combos[i][2] + '危险度 ' + nagaPctText(val);
+          node.appendChild(dn);
+          node.classList.add('bars');
+        }
+        return;
+      }
+      var dp = nf.dahai_pred;
+      var p = (dp && dp.length) ? (dp[kind] || 0) : 0;
+      if (!(p > 0)) { return; }
+      var maxK = -1, maxP = 0;
+      for (var k = 0; k < dp.length; k++) {
+        if ((dp[k] || 0) > maxP) { maxP = dp[k]; maxK = k; }
+      }
+      var up = el('span', 'tbar up' + (kind === maxK ? ' max' : ''));
+      up.style.height = (p / 100).toFixed(2) + '%';
+      up.title = '打 ' + Tiles.tileLabel(id) + ' 预测 ' + nagaPctText(p);
+      node.appendChild(up);
+      node.classList.add('bars');
+    }
+
+  /* pos = 展示位置（0 下 / 1 右 / 2 上 / 3 左）：整块面板按「位置」旋转，与绝对座位无关 ——
+     换主视角只需改 app.js 的 viewRot 旋转向量，四家的相对方位自动保持（用户 m03343 ②）。 */
+  function renderPlayer(cellEl, st, seat, opts, pos) {
     clear(cellEl);
     var pl = st.players[seat];
+    if (pos === undefined || pos === null) { pos = seat; }   /* 兼容旧调用：按绝对座位摆 */
     var self = (seat === opts.selfSeat);
     /* 和了帧 / 流局帧是特例（m00569 ①②、m00635 ①）：只摊开 st.reveal 名单里的手牌，名单外的三家
      * （含自家）一律隐藏，与「隐藏他家手牌」按钮无关；下一局开始自动恢复用户选的显示/隐藏。
@@ -195,8 +274,8 @@
       hidden = opts.hideOthers && !self;
     }
 
-    var rot = el('div', 'p-rot ' + SEAT_ROT[seat]);
-    rot.title = (pl.name || '') + ' · ' + ROT_NAME[SEAT_ROT[seat]];
+    var rot = el('div', 'p-rot ' + SEAT_ROT[pos]);
+    rot.title = (pl.name || '') + ' · ' + ROT_NAME[SEAT_ROT[pos]];
 
     /* ① 抬头：风位 + 当前点数（整块随面板旋转，所以四家各自的文字朝向自己） */
     var head = el('div', 'p-head');
@@ -209,7 +288,8 @@
     rot.appendChild(head);
 
     /* ② 牌河（靠近中心一侧） */
-    rot.appendChild(riverEl(pl.river));
+    /* 黄框只画在「等待鸣牌响应」的那张牌上（opts.mark.seat = 打出这张牌的人，用户 m07820 补充 2） */
+    rot.appendChild(riverEl(pl.river, !!(opts.mark && opts.mark.seat === seat)));
 
     /* ③④ 手牌 + 副露（最外侧一行；副露在手牌右侧。摸到的牌单独放在手牌末端） */
     /* 摸到的牌单独摆在手牌末端；和了帧也照上一帧的摆法显示（m00569 ②：不插进手牌） */
@@ -220,32 +300,125 @@
     if (drawn !== null) { k = rest.indexOf(drawn); if (k >= 0) { rest.splice(k, 1); } }
     rest = Tiles.sortHand(rest);
 
+    /* 决策条（用户 m02007 ② / m03710 ①②）：打牌预测柱与铳率条都只画在「当前决策者」手上 ——
+     * 轮到谁决策就显示谁的，别家一律不画（用户在截图里指出：显示他家手牌时别家手牌下方也跟着
+     * 出现条文，混淆了「谁在决策」）。同种牌只画最靠左那张（用户 m00198 ③）；5m / 5p / 5s 例外 ——
+     * 优先画在普通 5 上、避开赤 5（用户 m04498，见下面的 barOwner）。
+     * 第 43 轮把铳率条挪成「手牌左侧的竖条」，用户 m03799 ① 要求回滚到手牌下方。 */
+    var nagaFrame = (opts.naga && opts.naga.frame) ? opts.naga.frame : null;
+    var decider = (opts.naga && typeof opts.naga.seat === 'number') ? opts.naga.seat : null;
+    /* 决策者是别家、他的牌又被隐藏时就不画（用户 m03343 ①） */
+    var hideDecider = !!(opts.naga && opts.naga.hideOthers) && decider !== null && decider !== opts.selfSeat;
+    var upNf = (nagaFrame && decider !== null && seat === decider && !hideDecider) ? nagaFrame : null;
+    var upBars = upNf ? {} : null;
+    /* 铳率条同一个条件（只画决策者）；另外手牌盖着时也不画（盖着的牌不泄露身份） */
+    var dnBars = (upNf && !hidden) ? {} : null;
+    /* 听牌率条（用户 m03479 ②）：只画在非主视角的三家手上；报告里 tenpai_* 的第一维 = 观察者，
+     * 我们用「主视角那一行」+ 展示槽位取项（与官方 viewer 的 tw 行一致）。 */
+    var tenpai = null;
+    if (pos > 0 && nagaFrame && typeof opts.selfSeat === 'number') {
+      var tpRow = (pos === 1) ? nagaFrame.tenpai_s : ((pos === 2) ? nagaFrame.tenpai_t : nagaFrame.tenpai_k);
+      /* 报告里没有 tenpai_* 数据时整条不画（Mortal 报告就没有，用户 m05937 ③） */
+      if (tpRow && tpRow.length > opts.selfSeat) { tenpai = tpRow[opts.selfSeat] || 0; }
+    }
+    /* 「同种牌只画最靠左那张」到底是哪一张：kind → 该画条的那张牌 id（用户 m00198 ③ / m04498）。
+     * 赤 5 的 id 是同一 kind 里最小的（赤 5 = kind * 4 + 0），升序排列后反而排在最左 ⇒
+     * 5m / 5p / 5s 特殊处理：优先普通 5，手里只有赤 5 时才画在赤 5 上。
+     * 摸到的牌排在最后 ⇒ 同 kind 时手牌优先（与原「最靠左」的行为一致）。 */
+    var barOwner = {};
+    var barSeq = rest.slice();
+    if (drawn !== null) { barSeq.push(drawn); }
+    for (var bq = 0; bq < barSeq.length; bq++) {
+      var bk = Tiles.kindOf(barSeq[bq]);
+      if (barOwner[bk] === undefined) { barOwner[bk] = barSeq[bq]; continue; }
+      if (!Tiles.isRed(barSeq[bq]) && Tiles.isRed(barOwner[bk])) { barOwner[bk] = barSeq[bq]; }
+    }
+    /* 细红框（用户 m08125 ② / m08178 / m08319 ①）：本帧决策者接下来要做的事 ——
+     *   打牌 = 即将打出的那一张（只给 kind，下面按紫色条那套筛选逻辑挑一张：同 kind 只框一张、
+     *     优先普通 5 避开赤 5）；立直宣言算打出的宣言牌；
+     *   暗杠 / 加杠 = 准备杠的 4 张（app.js 给准确 id：手里几张 + 副露区那 3 张）。
+     * opts.next = { seat: 被框的那一家（= 本帧决策者，用户 m08319 ① 起不一定是主视角）,
+     *   kind: n, tids: [手里准确的 id…], melds: [副露区准确的 id…] }。 */
+    var nextIds = [];
+    var nextMeldIds = (opts.next && opts.next.melds) ? opts.next.melds : [];
+    if (opts.next && seat === opts.next.seat) {
+      var nseq = rest.slice();
+      if (drawn !== null) { nseq.push(drawn); }
+      var given = (opts.next.tids && opts.next.tids.length) ? opts.next.tids : null;
+      if (given) {
+        nextIds = given;                       /* 暗杠 / 加杠：牌谱（状态）已经确定是哪几张 */
+      } else {
+        /* 打牌：同 kind 可能有好几张，只框其中一张 —— 与 barOwner 同一套规则：
+           先出现的那张优先，遇到普通 5 就把赤 5 换掉 */
+        var pick = null;
+        for (var nq = 0; nq < nseq.length; nq++) {
+          if (Tiles.kindOf(nseq[nq]) !== opts.next.kind) { continue; }
+          if (pick === null) { pick = nseq[nq]; continue; }
+          if (!Tiles.isRed(nseq[nq]) && Tiles.isRed(pick)) { pick = nseq[nq]; }
+        }
+        if (pick !== null) { nextIds = [pick]; }
+      }
+    }
     var hr = el('div', 'p-hand');
     var hb = el('div', 'tiles');
     for (var j = 0; j < rest.length; j++) {
-      hb.appendChild(tileEl(rest[j], {
-        big: self, back: hidden,
-        cls: (winTile !== null && rest[j] === winTile) ? 'win' : ''
-      }));
+      var tn = tileEl(rest[j], {
+        back: hidden,
+        cls: ((winTile !== null && rest[j] === winTile) ? 'win' : '')
+          + ((nextIds.indexOf(rest[j]) >= 0) ? ' next' : '')
+      });
+      if (upBars && barOwner[Tiles.kindOf(rest[j])] === rest[j]) {
+        addNagaBars(tn, rest[j], upNf, upBars, 'up', opts.selfSeat);
+      }
+      if (dnBars && barOwner[Tiles.kindOf(rest[j])] === rest[j]) {
+        addNagaBars(tn, rest[j], upNf, dnBars, 'down', seat);
+      }
+      hb.appendChild(tn);
     }
     hr.appendChild(hb);
+    /* 摸牌槽位永远占位：没摸到时加 .empty（CSS 里 visibility: hidden），
+     * 这样「摸牌前 / 摸牌后」手牌行宽度一致，播放时不会左右摆（用户 m01386）。 */
+    var db = el('div', 'tiles drawn' + (self ? ' self' : '') + (drawn === null ? ' empty' : ''));
     if (drawn !== null) {
-      var db = el('div', 'tiles drawn');
-      db.appendChild(tileEl(drawn, {
-        big: self, back: hidden,
-        cls: (winTile !== null && drawn === winTile) ? 'win' : ''
-      }));
-      hr.appendChild(db);
+      var dn = tileEl(drawn, {
+        back: hidden,
+        cls: ((winTile !== null && drawn === winTile) ? 'win' : '')
+          + ((drawn !== null && nextIds.indexOf(drawn) >= 0) ? ' next' : '')
+      });
+      if (upBars && barOwner[Tiles.kindOf(drawn)] === drawn) {
+        addNagaBars(dn, drawn, upNf, upBars, 'up', opts.selfSeat);
+      }
+      if (dnBars && barOwner[Tiles.kindOf(drawn)] === drawn) {
+        addNagaBars(dn, drawn, upNf, dnBars, 'down', seat);
+      }
+      db.appendChild(dn);
     }
+    hr.appendChild(db);
     /* 副露在手牌右侧：DOM 里倒序排（最后一个是先鸣的 = 最右），后鸣的依次向左延伸 */
     var bottom = el('div', 'p-bottom');
     bottom.appendChild(hr);
     if (pl.melds.length) {
       var mr = el('div', 'p-melds');
-      for (var mi = pl.melds.length - 1; mi >= 0; mi--) { mr.appendChild(meldEl(pl.melds[mi], seat)); }
+      for (var mi = pl.melds.length - 1; mi >= 0; mi--) {
+        mr.appendChild(meldEl(pl.melds[mi], seat, nextMeldIds));
+      }
       bottom.appendChild(mr);
     }
     rot.appendChild(bottom);
+
+    /* 听牌率条（用户 m03479 ② / m03799 ①）：竖着贴在「这一家」手牌的左端外侧、与手牌垂直 ——
+     * 长度 1.5 牌高（手牌带上下各伸出 .25 牌高）、宽度 = 一条铳率条的宽度；基色 = 与主视角的相对
+     * 关系（位置 1 下家绿 / 位置 2 対面黄 / 位置 3 上家蓝），边框保持基色（用户 m03627）；
+     * 红色从「该家自己的下方」（= 远离牌桌中心的一侧）往上生长，高度 = 听牌率。
+     * 放进手牌容器（.p-hand .tiles 是 position: relative）⇒ 随面板一起旋转。 */
+    if (tenpai !== null) {
+      var tp = el('div', 'p-tenpai tp-' + (pos === 1 ? 's' : (pos === 2 ? 't' : 'k')));
+      var tpRed = el('span', 'tp-red');
+      tpRed.style.height = Math.max(0, Math.min(100, (Number(tenpai) || 0) / 100)).toFixed(1) + '%';
+      tp.appendChild(tpRed);
+      tp.title = (pl.name || '') + ' 听牌率 ' + nagaPctText(tenpai);
+      hb.appendChild(tp);
+    }
 
     cellEl.appendChild(rot);
   }
@@ -354,7 +527,9 @@
   /* ------------------------------------------------------------ 整块牌桌 */
   /**
    * renderBoard(boardEl, state, opts)
-   * opts: { selfSeat: 0, hideOthers: bool }
+   * opts: { selfSeat: 0, viewRot: [0,1,2,3], hideOthers: bool, naga: { frame, seat, hideOthers } }
+   * viewRot = 「展示位置 → 绝对座位」的旋转向量：下标 0 下（主视角）/ 1 右（下家）/ 2 上（対面）/ 3 左（上家）；
+   * 初始 [0,1,2,3]，换主视角时整体旋转即可（用户 m03343 ②）。
    */
   function renderBoard(boardEl, st, opts) {
     opts = opts || {};
@@ -364,12 +539,26 @@
     var layout = [
       ['top', 2], ['left', 3], ['center', null], ['right', 1], ['bottom', 0]
     ];
+    var vr = (opts.viewRot && opts.viewRot.length === 4) ? opts.viewRot : [0, 1, 2, 3];
     for (var i = 0; i < layout.length; i++) {
-      var area = layout[i][0], seat = layout[i][1];
+      var area = layout[i][0], pos = layout[i][1];
       var cell = el('div', 'cell cell-' + area);
-      if (seat === null) { renderCenter(cell, st, opts); }
-      else { renderPlayer(cell, st, seat, opts); }
+      if (pos === null) { renderCenter(cell, st, opts); }
+      else { renderPlayer(cell, st, vr[pos], opts, pos); }
       boardEl.appendChild(cell);
+    }
+
+    /* 大字（vocalization，用户 m03978 ②）：官方 renderBa 把它画在所有牌之上、结算框之下，
+     * 文字永远水平（不随座位旋转、不随面板旋转）⇒ 绝对定位盖在牌桌上，位置取展示位置的百分比。
+     * 由 app.js 的 vocalForFrame() 给出 { pos, text }（天凤牌谱的 call / agari 事件同样适用）；
+     * 位置直接用官方 vocalization_pos 的百分比、不做任何平移（第 48 轮的左移已按用户 m04456 回滚）。 */
+    var vc = opts.vocal;
+    if (vc && vc.text) {
+      var vp = VOCAL_POS[vc.pos & 3] || VOCAL_POS[0];
+      var vo = el('div', 'vocal', vc.text);
+      vo.style.left = vp[0] + '%';
+      vo.style.top = vp[1] + '%';
+      boardEl.appendChild(vo);
     }
   }
 
@@ -404,6 +593,7 @@
     renderEventList: renderEventList, riverEl: riverEl,
     rotIndexOf: rotIndexOf, MELD_ROT: MELD_ROT, KAN_ROT: KAN_ROT,
     yakuName: yakuName, CALL_NAME: CALL_NAME, YAKU: YAKU,
-    SEAT_ROT: SEAT_ROT, RIVER_COLS: RIVER_COLS, RIVER_ROWS: RIVER_ROWS
+    SEAT_ROT: SEAT_ROT, RIVER_COLS: RIVER_COLS, RIVER_TILE_ROWS: RIVER_TILE_ROWS, RIVER_ROWS: RIVER_ROWS,
+    VOCAL_POS: VOCAL_POS
   };
 });

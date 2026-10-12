@@ -37,6 +37,7 @@ def clone_state(st):
             "score": p["score"], "name": p["name"], "turns": p["turns"],
         } for p in st["players"]],
         "dora": list(st["dora"]), "dices": st["dices"], "drawn": st["drawn"],
+        "ippatsu": list(st.get("ippatsu") or [False, False, False, False]),
         "tilesLeft": st["tilesLeft"], "phase": st["phase"], "result": st["result"],
         "reveal": list(st["reveal"]), "desc": st["desc"], "evIndex": st["evIndex"],
         "warnings": list(st["warnings"]),
@@ -58,6 +59,9 @@ def initial_state(game, round_index):
             "turns": 0,
         } for i in range(4)],
         "dora": [init["dora"]], "dices": init["dices"], "drawn": None, "tilesLeft": 70,
+        # 「一发」状态（用户 m02227 ②）：立直宣言置真；之后本人下一次出牌 / 自家暗杠、
+        # 或他家鸣牌（含各种杠）时置假。特征「立直家（他家）一发巡」= 另外三家状态的逻辑或（用户 m02356 改名）。
+        "ippatsu": [False, False, False, False],
         "phase": "playing", "result": None, "reveal": [], "desc": "开局 · 配牌",
         "evIndex": -1, "warnings": [],
     }
@@ -116,12 +120,19 @@ def apply_call(st, ev):
                 st["warnings"].append("%s: 手牌中找不到 %s" % (nm, mjlog.tile_name(t)))
 
     if ct == "kakan":
+        # 已有的碰升级为加杠：tiles[0] = 加进去的那张，后面跟原来碰出来的 3 张。
+        # 不能直接覆盖成事件的 tiles（加杠事件只带第 4 张，覆盖会让 4 张全部消失，用户 m08125 ①）。
+        added = ev["tiles"][0] if ev["tiles"] else None
         found = False
         for m in pl["melds"]:
-            if m["callType"] == "pon" and mjlog.kind_of(m["tiles"][0]) == mjlog.kind_of(ev["tiles"][0]):
-                m["callType"] = "kakan"; m["tiles"] = list(ev["tiles"]); found = True
+            if m["callType"] == "pon" and added is not None \
+                    and mjlog.kind_of(m["tiles"][0]) == mjlog.kind_of(added):
+                m["callType"] = "kakan"
+                m["tiles"] = [added] + list(m["tiles"][:3])
+                found = True
                 break
         if not found:
+            st["warnings"].append("%s: 找不到可升级的碰" % nm)
             pl["melds"].append({"callType": "kakan", "tiles": list(ev["tiles"]),
                                 "calledId": None, "from": None, "open": True})
     else:
@@ -153,15 +164,21 @@ def apply_event(st, ev):
         elif take_kind(pl["hand"], mjlog.kind_of(ev["tile"])) is None:
             st["warnings"].append("打牌: 手牌中找不到 " + mjlog.tile_name(ev["tile"]))
         entry = {"tile": ev["tile"], "tsumogiri": tsumogiri, "riichi": False, "called": False, "win": False}
+        ipp = st.setdefault("ippatsu", [False, False, False, False])
         if pl["riichiPending"]:
             entry["riichi"] = True
             pl["riichiPending"] = False
+            ipp[p] = True                     # 立直宣言的那一次出牌 ⇒ 进入「一发」（用户 m02227 ②）
+        else:
+            ipp[p] = False                    # 本人下一次出牌 ⇒ 退出「一发」
         pl["river"].append(entry)
         pl["turns"] += 1   # 出牌一次 +1（巡目口径）
         st["drawn"] = None
         st["desc"] = pl["name"] + (" 摸切 " if tsumogiri else " 打牌 ") + mjlog.tile_name(ev["tile"])
     elif t == "call":
         apply_call(st, ev)
+        # 鸣牌 / 各种杠 ⇒ 全场「一发」结束（用户 m02227 ②；自家暗杠也在这条分支里）
+        st["ippatsu"] = [False, False, False, False]
     elif t == "reach":
         p = ev["player"]; pl = st["players"][p]
         if ev["step"] == 1:

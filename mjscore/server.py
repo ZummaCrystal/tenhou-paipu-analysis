@@ -5,19 +5,36 @@
 都经由这个本地服务完成：
 
     GET  /                       302 跳转到 /web/index.html（页面在 web/，素材在 media/）
-    GET  /api/health             {ok:true, name, version, author, author_email}（软件名 / 版本号 v0.1.0 / 作者）
-    GET  /api/features           33 个特征定义（16 个第一类 + 17 个第二类，m02959）+ 打点口径
+    GET  /api/health             {ok:true, name, version, author, author_email}（软件名 / 版本号 v1.3.0 / 作者）
+    GET  /api/features           40 个特征定义（5 个第零类 + 17 个第一类 + 17 个第二类 + 1 个第三类，
+                                 第 52 / 59 / 60 轮；第零类自第 60 轮起**按帧判定**；
+                                 第 63 轮 / 用户 m07289：「等待鸣牌」改列第三类，检索改用「出牌 / 鸣牌响应」单选）
+                                 + 第零类检索方案（ai_modes）+ 第三类局面选项（wait_modes）+ 打点口径
     GET  /api/dbs                已建数据库列表（data/db/*.sqlite）
-    GET  /api/scan?dir=<绝对路径>  列出一个目录（递归）下的牌谱 .xml
-    GET  /api/read?path=<绝对路径>  读出牌谱文件文本（前端解析不了时用）
+    GET  /api/scan?dir=<绝对路径>&kind=xml|naga|mortal|all  列出一个目录（递归）下的牌谱
+                                 （默认只列天凤 .tenhou/.xml；mortal = Mortal 报告 .mortal-a/b/c）
+    GET  /api/paipu-browse?dir=<相对/绝对路径>  列出 data/paipu 的子目录树 + 该目录里的牌谱文件
+                                 （前端「牌谱分析」的下拉选择用；用户 m01171 第 2 条）
+    GET  /api/read?path=<绝对路径>  读出牌谱文件文本（前端解析不了时用）；
+                                 天凤 .tenhou/.xml 原样返回；NAGA 报告（.naga，旧 .json.gz / .json）用
+                                 mjscore/naga.py、Mortal 报告（.mortal-a/b/c）用 mjscore/mortal.py
+                                 转成与 xml 同构的内部结构后返回 JSON 文本，并多带一个
+                                 naga:true（用户 m00080 目标 2 / m05937 ③）
+    POST /api/naga-convert        请求体 = AI 报告（NAGA / Mortal）的原始字节（gzip 或 JSON），?name=<文件名>
+                                 -> {path, naga:true, kind, text}（浏览器手选 / 拖放文件时没有磁盘路径，
+                                 只能把字节发过来让服务端转换；用户 m01171 第 1 条 / m05937 ③；
+                                 Mortal 报告也走这个接口，服务端按 ?name= 的后缀分派）
     POST /api/analyze            {paths:[], db_name, db, tool, full, extend}  -> 打点入库（同步阻塞）
+                                 paths 支持天凤 .tenhou/.xml、NAGA 报告 .naga/.json.gz/.json 与
+                                 Mortal 报告 .mortal-a/-b/-c（用户 m00080 目标 3 / m05545 ② / m05937 ③）
                                  extend=true = 扩充已有数据库（库里已有的牌谱自动跳过）
     GET  /api/analyze-progress   分析进度（前端轮询；{progress:{...}}）
-    POST /api/query             {db_name, db, conds:[{key,expr}], limit, offset} -> 检索
+    POST /api/query             {db_name, db, conds:[{key,expr}], ai:{mode,picks}, wait, limit, offset} -> 检索
+                                 ai = 第零类方案，wait = 第三类「出牌 / 鸣牌响应」（缺省「出牌」，用户 m07289）
     POST /api/browse            {db_name, db, limit, offset} -> 全部浏览（按特征码顺序；limit<=0 = 全部）
     POST /api/detail            {db_name, db, idx} -> 单行详情
     POST /api/round-frames      {db_name, db, log_id, round_index} -> 一局内的打点行
-    POST /api/frame-feats       {db_name, db, log_id, round_index, frame_index, seat} -> 单帧 33 个特征值
+    POST /api/frame-feats       {db_name, db, log_id, round_index, frame_index, seat} -> 单帧 40 个特征值
     POST /api/download          {url | text | url_file, subdir} -> 下载牌谱到 data/paipu/<子目录>（后台线程）
     GET  /api/download-progress 牌谱下载进度（前端轮询；{progress:{...}}）
     POST /api/delete-db         {name, db_name} -> 删除数据库
@@ -43,13 +60,14 @@ import sys
 import urllib.parse
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
-from . import cli, datamgr, download, feats, paths, store
+from . import ai_models, cli, datamgr, download, feats, mortal, naga, paths, store
 from . import APP_NAME, AUTHOR, AUTHOR_EMAIL, __version__ as APP_VERSION
 
 ROOT = cli.ROOT
 DEFAULT_PORT = 8770
 DEFAULT_HOST = "127.0.0.1"
 MAX_TEXT = 16 * 1024 * 1024
+MAX_UPLOAD = 32 * 1024 * 1024      # POST /api/naga-convert 的上传上限（.json.gz 实测 < 1.5 MB）
 
 
 class ApiError(Exception):
@@ -87,15 +105,86 @@ def _db_of(payload):
     return cli.db_path_of(None, name)
 
 
-def _scan_dir(path):
+SCAN_KINDS = {                      # 牌谱扩展名 -> 种类（天凤 mjlog / NAGA 报告 / Mortal 报告）
+    # 键沿用 "xml"（前端一直这么传），实际含新后缀 .tenhou 与旧后缀 .xml / .mjlog（用户 m05545 ②）
+    "xml": paths.TENHOU_SUFFIXES,
+    "naga": paths.NAGA_SUFFIXES,
+    "mortal": paths.MORTAL_SUFFIXES,      # .mortal-a / -b / -c + 旧 .mortal（用户 m05937 ③）
+}
+
+
+def _scan_dir(path, kind=None):
+    """列出一个目录（递归）下的牌谱文件。
+
+    kind = None / "xml" 只列天凤牌谱（.tenhou，旧 .xml / .mjlog）、"naga" 只列 NAGA 报告
+    （.naga，旧 .json.gz / .json）、"mortal" 只列 Mortal 报告（.mortal-a / -b / -c）、
+    "all" 三类都列。
+    """
     if not os.path.isdir(path):
         raise ApiError("目录不存在：%s" % path)
+    if kind in (None, "", "xml"):
+        exts = SCAN_KINDS["xml"]
+    elif kind == "naga":
+        exts = SCAN_KINDS["naga"]
+    elif kind == "mortal":
+        exts = SCAN_KINDS["mortal"]
+    elif kind == "all":
+        exts = SCAN_KINDS["xml"] + SCAN_KINDS["naga"] + SCAN_KINDS["mortal"]
+    else:
+        raise ApiError("未知的牌谱种类：%s（可用 xml / naga / mortal / all）" % kind)
     files = []
     for dirpath, _dirs, names in os.walk(path):
         for fn in sorted(names):
-            if fn.lower().endswith(".xml"):
+            if fn.lower().endswith(exts):
                 files.append(os.path.join(dirpath, fn))
     return {"dir": path, "count": len(files), "files": files}
+
+
+def _rel_or_abs(p):
+    """优先返回相对项目根的路径（前端一直用 data/paipu/... 这种写法），不属于项目根时返回绝对路径。"""
+    rel = os.path.relpath(p, ROOT)
+    if rel.startswith("..") or os.path.isabs(rel):
+        return os.path.abspath(p)
+    return rel.replace(os.sep, "/")
+
+
+def _paipu_browse(dir_arg=None):
+    """列出 data/paipu 的子目录树 + 指定目录里的牌谱文件（前端「牌谱分析」下拉选择用）。
+
+    只允许浏览牌谱根目录（``paths.paipu_root()``）以内的内容；dir_arg 缺省 = 牌谱根。
+    用户 m01171 第 2 条：牌谱文件 / 子目录从手输改成选择，前缀固定 data/paipu。
+    """
+    root = os.path.abspath(paths.paipu_root())
+    if not os.path.isdir(root):
+        raise ApiError("牌谱目录不存在：%s" % root)
+    cur = os.path.abspath(os.path.join(ROOT, str(dir_arg))) if dir_arg else root
+    if os.path.isfile(cur):
+        cur = os.path.dirname(cur)
+    if not os.path.isdir(cur):
+        raise ApiError("目录不存在：%s" % cur)
+    inside = os.path.normcase(cur) == os.path.normcase(root) or os.path.normcase(cur).startswith(
+        os.path.normcase(root) + os.sep)
+    if not inside:
+        raise ApiError("只能浏览牌谱目录（%s）里的内容" % root)
+    dirs = [root]
+    for dirpath, names, _files in os.walk(root):
+        for nm in sorted(names):
+            dirs.append(os.path.join(dirpath, nm))
+            if len(dirs) >= 500:
+                break
+        if len(dirs) >= 500:
+            break
+    dirs.sort()
+    exts = SCAN_KINDS["xml"] + SCAN_KINDS["naga"] + SCAN_KINDS["mortal"]   # 新后缀 .tenhou / .naga / .mortal-* + 旧后缀
+    files = []
+    for nm in sorted(os.listdir(cur)):
+        fp = os.path.join(cur, nm)
+        if os.path.isfile(fp) and nm.lower().endswith(exts):
+            files.append(fp)
+            if len(files) >= 2000:
+                break
+    return {"root": root, "root_rel": _rel_or_abs(root), "dir": cur, "dir_rel": _rel_or_abs(cur),
+            "dirs": [_rel_or_abs(p) for p in dirs], "files": [_rel_or_abs(p) for p in files]}
 
 
 def _browse(conn, limit, offset):
@@ -131,11 +220,15 @@ def api_query(payload):
     conds = payload.get("conds")
     if conds is None and payload.get("lines"):
         conds = cli.parse_condition_lines(payload["lines"])
-    if not conds:
-        raise ApiError("请先添加并填写牌谱特征条件")
+    # 第零类特征方案（用户 m04556 ③）：{mode: any|naga|mortal|multi, picks: [key, …]}
+    ai = payload.get("ai") or None
+    # 第三类「出牌 / 鸣牌响应」（用户 m07289 的补充要求）：缺省 = 「出牌」
+    wait = payload.get("wait") or None
+    if not conds and not ai:
+        raise ApiError("请先添加并填写牌谱特征条件，或选择一个第零类检索方案")
     res = cli.run_query(_db_of(payload), conds,
                         limit=int(payload.get("limit") or 200),
-                        offset=int(payload.get("offset") or 0))
+                        offset=int(payload.get("offset") or 0), ai=ai, wait=wait)
     return res
 
 
@@ -252,13 +345,22 @@ def api_fs_rmdir(payload):
 GET_ROUTES = {
     "/api/health": lambda q: {"ok": True, "root": ROOT, "name": APP_NAME, "version": APP_VERSION, "author": AUTHOR, "author_email": AUTHOR_EMAIL,
                                "data_root": paths.data_root(), "db_dir": paths.db_dir(), "paipu_dir": paths.paipu_root()},
-    "/api/features": lambda q: {"features": feats.FEATURES, "doukou": store.DOUKOU,
+    "/api/features": lambda q: {"features": feats.FEATURES,
+                                 "first_features": feats.BASE_FEATURES,
+                                 "second_features": feats.SECOND_FEATURES,
+                                 "ai_features": feats.AI_FEATURES,
+                                 "third_features": feats.THIRD_FEATURES,
+                                 "wait_modes": list(store.WAIT_MODES),
+                                 "ai_modes": [{"key": k, "name": n} for k, n in ai_models.MODES],
+                                 "doukou": store.DOUKOU,
                                 "full_note": store.FULL_NOTE,
                                 "schema_version": store.SCHEMA_VERSION,
                                 "name": APP_NAME, "version": APP_VERSION, "author": AUTHOR, "author_email": AUTHOR_EMAIL},
     "/api/dbs": lambda q: {"dbs": cli.list_dbs(), "dir": cli.DB_DIR},
     "/api/fs-list": api_fs_list,
-    "/api/scan": lambda q: _scan_dir(_abs((q.get("dir") or [paths.data_dir()])[0])),
+    "/api/scan": lambda q: _scan_dir(_abs((q.get("dir") or [paths.data_dir()])[0]),
+                                        (q.get("kind") or [None])[0]),
+    "/api/paipu-browse": lambda q: _paipu_browse((q.get("dir") or [None])[0]),
     "/api/analyze-progress": lambda q: {"progress": cli.progress_snapshot()},
     "/api/download-progress": lambda q: {"progress": download.download_snapshot()},
 }
@@ -322,7 +424,8 @@ class Handler(SimpleHTTPRequestHandler):
         # 里的相对引用去取 /style.css、/js/*.js 而 404（用户 m04553）。
         try:
             head = b"".join(self._headers_buffer)
-            if b"text/html" in head and b"Cache-Control" not in head:
+            if b"Cache-Control" not in head and (
+                    b"text/html" in head or b"javascript" in head or b"text/css" in head):
                 self.send_header("Cache-Control", "no-store, must-revalidate")
         except Exception:
             pass
@@ -345,6 +448,18 @@ class Handler(SimpleHTTPRequestHandler):
                     raise ApiError("文件不存在：%s" % p)
                 if os.path.getsize(p) > MAX_TEXT:
                     raise ApiError("文件过大（>16MB）：%s" % p)
+                # NAGA / Mortal 报告都是报告 JSON（NAGA 是 gzip 压的 <report_id>.naga，旧后缀
+                # .json.gz；Mortal 是 <report_id>.mortal-a/b/c），前端不能直接解析；这里先转成与
+                # 天凤 xml 同构的结构（mjscore/naga.py / mjscore/mortal.py），前端于是能复用同一套
+                # 解析 / 回放 / 打点链路（用户 m00080 目标 2 / m05937 ③）。
+                kind = cli.report_kind(p)      # 裸 .json / .gz 的 Mortal 报告由内容嗅探消歧（用户 m05937 ③）
+                if kind:
+                    try:
+                        game = mortal.game_from_file(p) if kind == "mortal" else naga.game_from_file(p)
+                    except Exception as exc:   # noqa: BLE001 - 报告损坏 / 根本不是该种报告
+                        raise ApiError("%s 报告解析失败：%s" % ("Mortal" if kind == "mortal" else "NAGA", exc))
+                    return self._send_json({"path": p, "naga": True, "kind": kind,
+                                            "text": json.dumps(game, ensure_ascii=False, separators=(",", ":"))})
                 with open(p, "r", encoding="utf-8", errors="replace") as fh:
                     text = fh.read()
                 return self._send_json({"path": p, "text": text})
@@ -394,8 +509,46 @@ class Handler(SimpleHTTPRequestHandler):
     def do_HEAD(self):
         return super().do_HEAD()
 
+    def _naga_convert(self, q):
+        """把浏览器手选 / 拖放进来的 AI 报告字节转成同构 JSON 文本（按 ?name= 的后缀分派 NAGA / Mortal）。
+
+        服务端拿到的是原始字节（NAGA：``.naga`` / 旧 ``.json.gz``，或浏览器另存出来的纯 JSON；
+        Mortal：``.mortal-a/b/c``、旧 ``.mortal`` / 裸 ``.json``），用 ``naga.load_report`` /
+        ``mortal.load_report`` 读、``to_game`` 转（两者输出同构，前端零改动）；report_id 从 ?name=
+        的文件名推（用户 m01171 第 1 条：手选文件没有磁盘路径，之前前端只能自己 gunzip，
+        结果拿到的是原始报告 —— 没有 rounds，于是提示「缺少 INIT 标签」；m05937 ③ 起 Mortal 同路）。
+        """
+        label = "NAGA"
+        try:
+            size = int(self.headers.get("Content-Length") or 0)
+            if size <= 0:
+                raise ApiError("上传的牌谱是空的")
+            if size > MAX_UPLOAD:
+                raise ApiError("上传的牌谱过大（>%d MB）" % (MAX_UPLOAD // (1024 * 1024)))
+            raw = self.rfile.read(size)
+            name = (q.get("name") or [""])[0]
+            # 上传的文件名是 .json 时两种报告会撞车 ⇒ 内容嗅探消歧（用户 m05937 ③）
+            sniff = mortal.is_mortal_file(name) or (naga.is_naga_file(name)
+                                                   and mortal.looks_like_mortal(raw))
+            if sniff:
+                mod, label = mortal, "Mortal"
+            else:
+                mod = naga
+            report = mod.load_report(raw)
+            rid = mod.report_id_of_path(name) if name else None
+            game = mod.to_game(report, report_id=rid)
+            return self._send_json({"path": name, "naga": True,
+                                    "kind": (game.get("naga") or {}).get("kind") or label.lower(),
+                                    "text": json.dumps(game, ensure_ascii=False, separators=(",", ":"))})
+        except ApiError as exc:
+            return self._send_json({"ok": False, "error": str(exc)}, exc.code)
+        except Exception as exc:   # noqa: BLE001 - 报告损坏 / 根本不是该种报告
+            return self._send_json({"ok": False, "error": "%s 报告解析失败：%s" % (label, exc)}, 400)
+
     def do_POST(self):
         q, path = self._query()
+        if path in ("/api/naga-convert", "/api/mortal-convert"):
+            return self._naga_convert(q)
         fn = POST_ROUTES.get(path)
         if fn is None:
             return self._send_json({"ok": False, "error": "未知接口：%s" % path}, 404)

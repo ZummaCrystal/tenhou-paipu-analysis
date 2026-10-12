@@ -328,7 +328,10 @@ eq((54 in [y[0] for y in R["yaku"]], 1 in [y[0] for y in R["yaku"]], R["han"]), 
 eq(53 in [y[0] for y in R["yaku"]], False, "里宝牌指示牌为空时不产生 53 条目")
 # ------------------------------------------------------------------ 5
 print("=== 5. 全量校验：data 下（含 data/paipu/ 子目录）+ data_extra 的全部牌谱 ===")
-FILES = sorted(glob.glob(os.path.join(ROOT, "data", "**", "*.xml"), recursive=True)
+# 用户 m05545 ② 后本地牌谱后缀是 .tenhou（旧 .xml 仍认）
+FILES = sorted(glob.glob(os.path.join(ROOT, "data", "**", "*.tenhou"), recursive=True)
+               + glob.glob(os.path.join(ROOT, "data", "**", "*.xml"), recursive=True)
+               + glob.glob(os.path.join(ROOT, "data_extra", "*.tenhou"))
                + glob.glob(os.path.join(ROOT, "data_extra", "*.xml")))
 eq(len(FILES), 71, "牌谱总数（71 个：data 下 + 可选 data_extra）")
 
@@ -568,6 +571,33 @@ r7 = score(T(18, 18, 19, 20, 21, 22, 23, 15, 16, 17, 1, 2, 3), win_tile=T(18)[0]
 eq((r7["han"], r7["fu"]), (2, 30), "同种 3 张：平和両面 2 番 30 符 胜过硬读単騎的 1 番 40 符")
 eq(r7["wait"], "両面", "同种 3 张：选中的读法是両面（単騎读法也在 cands 里）")
 eq(check_max(r7, "同种 3 张"), 2, "同种 3 张：単騎与両面两种读法各 1 个候选")
+
+# 6.5 偶发 / 特殊役的互斥规则（用户 m02227 ③；规则写在 agari.merge_ctx -> rule_ctx）
+def ctx_ids(tsumo, riichi=1, **flags):
+    """把场况旗标喂进 merge_ctx（施加互斥规则）后，取 ctx_yaku 的役 id 集合。"""
+    ctx = agari.merge_ctx(flags)
+    return set(y for y, _h in agari.ctx_yaku(tsumo, True, ctx, riichi, None))
+
+_iy = ctx_ids(True, rinshan=True, ippatsu=True)
+check(4 in _iy and 2 not in _iy, "嶺上開花 + 一発：算嶺上、不算一発（立直后自家暗槓即退出一发）")
+_ih = ctx_ids(True, rinshan=True, haitei=True)
+check(4 in _ih and 5 not in _ih, "嶺上開花 + 海底摸月：写死特例 —— 只算嶺上，不算海底")
+_ch = ctx_ids(False, chankan=True, houtei=True)
+check(3 in _ch and 6 not in _ch, "槍槓 + 河底撈魚：海底不能槓 ⇒ 不可能同时成立，只算槍槓")
+_ci = ctx_ids(False, chankan=True, ippatsu=True)
+check(2 in _ci and 3 in _ci, "槍槓 + 一発：可以复合（都算）")
+_ih2 = ctx_ids(True, ippatsu=True, haitei=True)
+check(2 in _ih2 and 5 in _ih2, "一発 + 海底摸月：可以复合（都算）")
+_ih3 = ctx_ids(False, ippatsu=True, houtei=True)
+check(2 in _ih3 and 6 in _ih3, "一発 + 河底撈魚：可以复合（都算）")
+
+U6B = dict(oya=False, seat_wind=SOUTH, round_wind=EAST, honba=0, kyotaku=0)
+r8 = score(T(0, 0, 1, 2, 4, 5, 6, 10, 11, 12, 21, 22, 23), win_tile=T(0)[0],
+           tsumo=True, riichi=1, ctx={"dora": [T(27)[0]], "rinshan": True, "ippatsu": True},
+           **U6B)
+_y8 = set(y for y, _h, _n in r8["yaku"])   # score() 的 yaku 是 (id, han, name) 三元组
+check(4 in _y8 and 2 not in _y8,
+      "端到端：立直 + 嶺上開花（一发旗标同时为真）→ 役里有嶺上開花、没有一発")
 
 # ------------------------------------------------------------------ 汇总
 print("")

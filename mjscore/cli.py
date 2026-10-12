@@ -11,7 +11,7 @@ import sys
 import threading
 import time
 
-from . import feats, mjlog, nodeharness, paths, store
+from . import ai_models, feats, mjlog, mortal, naga, nodeharness, paths, store
 from . import APP_NAME, __version__ as APP_VERSION
 
 # 资源根（web/、media/、mjscore/）：源码运行 = 项目根；打包后 = PyInstaller 解包目录。
@@ -86,15 +86,23 @@ def db_path_of(db=None, db_name=None):
     return os.path.join(DB_DIR, name)
 
 
-def resolve_inputs(paths):
-    """把「牌谱文件或目录」展开成排好序的 .xml 绝对路径（目录递归、去重）。"""
+def resolve_inputs(inputs):
+    """把「牌谱文件或目录」展开成排好序的绝对路径（目录递归、去重）。
+
+    目录里天凤牌谱（.tenhou，旧 .xml / .mjlog）、NAGA 报告（.naga，旧 .json.gz / .json）与
+    Mortal 复盘报告（.mortal-a / .mortal-b / .mortal-c，旧 .mortal）都收
+    （用户 m00080 目标 3 / m05545 ② / m05937 ③）。
+    注：参数名不能叫 paths —— 会遮蔽同名的 :mod:`mjscore.paths` 模块（第 57 轮踩坑）。
+    """
     files, seen = [], set()
-    for p in paths:
+    for p in inputs:
         ap = os.path.abspath(p)
         if os.path.isdir(ap):
             for dirpath, _dirs, names in os.walk(ap):
                 for fn in sorted(names):
-                    if fn.lower().endswith(".xml"):
+                    low = fn.lower()
+                    if (low.endswith(paths.TENHOU_SUFFIXES) or low.endswith(naga.NAGA_SUFFIXES)
+                            or low.endswith(mortal.MORTAL_SUFFIXES)):
                         fp = os.path.join(dirpath, fn)
                         if fp not in seen:
                             seen.add(fp); files.append(fp)
@@ -104,8 +112,49 @@ def resolve_inputs(paths):
         else:
             raise FileNotFoundError("找不到牌谱文件或目录：%s" % ap)
     if not files:
-        raise FileNotFoundError("没有找到任何 .xml 牌谱文件")
+        raise FileNotFoundError("没有找到任何牌谱文件（天凤 .tenhou / .xml、NAGA 报告 .naga / .json.gz / .json "
+                                "或 Mortal 报告 .mortal-a / -b / -c）")
     return sorted(files)
+
+
+def report_kind(path):
+    """判定一份 AI 报告的种类：``"mortal"`` / ``"naga"`` / ``None``（天凤牌谱）（用户 m05937 ③）。
+
+    显式后缀为主；``.json`` / ``.gz`` 这类两种报告都可能用的后缀（mjai.ekyu.moe 的报告地址就是
+    ``<report_id>.json``、浏览器另存出来也是 ``.json``）用内容嗅探消歧，见 mortal.looks_like_mortal()。
+    """
+    if mortal.is_mortal_file(path):
+        return "mortal"
+    if not naga.is_naga_file(path):
+        return None
+    if os.fspath(path).lower().endswith((".json", ".gz")) and mortal.looks_like_mortal(path):
+        return "mortal"
+    return "naga"
+
+
+def file_log_id(path):
+    """牌谱文件 -> 特征码：NAGA / Mortal 报告用完整报告 id（用户 m00418 / m05937 ③），天凤用 log_id。"""
+    kind = report_kind(path)
+    if kind == "mortal":
+        rid = mortal.report_id_of_path(path)
+        if rid:
+            return rid
+    elif kind == "naga":
+        rid = naga.report_id_of_path(path)
+        if rid:
+            return rid
+    return mjlog.log_id_of(path)
+
+
+def game_from_file(path):
+    """按 AI 报告种类分派解析：Mortal 报告走 mjscore/mortal.py、NAGA 报告走 mjscore/naga.py
+    （用户 m05937 ③），天凤牌谱走 mjscore/mjlog.py。"""
+    kind = report_kind(path)
+    if kind == "mortal":
+        return mortal.game_from_file(path)
+    if kind == "naga":
+        return naga.game_from_file(path)
+    return mjlog.game_from_file(path)
 
 
 # ------------------------------------------------------------------ 打点
@@ -179,6 +228,25 @@ def merge_second_class(records, extra):
     return len(records)
 
 
+def fill_ai(records, games):
+    """给打点行补第零类特征 5 项 + 辅助列 ai_models / ai_series（用户 m04556 ② / m05937 ②）。
+
+    node / python / fixture 三条路径都经过这里：**逐行按帧判定**（用户 m06323 ①，口径按 m06560 更正）——
+    只有「这一帧**做决策的那名玩家**（= 打点行的 seat 列）带该模型的决策概率表」才是「是」
+    （模型列表见 mjscore/ai_models.py；帧数据见 mjscore/naga.py、mortal.py），
+    天凤牌谱与没有该模型数据的帧一律 否、辅助列空串。
+    """
+    by_id = {g["log_id"]: g for g in games}
+    for rec in records:
+        game = by_id.get(rec.get("log_id"))
+        vals, models_txt, series_txt = feats.ai_frame_values(
+            game, rec.get("round_index"), rec.get("ev_index"), rec.get("seat"))
+        rec.setdefault("feats", {}).update(vals)     # 第零类 5 项（是/否，按帧判定）
+        rec["ai_models"] = models_txt               # 辅助列：规范名逗号串
+        rec["ai_series"] = series_txt               # 辅助列：系列名逗号串
+    return records
+
+
 def fill_second_class(records, games, warnings, on_progress=None, progress=None):
     """node 只打第一类 16 项特征，第二类 17 项由 python 逐帧补齐。"""
     warnings.append("--tool node：第一类特征来自 node，第二类 17 项由 python 补齐（js 侧没有实现）")
@@ -191,8 +259,12 @@ def build_records(files, games, tool="auto", node=None, warnings=None, on_progre
     """按 --tool 选择打点工具；auto = 有 node 用 node，node 失败则退回 python。
 
     node（web/js/mjsfeat.js）只实现第一类 16 项特征 ⇒ 之后由 python 补齐第二类 17 项。
+    批次里有 NAGA / Mortal 报告时整批走 python：node 侧解析器（mjscore/node_harness.js）只认天凤 xml。
     """
     warnings = warnings if warnings is not None else []
+    if tool != "python" and any(naga.is_naga_file(f) or mortal.is_mortal_file(f) for f in files):
+        warnings.append("批次里有 NAGA / Mortal 报告，Node 侧解析器只认天凤 xml，本次整批改用 python 打点")
+        tool = "python"
     if tool == "python":
         return "python", python_records(games, on_progress, progress=progress)
     if tool == "node":
@@ -285,7 +357,7 @@ def _analyze(inputs, db=None, db_name=None, tool="auto", full=False, node=None,
         if extend:
             keep = []
             for f in files:
-                lid = mjlog.log_id_of(f)
+                lid = file_log_id(f)
                 if lid in existing:
                     skipped.append(lid)
                 else:
@@ -298,7 +370,7 @@ def _analyze(inputs, db=None, db_name=None, tool="auto", full=False, node=None,
                     "这 %d 个牌谱都已经在数据库里了，没有需要扩充的新牌谱" % len(skipped))
         if progress:
             progress(stage="解析牌谱", files_total=len(files), current="")
-        games = [mjlog.game_from_file(f) for f in files]
+        games = [game_from_file(f) for f in files]
         if progress:
             progress(rounds_total=sum(len(g.get("rounds") or []) for g in games))
         used_tool, records = build_records(files, games, tool=tool, node=node,
@@ -307,6 +379,7 @@ def _analyze(inputs, db=None, db_name=None, tool="auto", full=False, node=None,
         if progress:
             progress(stage="写库", files_done=len(files), current="", events_total=len(records))
 
+    fill_ai(records, games)        # 第零类 5 项 + ai_models / ai_series：三条打点路径统一补
     log_full = bool(full)
     if progress:
         progress(stage="写库")
@@ -378,6 +451,7 @@ def _analyze(inputs, db=None, db_name=None, tool="auto", full=False, node=None,
         "files": files, "logs": len(games), "annotations": sum(counts.values()),
         "rows_draw": kind_counts.get("draw", 0),
         "rows_call": kind_counts.get("chi", 0) + kind_counts.get("pon", 0),
+        "rows_wait": kind_counts.get("wait", 0),
         "db_total": total, "sources": src_count, "rounds": round_count,
         "elapsed_ms": int((time.time() - t0) * 1000), "warnings": warnings,
         "detail": [{"log_id": g["log_id"], "path": g["path"],
@@ -430,10 +504,13 @@ def parse_condition_lines(text):
     return conds
 
 
-def run_query(db_path, conds, limit=200, offset=0):
+def run_query(db_path, conds, limit=200, offset=0, ai=None, wait=None):
+    """执行检索。``ai`` = 第零类特征方案（用户 m04556 ③），形如
+    ``{"mode": "any|naga|mortal|multi", "picks": ["ai_balance", …]}``；None = 不筛选。
+    ``wait`` = 第三类「出牌 / 鸣牌响应」（用户 m07289），None / 空 = 「出牌」。"""
     conn = store.connect(db_path, create=False)
     try:
-        return store.query(conn, conds, limit=limit, offset=offset)
+        return store.query(conn, conds, limit=limit, offset=offset, ai=ai, wait=wait)
     finally:
         conn.close()
 
@@ -504,14 +581,14 @@ def main(argv=None):
     ap = argparse.ArgumentParser(
         prog="tools/analyze.py",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description="天凤牌谱分析：对给定本地牌谱（文件或目录）里的每一个「非自摸的摸牌帧」和「吃/碰后等待出牌的帧」打点，写入 SQLite 数据库，并支持按特征检索。",
+        description="天凤牌谱分析：对给定本地牌谱（文件或目录）里的每一个「非自摸的摸牌帧」、「吃/碰后等待出牌的帧」和「等待鸣牌决策的帧」打点，写入 SQLite 数据库，并支持按特征检索。",
         epilog="示例：\n"
-               "  python tools/analyze.py data\\*.xml --db-name demo\n"
+               "  python tools/analyze.py data\\*.tenhou --db-name demo\n"
                "  python tools/analyze.py \"D:\\paipu\" --db-name demo --full --tool node\n"
                "  python tools/analyze.py --list-dbs\n"
                "  echo 巡目=3,供托>=1000 | python tools/analyze.py --query --db-name demo\n"
                "  python tools/analyze.py --serve\n")
-    ap.add_argument("paths", nargs="*", help="牌谱 .xml 文件或包含牌谱的目录（绝对路径，可多个）")
+    ap.add_argument("paths", nargs="*", help="牌谱文件或包含牌谱的目录（天凤 .tenhou/.xml、NAGA .naga/.json.gz、Mortal .mortal-a/-b/-c，绝对路径，可多个）")
     ap.add_argument("--db", help="数据库文件路径（默认 data/db/<name>.sqlite）")
     ap.add_argument("--db-name", help="数据库名（默认 paipu）")
     ap.add_argument("--tool", choices=("auto", "node", "python"), default="auto",
@@ -523,9 +600,15 @@ def main(argv=None):
     ap.add_argument("--capture", help="用 Node 生成 JSONL fixture 到指定目录（测试用）")
     ap.add_argument("--list-dbs", action="store_true", help="列出 data/db 下的数据库")
     ap.add_argument("--delete-db", help="删除指定数据库文件")
-    ap.add_argument("--features", action="store_true", help="打印 33 个特征定义（16 个第一类 + 17 个第二类）")
+    ap.add_argument("--features", action="store_true",
+                    help="打印 40 个特征定义（5 个第零类 + 17 个第一类 + 17 个第二类 + 1 个第三类）")
     ap.add_argument("--values", help="打印某个特征在库里的取值分布（配合 --db/--db-name）")
     ap.add_argument("--query", action="store_true", help="从 stdin 读检索条件（每行「特征名=条件」），执行检索")
+    ap.add_argument("--ai", choices=ai_models.MODE_KEYS,
+                    help="第零类特征检索方案：any=任意AI决策 / naga=NAGA决策 / mortal=Mortal决策 / multi=同时具有（默认不筛选）")
+    ap.add_argument("--ai-pick", help="「同时具有」时勾选的第零类特征 key（逗号分隔，如 ai_balance,ai_mortal41b）")
+    ap.add_argument("--wait", choices=store.WAIT_MODES, default=store.WAIT_OUT,
+                    help="第三类特征（局面）单选：出牌（默认）= 只检索出牌帧 / 鸣牌响应 = 只检索鸣牌响应帧（用户 m07289）")
     ap.add_argument("--limit", type=int, default=200)
     ap.add_argument("--offset", type=int, default=0)
     ap.add_argument("--export", help="导出数据库为 JSON 文件（- = 标准输出）")
@@ -548,7 +631,13 @@ def main(argv=None):
 
     try:
         if args.features:
-            emit({"features": feats.FEATURES, "doukou": store.DOUKOU},
+            emit({"features": feats.FEATURES,
+                  "first_features": feats.BASE_FEATURES,
+                  "ai_features": feats.AI_FEATURES,
+                  "third_features": feats.THIRD_FEATURES,
+                  "wait_modes": list(store.WAIT_MODES),
+                  "ai_modes": [{"key": k, "name": n} for k, n in ai_models.MODES],
+                  "doukou": store.DOUKOU},
                  "\n".join("%2d. %-18s [%s] %s" % (i + 1, f["name"], f["kind"],
                                                    " / ".join(map(str, f.get("values") or []))
                                                    or "%s..%s" % (f.get("min"), f.get("max")))
@@ -595,7 +684,10 @@ def main(argv=None):
         if args.query:
             text = sys.stdin.read().lstrip("﻿")
             conds = parse_condition_lines(text)
-            res = run_query(db_path_of(args.db, args.db_name), conds, limit=args.limit, offset=args.offset)
+            ai = {"mode": args.ai,
+                  "picks": [p.strip() for p in (args.ai_pick or "").split(",") if p.strip()]} if args.ai else None
+            res = run_query(db_path_of(args.db, args.db_name), conds,
+                            limit=args.limit, offset=args.offset, ai=ai, wait=args.wait)
             emit(res, json.dumps(res, ensure_ascii=False, indent=1))
             return 0
         if args.export:
@@ -623,9 +715,10 @@ def main(argv=None):
         res = analyze(args.paths, db=args.db, db_name=args.db_name, tool=args.tool,
                       full=args.full, extend=args.extend)
         human = ("已入库 %s\n  工具 %s ｜ 牌谱 %d 个 ｜ 局 %d ｜ 本次打点 %d 行"
-                 "（摸牌帧 %d + 副露帧 %d）｜ 库内共 %d 行 ｜ %dms"
+                 "（出牌帧 %d = 摸牌 %d + 吃碰后 %d ｜ 鸣牌响应帧 %d）｜ 库内共 %d 行 ｜ %dms"
                  % (res["db"], res["tool"], res["logs"], res["rounds"], res["annotations"],
-                    res.get("rows_draw", 0), res.get("rows_call", 0),
+                    res.get("rows_draw", 0) + res.get("rows_call", 0),
+                    res.get("rows_draw", 0), res.get("rows_call", 0), res.get("rows_wait", 0),
                     res["db_total"], res["elapsed_ms"]))
         if res.get("extend"):
             human += "\n  扩充模式：跳过已入库牌谱 %d 个" % len(res.get("skipped") or [])

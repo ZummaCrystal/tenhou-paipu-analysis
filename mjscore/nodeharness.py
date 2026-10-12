@@ -11,6 +11,9 @@ Node 与 Python 两个工具的分工：
 
 为什么用 subprocess 而不是自己写 JSON：本仓库既有前端 JS 解析器又有 Python 解析器，
 两条路互为参照；Node 负责把 JS 一侧的结果以 JSONL 吐出，Python 负责入库 / 检索 / 服务。
+
+子进程输出的抓取：默认用管道；若运行环境禁止创建匿名管道（Windows 沙箱 / 受限账户会报
+`PermissionError [WinError 5]`，CreatePipe 被拒），自动回退成「让 node 写临时文件、再读回」。
 """
 
 import json
@@ -58,6 +61,41 @@ def available():
     return find_node() is not None
 
 
+def _run(argv, timeout):
+    """跑子进程并抓 (exit_code, stdout, stderr)。
+
+    先走管道；管道被环境拒绝时回退到临时文件（临时目录本身可写，只是不能在被拒绝的
+    新建子目录里写；所以用 mkstemp 直接落在临时目录里）。
+    """
+    try:
+        proc = subprocess.run(argv, capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", timeout=timeout)
+        return proc.returncode, proc.stdout or "", proc.stderr or ""
+    except PermissionError:
+        pass
+    import tempfile
+    paths_ = []
+    try:
+        for suffix in (".out", ".err"):
+            fd, p = tempfile.mkstemp(prefix="mjscore-node-", suffix=suffix)
+            os.close(fd)
+            paths_.append(p)
+        with open(paths_[0], "w", encoding="utf-8") as fo, \
+                open(paths_[1], "w", encoding="utf-8") as fe:
+            code = subprocess.call(argv, stdout=fo, stderr=fe, timeout=timeout)
+        with open(paths_[0], "r", encoding="utf-8", errors="replace") as fo:
+            out = fo.read()
+        with open(paths_[1], "r", encoding="utf-8", errors="replace") as fe:
+            err = fe.read()
+        return code, out, err
+    finally:
+        for p in paths_:
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+
+
 def run(mode, files, node=None, timeout=900, out_path=None):
     """跑一次 node_harness.js，返回 (jsonl 对象列表, stderr)。
 
@@ -72,17 +110,16 @@ def run(mode, files, node=None, timeout=900, out_path=None):
     if out_path:
         argv += ["--out", os.path.abspath(out_path)]
     argv += files
-    proc = subprocess.run(argv, capture_output=True, text=True,
-                          encoding="utf-8", errors="replace", timeout=timeout)
-    if proc.returncode != 0:
+    code, out, err = _run(argv, timeout)
+    if code != 0:
         raise NodeFailed("node 打点失败（exit %d）：%s"
-                         % (proc.returncode, (proc.stderr or proc.stdout or "").strip()[-1200:]))
+                         % (code, (err or out or "").strip()[-1200:]))
     if out_path:
         with open(out_path, "r", encoding="utf-8") as fh:
             text = fh.read()
     else:
-        text = proc.stdout
-    return parse_jsonl(text), (proc.stderr or "")
+        text = out
+    return parse_jsonl(text), err
 
 
 def parse_jsonl(text):

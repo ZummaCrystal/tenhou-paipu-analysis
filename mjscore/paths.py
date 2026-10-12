@@ -22,6 +22,26 @@ import sys
 APP_DIR_NAME = "tenhou-paipu-analysis"
 
 
+# --------------------------------------------------------------------------- 牌谱后缀
+# 用户 m05545 ②：本地牌谱文件名按来源用不同后缀，内容仍是各来源的原格式；
+# 读取时按内容 / 原来的解析器走，旧后缀仍然认（改造前下载的文件继续可用）。
+TENHOU_SUFFIX = ".tenhou"           # 天凤 mjlog（XML 文本）
+NAGA_SUFFIX = ".naga"               # NAGA / ricochet 报告（原样 gzip 字节）
+MORTAL_SUFFIX = ".mortal"           # Mortal 报告（mjai JSON 文本）的通用后缀
+TENHOU_LEGACY_SUFFIXES = (".xml", ".mjlog")
+NAGA_LEGACY_SUFFIXES = (".json.gz", ".json")
+MORTAL_LEGACY_SUFFIXES = (MORTAL_SUFFIX,)
+# 用户 m05806 ②：一份 mortal 报告里只有一种风格的模型，后缀按风格区分
+# （report 的 review.model_tag = 4.1a 避四 / 4.1b 平衡 / 4.1c 争一）。
+MORTAL_STYLE_SUFFIXES = (".mortal-a", ".mortal-b", ".mortal-c")
+MORTAL_SUFFIX_BY_TAG = {"4.1a": ".mortal-a", "4.1b": ".mortal-b", "4.1c": ".mortal-c"}
+TENHOU_SUFFIXES = (TENHOU_SUFFIX,) + TENHOU_LEGACY_SUFFIXES
+NAGA_SUFFIXES = (NAGA_SUFFIX,) + NAGA_LEGACY_SUFFIXES
+MORTAL_SUFFIXES = MORTAL_STYLE_SUFFIXES + MORTAL_LEGACY_SUFFIXES
+
+
+
+
 def resource_root():
     """只读资源根目录（`web/`、`media/`、`mjscore/` 都在它下面）。"""
     if getattr(sys, "frozen", False):
@@ -55,5 +75,5 @@ def db_dir():
 
 
 def paipu_root():
-    """`data/paipu` —— 下载的牌谱 .xml 的固定存放根。"""
+    """`data/paipu` —— 下载的牌谱（.tenhou / .naga / .mortal-a|b|c，旧后缀 .xml 等）的固定存放根。"""
     return os.path.join(data_dir(), "paipu")

@@ -38,6 +38,7 @@
       roundIndex: s.roundIndex, round: s.round, honba: s.honba, kyotaku: s.kyotaku, oya: s.oya,
       scores: s.scores.slice(), players: s.players.map(clonePlayer),
       dora: s.dora.slice(), dices: s.dices, drawn: s.drawn, tilesLeft: s.tilesLeft,
+      ippatsu: (s.ippatsu || [false, false, false, false]).slice(),
       phase: s.phase, result: s.result, reveal: (s.reveal || []).slice(), desc: s.desc, evIndex: s.evIndex, warnings: s.warnings.slice()
     };
   }
@@ -76,6 +77,8 @@
         };
       }),
       dora: [init.dora], dices: init.dices, drawn: null, tilesLeft: 70,
+      /* 「一发」状态（用户 m02227 ②）：立直宣言置真；之后本人下一次出牌 / 自家暗杠、或他家鸣牌时置假 */
+      ippatsu: [false, false, false, false],
       phase: 'playing', result: null, reveal: [], desc: '开局 · 配牌', evIndex: -1, warnings: []
     };
   }
@@ -117,14 +120,22 @@
     }
 
     if (ev.callType === 'kakan') {
-      // 把已有的碰升级为加杠
+      /* 把已有的碰升级为加杠：tiles[0] = 加进去的那张，后面跟原来碰出来的 3 张。
+         不能直接覆盖成事件的 tiles（加杠事件只带第 4 张，覆盖会让 4 张全部消失，用户 m08125 ①）。 */
+      var addedK = ev.tiles[0];
       var found = false;
       for (i = 0; i < pl.melds.length; i++) {
-        if (pl.melds[i].callType === 'pon' && kindOf(pl.melds[i].tiles[0]) === kindOf(ev.tiles[0])) {
-          pl.melds[i].callType = 'kakan'; pl.melds[i].tiles = ev.tiles.slice(); found = true; break;
+        if (pl.melds[i].callType === 'pon' && addedK !== undefined
+          && kindOf(pl.melds[i].tiles[0]) === kindOf(addedK)) {
+          pl.melds[i].callType = 'kakan';
+          pl.melds[i].tiles = [addedK].concat(pl.melds[i].tiles.slice(0, 3));
+          found = true; break;
         }
       }
-      if (!found) { pl.melds.push({ callType: 'kakan', tiles: ev.tiles.slice(), calledId: null, from: null, open: true }); }
+      if (!found) {
+        st.warnings.push(nm + ': 找不到可升级的碰');
+        pl.melds.push({ callType: 'kakan', tiles: ev.tiles.slice(), calledId: null, from: null, open: true });
+      }
     } else {
       pl.melds.push({
         callType: ev.callType, tiles: ev.tiles.slice(), calledId: calledId,
@@ -161,7 +172,13 @@
         if (idx >= 0) { pl.hand.splice(idx, 1); }
         else if (!takeKind(pl.hand, kindOf(ev.tile))) { st.warnings.push('打牌: 手牌中找不到 ' + tileName(ev.tile)); }
         var entry = { tile: ev.tile, tsumogiri: tsumogiri, riichi: false, called: false };
-        if (pl.riichiPending) { entry.riichi = true; pl.riichiPending = false; }
+        if (!st.ippatsu) { st.ippatsu = [false, false, false, false]; }
+        if (pl.riichiPending) {
+          entry.riichi = true; pl.riichiPending = false;
+          st.ippatsu[p] = true;      /* 立直宣言的那一次出牌 ⇒ 进入「一发」（用户 m02227 ②） */
+        } else {
+          st.ippatsu[p] = false;     /* 本人下一次出牌 ⇒ 退出「一发」 */
+        }
         pl.river.push(entry);
         pl.turns += 1;   /* 出牌一次 +1（巡目口径） */
         st.drawn = null;
@@ -170,6 +187,7 @@
 
       case 'call':
         applyCall(st, ev);
+        st.ippatsu = [false, false, false, false];   /* 鸣牌 / 各种杠 ⇒ 全场「一发」结束（用户 m02227 ②） */
         break;
 
       case 'reach':

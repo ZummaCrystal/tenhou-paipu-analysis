@@ -30,15 +30,18 @@
     <div class="cards">
       <div class="card">
         <h2>牌谱下载</h2>
-        <p class="muted">把天凤牌谱下载到 <code>data/paipu/&lt;子目录&gt;</code>：可以输入单个牌谱 URL，
-          也可以选择一个「每行一个 URL」的本地文本文件；同名文件直接覆盖，下载完可直接拿去分析。</p>
+        <p class="muted">把牌谱下载到 <code>data/paipu/&lt;子目录&gt;</code>：可以输入单个牌谱 URL，
+          也可以选择一个「每行一个 URL」的本地文本文件。支持天凤牌谱（<code>.tenhou</code>）、
+          NAGA 报告（<code>.naga</code>，官方或 ricochet 代理）、Mortal 报告（<code>.mortal-a/b/c</code>）。
+          本地已有同名文件时，天凤 / NAGA 官方 / Mortal 来源直接跳过，ricochet 代理来源会重新下载覆盖。</p>
         <button id="btnGoDownload">进入下载</button>
       </div>
 
       <div class="card">
         <h2>牌谱播放</h2>
-        <p class="muted">选择一个本地 <code>mjlog</code> 牌谱（.xml）后进入播放界面，逐步回放每一局。
-          也可以在下方选择 <code>data/</code> 中已下载的示例牌谱。</p>
+        <p class="muted">进入播放界面后，可以「浏览选择」本地牌谱（天凤 <code>.tenhou</code> / NAGA
+          <code>.naga</code> / Mortal <code>.mortal-a/b/c</code>），或「按特征码搜索」<code>data/paipu/</code> 里已下载的牌谱；
+          也可以直接把牌谱文件拖到牌桌区域。</p>
 
         <div class="row">
           <button id="btnGoReplay" class="primary">开始播放</button>
@@ -47,8 +50,8 @@
 
       <div class="card">
         <h2>牌谱分析</h2>
-        <p class="muted">选择本地牌谱文件或一个子目录，对其中<b>每一个非自摸的摸牌帧</b>与<b>每一个吃/碰后等待出牌的帧</b>
-          （视角＝摸牌者本人；巡目按「出牌」计）标注 33 个特征（16 个第一类 + 17 个第二类：向听数 / 期望枚数 /</p>
+        <p class="muted">选择本地牌谱文件或一个子目录，对其中<b>每一个非自摸的摸牌帧</b>、<b>每一个吃/碰后等待出牌的帧</b>与<b>每一个等待鸣牌决策的帧</b>
+          （视角＝摸牌者本人；巡目按「出牌」计）标注 40 个特征（5 个第零类 + 18 个第一类 + 17 个第二类：向听数 / 期望枚数 /</p>
         <p class="muted">期望打点 / 危险筋组·两面组），写入本地 SQLite 数据库。</p>
         <p class="muted">特征取值说明：三种向听数的内部取值 3 表示「>=3 向听」，界面与文档里一律显示成 <b>&gt;=3</b>；
           检索时按 <b>&gt;=3</b> 填写条件即可。</p>
@@ -77,6 +80,8 @@
       <button id="btnBackHome" class="ghost">← 返回首页</button>
       <button id="btnOpenPicker" class="ghost">打开牌谱…</button>
       <span id="rpFile" class="file-name"></span>
+      <!-- 复制原始牌谱 URL（用户 m03479 ①）：天凤 = tenhou.net、NAGA = 官网观看页 -->
+      <button id="btnCopyUrl" class="ghost" disabled title="复制原始牌谱 URL">复制url</button>
       <div class="topbar-spacer"></div>
       <label for="roundSelect">局</label>
       <select id="roundSelect"></select>
@@ -85,31 +90,23 @@
       <span id="itemInfo" class="item-info hidden"></span>
       <button id="btnPrevItem" class="ghost hidden">◀ 上一条目</button>
       <button id="btnNextItem" class="ghost hidden">下一条目 ▶</button>
-      
-      <label class="chk"><input type="checkbox" id="chkList" checked /> 事件列表</label>
     </div>
 
       <div id="rpOpenBar" class="open-bar">
         <div class="row">
-          <button id="btnPickFile" class="primary">选择牌谱文件…</button>
-          <input id="fileInput" type="file" accept=".xml,.mjlog,text/xml,application/xml" hidden />
-          <label for="sampleSelect">示例牌谱（需本地 HTTP 服务器）</label>
-          <select id="sampleSelect"></select>
-          <button id="btnLoadSample">载入</button>
+          <!-- 两种互斥的打开方式（用户 m03175 ④）：浏览选择 / 按特征码搜索 -->
+          <label class="chk"><input type="radio" name="rpOpenMode" id="rpModeBrowse" value="browse" checked /> 浏览选择</label>
+          <button id="btnPickFile" class="primary">浏览选择…</button>
+          <input id="fileInput" type="file" accept=".tenhou,.naga,.mortal-a,.mortal-b,.mortal-c,.mortal,.xml,.mjlog,.json.gz,.json,text/xml,application/xml,application/gzip" hidden />
+
+          <label class="chk"><input type="radio" name="rpOpenMode" id="rpModeSearch" value="search" /> 按特征码搜索</label>
+          <input id="codeInput" class="code-input" type="text" maxlength="160" disabled
+                 placeholder="牌谱特征码的连续片段（如 2026082919gm 或 60b5c2ad…v2_2）" />
         </div>
 
-        <div id="dropZone" class="drop-zone">把 .xml 牌谱文件拖到这里</div>
+        <div id="codeResults" class="code-results hidden"></div>
 
         <p id="homeMsg" class="msg"></p>
-        <details class="hint">
-          <summary>打不开文件 / 载入示例失败？</summary>
-          <p>正常用法：在项目根目录启动本地服务，再打开页面地址。需要本地服务才能访问
-            <code>data/</code> 牌谱、「牌谱分析」与「牌谱检索」：<br />
-            <code>python server.py</code><br />
-            然后访问 <code>http://127.0.0.1:8770/</code>（页面文件在 <code>web/index.html</code>）。</p>
-          <p>也可以直接双击 <code>web/index.html</code> 用「选择牌谱文件」离线播放，
-            但牌谱分析与检索必须走本地服务。</p>
-        </details>
       </div>
 
     <div id="warnBar" class="warn-bar hidden"></div>
@@ -120,26 +117,51 @@
         <div id="frameKey" class="frame-key" title="点击复制"></div>
         <div id="boardBox" class="board-box">
           <div id="board" class="board"></div>
+          <!-- 拖放区覆盖整个牌桌区域（用户 m03175 ⑥）：没有载入牌谱时显示 -->
+          <div id="dropZone" class="drop-zone">把天凤 .tenhou / NAGA .naga / Mortal .mortal-a|b|c 牌谱文件拖到这里（旧后缀 .xml / .json.gz 也认）</div>
         </div>
+        <!-- 控制面板（用户 m05131 ③④）：两行七列、整体仍占 50px（牌桌尺寸与位置不变）。
+             上排 = 跨局 / 决策跳转 / 单步 / 主视角；下排 = 整个牌谱的开局与完场、本局的开始与结算、
+             自家决策跳转、他家手牌开关。删掉了「自动播放」与下面的当前事件信息。
+             竖线统一用整字宽的「|」/ 「‖」（原来的 ⎮ 是积分延长符，字形偏高、看起来上移）。 -->
         <div id="controls" class="controls">
           <button data-act="prevRound">⇤ 上一局</button>
-          <button data-act="first">⎮◀ 开局</button>
-          <button data-act="prevKey">◀◀ 上一关键</button>
+          <button data-act="nextRound">下一局 ⇥</button>
+          <button data-act="prevKey">◀◀ 上一决策</button>
+          <button data-act="nextKey">下一决策 ▶▶</button>
           <button data-act="prev">◀ 上一步</button>
           <button data-act="next" class="primary">下一步 ▶</button>
-          <button data-act="nextKey">下一关键 ▶▶</button>
-          <button data-act="last">本局结束 ⎮▶</button>
-          <button data-act="auto">▶ 自动播放</button>
-          <button data-act="nextRound">下一局 ⇥</button>
+          <!-- 切换主视角（用户 m03343 ②）：点开 4 行上拉框，按东 1 局座次列出四家 ID -->
+          <button data-act="view" id="btnView">切换主视角</button>
+          <button data-act="allFirst">‖◀ 开局</button>
+          <button data-act="allLast">‖▶ 完场</button>
+          <button data-act="first">|◀ 本局开始</button>
+          <button data-act="last">本局结算 |▶</button>
+          <button data-act="prevSelf">◀◀◀ 上一自家决策</button>
+          <button data-act="nextSelf">下一自家决策 ▶▶▶</button>
           <button data-act="others" id="btnOthers">隐藏他家手牌</button>
         </div>
-        <div id="rpDesc" class="desc-bar"></div>
+        <!-- 主视角上拉框（用户 m03343 ②）：4 行 = 東 > 南 > 西 > 北，点一行换主视角 -->
+        <div id="viewMenu" class="view-menu hidden"></div>
       </div>
 
-      <aside id="featPanel" class="feat-panel">
-        <div class="feat-panel-head">当前帧特征 <span id="featPanelInfo" class="muted"></span></div>
-        <div id="featPanelList" class="feat-panel-body"></div>
+      <!-- NAGA 决策面板（用户 m00198 / m01518 ③）：常驻；天凤牌谱留空，共有组件不错位 -->
+      <aside id="nagaPanel" class="naga-panel">
+        <!-- 标题 = AI 模型下拉按钮（用户 m04556 ①）：占满整行，点击向下生长；"无AI决策" 恒可选且为默认项，报告里没有的模型灰显不可点 -->
+        <button id="nagaModelBtn" class="naga-model-btn" type="button">无AI决策</button>
+        <div id="nagaModelMenu" class="naga-model-menu hidden"></div>
+        <div id="nagaWho" class="naga-who"></div>
+        <div id="nagaOptions" class="naga-options"></div>
+        <div id="nagaHud" class="naga-hud"></div>
       </aside>
+
+<aside id="featPanel" class="feat-panel">
+    <div class="feat-panel-head"><span class="fp-title">当前帧特征</span> <span id="featPanelInfo" class="muted"></span></div>
+    <div id="featPanelList" class="feat-panel-body"></div>
+    <!-- 局面（第三类特征「等待鸣牌」的展示方式，用户 m07289）：大号居中文字「出牌局面」/「鸣牌响应局面」，
+         固定在面板底部（不参与滚动、不顶出滚动条） -->
+    <div id="featPanelMode" class="feat-panel-mode"></div>
+  </aside>
 
       <aside id="eventList" class="event-list">
         <div class="event-list-head">事件列表（点击跳转）</div>
@@ -152,8 +174,8 @@
   <section id="view-analyze" class="view hidden">
     <div class="card wide">
       <h2>牌谱分析</h2>
-      <p class="muted">选择一个牌谱文件或一个子目录，对其中<b>每一个非自摸的摸牌帧</b>与<b>每一个吃/碰后等待出牌的帧</b>
-        （视角＝摸牌者本人；巡目按「出牌」计）标注 33 个特征（16 个第一类 + 17 个第二类），写入本地 SQLite 数据库。分析由本地服务完成：
+        <p class="muted">选择一个牌谱文件或一个子目录，对其中<b>每一个非自摸的摸牌帧</b>、<b>每一个吃/碰后等待出牌的帧</b>与<b>每一个鸣牌响应帧</b>
+          （视角＝当前决策者；巡目按「出牌」计）标注 40 个特征（5 个第零类 + 17 个第一类 + 17 个第二类 + 1 个第三类），写入本地 SQLite 数据库。分析由本地服务完成：
         请先运行 <code>python server.py</code>，再从它打印的地址打开本页。</p>
 
       <div class="row">
@@ -174,13 +196,15 @@
       <details id="anFullHelp" class="hint">
         <summary>「同时写入原始数据（--full）」勾选与不勾选的区别</summary>
         <p id="anFullNote" class="muted">勾选：把每一帧的原始数据（手牌 / 副露 / 宝牌 / 分数）一起写进 frame_full 表，
-          以后新增特征时可以直接用旧牌谱重算；不勾选：只写 33 个特征值与定位信息，数据库更小
+          以后新增特征时可以直接用旧牌谱重算；不勾选：只写 40 个特征值与定位信息，数据库更小
           （约为勾选时的一半），但新增特征时必须重新分析牌谱。</p>
       </details>
 
       <div class="row">
-        <label for="anSourceDir">牌谱文件 / 子目录</label>
-        <input id="anSourceDir" type="text" value="data" size="44" />
+        <label for="anSourceDir">牌谱目录</label>
+        <select id="anSourceDir"></select>
+        <label for="anSourceFile">牌谱文件</label>
+        <select id="anSourceFile"></select>
         <button id="btnScan">扫描</button>
         <button id="btnSelAll" class="ghost">全选</button>
         <button id="btnSelNone" class="ghost">全不选</button>
@@ -207,13 +231,14 @@
 
       <details class="hint">
         <summary>路径怎么写 / 找不到 node？</summary>
-        <p>相对路径按项目根目录解析，所以 <code>data</code> 就是项目里的 <code>data\</code>；
-          也可以直接写绝对路径（会递归扫描其中的 <code>.xml</code> 牌谱），例如
-          <code>D:\paipu</code>。</p>
+        <p>牌谱目录固定为 <code>data/paipu</code>：上面两个下拉框列的就是它里面的子目录与牌谱文件
+          （天凤 <code>.tenhou</code> / <code>.xml</code>、NAGA <code>.naga</code> / <code>.json.gz</code>、Mortal <code>.mortal-a|b|c</code>）。
+          选目录点「扫描」会递归列出该目录里的全部牌谱；只选一个牌谱文件则只分析这一个；
+          「牌谱下载」完成后下拉框会自动跟到下载目录。</p>
         <p>打点不用选工具：有 <code>node.exe</code> 时第一类特征由 node 打点、第二类 17 项由 python 补齐
           （两者逐字段一致，有交叉校验测试）；没有 node 时全部走 python。</p>
         <p>「扩充现有数据库」把本次牌谱追加进已有的库，库里已经有的牌谱（特征码相同）自动跳过；
-          数据库里记录了生成它的软件版本，<b>版本不一致的库不能扩充</b>，请删除后重新分析。</p>
+数据库里记录了生成它的软件版本，<b>版本过低的库不能使用</b>（schema ≤ 9 的库在 v1.3.0 起不再支持：第零类特征自 v1.1.0 起改为<b>按帧判定</b>；第 63 轮起「等待鸣牌」改列<b>第三类特征</b>，<code>kind='wait'</code> 的行改为「鸣牌响应帧」—— 判据 = 这张牌<b>可能</b>被他家鸣牌，且可能鸣牌的那一家各一行），请删除后重新分析。</p>
       </details>
     </div>
   </section>
@@ -222,11 +247,11 @@
   <section id="view-search" class="view hidden">
     <div class="card wide">
       <h2>牌谱检索</h2>
-      <p class="muted">先指定一个本地数据库文件，再逐条添加「牌谱特征」（<b>支持全部 33 个特征</b>：
-        16 个第一类 + 17 个第二类，不能重复添加），每条特征都要指定条件（<b>互斥取值的特征用下拉选取</b>，
+<p class="muted">先指定一个本地数据库文件，再逐条添加「牌谱特征」（<b>可填取值的有 34 个特征</b>：
+        17 个第一类 + 17 个第二类，不能重复添加；第零类 5 项走上面的「是否具有AI决策」方案，且第零类是<b>按帧判定</b>的 —— 命中的是「这一帧自己满足方案」的帧，同一份牌谱里有的帧命中、有的不命中；第三类「等待鸣牌」不出现在特征下拉里，改用上面的「出牌 / 鸣牌响应」单选），
         整数特征填 整数 / 区间 / 列表 / 比较，期望枚数·期望打点等实数特征可填
         <code>0.5</code> / <code>0-1.5</code> / <code>0,1,2.5</code> / <code>&gt;=3</code>）；
-        点「检索」返回<b>同时满足全部条件</b>的打点帧。
+点「检索」返回<b>同时满足全部条件</b>的打点帧（检索范围＝播放里的「决策帧」：非自摸的摸牌帧、吃 / 碰后等待出牌的帧、以及有人打出牌后<b>可能鸣牌</b>的那一家各自的鸣牌响应帧；「出牌 / 鸣牌响应」单选与全部条件同时满足）。
         条目名＝<b>牌谱特征码 + 局况 + 本场 + 巡目 + 风位</b>，点击跳到对应帧形态查看；
         跳转后右侧「当前帧特征」面板会列出该类全部特征与取值，<b>检索用到的特征会高亮</b>；
         「全部浏览」则按顺序阅图，用「上一条目 / 下一条目」切换。</p>
@@ -238,6 +263,25 @@
         <label for="scDbPath">或直接填路径</label>
         <input id="scDbPath" type="text" placeholder="例：data\db\paipu.sqlite" size="30" />
       </div>
+
+<!-- 第零类特征检索方案（用户 m04556 ③）：四种互斥方案，位于第一、二类特征上方；
+      与下面的特征条件同时满足（AND）。不选择 = 不筛选。
+      框的右端 = 第三类「出牌 / 鸣牌响应」必选单选（第 63 轮，用户 m07289 的补充要求）：
+      与第零类方案、第一/二类条件同时满足（AND），默认「出牌」；只放上下两行两个选项，不写标题与说明文字 -->
+  <div class="ai-plan">
+    <div class="ai-plan-main">
+      <div class="ai-plan-head"><b>是否具有AI决策</b><span class="muted">不选择 = 不筛选；按帧判定（这一帧有没有该模型的决策概率表）</span></div>
+      <div id="aiModes" class="ai-modes"></div>
+      <div id="aiPicks" class="ai-picks hidden"></div>
+      <div class="row">
+        <button id="btnAiClear" class="ghost" type="button">清除方案</button>
+      </div>
+    </div>
+    <div id="waitPlan" class="wait-plan">
+      <label><input type="radio" name="waitMode" value="出牌" checked /> 出牌</label>
+      <label><input type="radio" name="waitMode" value="鸣牌响应" /> 鸣牌响应</label>
+    </div>
+  </div>
 
       <fieldset>
         <legend>牌谱特征</legend>
@@ -264,10 +308,13 @@
   <section id="view-download" class="view hidden">
     <div class="card wide">
       <h2>牌谱下载</h2>
-      <p class="muted">把天凤牌谱下载到本地：可以输入<b>单个牌谱 URL</b>（或裸特征码），也可以选择
-        一个<b>本地文本文件</b>（每行一个 URL）。文件固定下载到 <code>data/paipu/</code> 下的子目录里，
-        子目录名可以自定义（默认是带时间戳的目录名）；同名文件直接覆盖。下载完可以在
-        「牌谱分析」里把该目录作为来源扫描并入库。</p>
+      <p class="muted">把牌谱下载到本地：可以输入<b>单个牌谱 URL</b>（或裸特征码），也可以选择
+        一个<b>本地文本文件</b>（每行一个 URL）。支持天凤牌谱（<code>.tenhou</code>）、NAGA 报告
+        （<code>.naga</code>，官方 naga.dmv.nico 或 ricochet 代理）、Mortal 报告（mjai.ekyu.moe，
+        按风格落盘 <code>.mortal-a</code> / <code>.mortal-b</code> / <code>.mortal-c</code>）。
+        文件固定下载到 <code>data/paipu/</code> 下的子目录里，子目录名可以自定义（默认是带时间戳的
+        目录名）；本地已有同名文件时，天凤 / NAGA 官方 / Mortal 来源直接跳过（想重下先删本地文件），
+        ricochet 代理来源会重新下载覆盖。下载完可以在「牌谱分析」里把该目录作为来源扫描并入库。</p>
 
       <div class="row">
         <label for="dlSubdir">存储子目录</label>
@@ -283,7 +330,7 @@
 
       <div id="dlUrlRow" class="row">
         <input id="dlUrl" type="text" size="72"
-          placeholder="http://tenhou.net/0/?log=2026082919gm-00a9-0000-4e40cd3e&amp;tw=0 或裸特征码" />
+          placeholder="天凤 tenhou.net 牌谱 URL / NAGA 或 ricochet 报告 URL / Mortal mjai.ekyu.moe 报告 URL，或裸特征码" />
       </div>
 
       <div id="dlFileRow" class="row hidden">

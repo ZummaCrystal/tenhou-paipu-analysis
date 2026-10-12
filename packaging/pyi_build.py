@@ -22,6 +22,7 @@ no-op、:308 的 call() 走进程内分支）。产物与正常模式一致，�
 退出码：0 成功；非 0 = PyInstaller 的退出码。
 """
 import argparse
+import hashlib
 import os
 import shutil
 import subprocess
@@ -50,6 +51,59 @@ def default_node():
     return shutil.which("node") or ""
 
 
+def file_sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def ssl_pair():
+    """本解释器环境里**配套**的 OpenSSL DLL。
+
+    conda 把 libssl-3-x64.dll / libcrypto-3-x64.dll 放在 <env>\\Library\\bin。若只让
+    PyInstaller 自己找，它会从 conda base（如 D:\\coding\\anaconda3\\Library\\bin）抓到
+    另一套版本，与 <env>\\DLLs\\_ssl.pyd 不匹配，打包后的 exe 一 import ssl 就报：
+
+        ImportError: DLL load failed while importing _ssl: 找不到指定的程序
+
+    所以这里显式取环境里的一套，并在打包后强制覆盖（见 fix_ssl_pair）。
+    """
+    name_list = ("libssl-3-x64.dll", "libcrypto-3-x64.dll")
+    dirs = [os.path.join(sys.prefix, "Library", "bin"),
+            os.path.join(sys.prefix, "DLLs"),
+            sys.prefix]
+    out = []
+    for name in name_list:
+        for d in dirs:
+            p = os.path.join(d, name)
+            if os.path.isfile(p):
+                out.append(p)
+                break
+    return out if len(out) == len(name_list) else []
+
+
+def fix_ssl_pair(dist_dir):
+    """把 dist 里的 OpenSSL DLL 换成 ssl_pair() 的那一套（PyInstaller 6 放在 _internal）。"""
+    src = ssl_pair()
+    if not src:
+        print("OpenSSL  : !! 找不到本环境的 libssl / libcrypto，跳过（打包后 ssl 可能不可用）")
+        return
+    dst_dir = os.path.join(dist_dir, "_internal")
+    if not os.path.isdir(dst_dir):
+        dst_dir = dist_dir
+    for p in src:
+        dst = os.path.join(dst_dir, os.path.basename(p))
+        if os.path.isfile(dst) and file_sha256(dst) == file_sha256(p):
+            print("OpenSSL  : %s 正确（%s B）" % (os.path.basename(p), format(os.path.getsize(dst), ",")))
+            continue
+        old = (format(os.path.getsize(dst), ",") + " B") if os.path.isfile(dst) else "缺失"
+        shutil.copy2(p, dst)
+        print("OpenSSL  : %s 已替换 %s -> %s B（PyInstaller 抓错了 conda base 的版本）"
+              % (os.path.basename(p), old, format(os.path.getsize(dst), ",")))
+
+
 def build_args(a):
     """组装 PyInstaller 参数（路径全部绝对，sep 用 ';' 是本项目的 Windows 目标）。"""
     args = [
@@ -67,6 +121,8 @@ def build_args(a):
         "--add-data", os.path.join(ROOT, "media") + ";media",
         "--add-data", os.path.join(ROOT, "mjscore", "node_harness.js") + ";mjscore",
     ]
+    for p in ssl_pair():                      # 配套的 OpenSSL（见 ssl_pair 的说明）
+        args += ["--add-binary", p + ";."]
     if a.clean:
         args.append("--clean")
     if not a.skip_node:
@@ -110,7 +166,10 @@ def main(argv=None):
         run(args)
     except SystemExit as e:
         code = e.code
-        return code if isinstance(code, int) else (0 if code is None else 1)
+        code = code if isinstance(code, int) else (0 if code is None else 1)
+        if code != 0:
+            return code
+    fix_ssl_pair(os.path.join(a.distpath, NAME))
     return 0
 
 

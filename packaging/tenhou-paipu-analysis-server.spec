@@ -4,7 +4,7 @@
 a = Analysis(
     ['D:/coding/dsh_workspace/simple/tenhou-paipu-analysis/server.py'],
     pathex=[],
-    binaries=[('D:/Program Files/nodejs/node.exe', 'node')],
+    binaries=[('D:/coding/anaconda3/envs/py314_null/Library/bin/libssl-3-x64.dll', '.'), ('D:/coding/anaconda3/envs/py314_null/Library/bin/libcrypto-3-x64.dll', '.'), ('D:/Program Files/nodejs/node.exe', 'node')],
     datas=[('D:/coding/dsh_workspace/simple/tenhou-paipu-analysis/web', 'web'), ('D:/coding/dsh_workspace/simple/tenhou-paipu-analysis/media', 'media'), ('D:/coding/dsh_workspace/simple/tenhou-paipu-analysis/mjscore/node_harness.js', 'mjscore')],
     hiddenimports=[],
     hookspath=[],

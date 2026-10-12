@@ -10,20 +10,72 @@
 
   var $ = function (id) { return document.getElementById(id); };
 
-  /* 首页「载入示例牌谱」优先列出这些牌谱（第 1 轮下载所得，按 log_id 匹配）；
-     数据目录里找不到时退化为目录里的前 5 个；服务没启动时只列清单（点选会给提示）。 */
-  var SAMPLE_IDS = [
-    '2026082919gm-00a9-0000-4e40cd3e',
-    '2026082920gm-00a9-0000-5db954e6',
-    '2026082921gm-00a9-0000-d2e544e6',
-    '2026083020gm-00a9-0000-e9ce1efe',
-    '2026083021gm-00a9-0000-d0810acf'
-  ];
+  /* 「决策帧」= 有待某位玩家做出选择的帧（用户 m01903 ①②、m02007 ③、m06670）：
+     摸牌后 / 鸣牌后 / 立直后 → 等待出牌（打牌 · 立直 · 杠 · 自摸 · 九种九牌流局）；
+     有人打出牌后 → 只有在有人真能鸣牌 / 荣和时才算（下一次事件是鸣牌或和了）；
+     立直宣言 / 新宝牌 / 和了 / 流局只是「执行 / 展示」帧，不算决策帧。
+     **判据只看牌局本身，与「这一帧有没有 AI 决策概率向量」无关**（用户 m06670）：NAGA 报告覆盖
+     四家时两者恰好等价；Mortal 报告只复盘一家，概率向量只出现在被复盘那一家决策的帧上 ——
+     若拿「有概率向量」当判据，「上一 / 下一决策」就只会停在被复盘那一家的帧上，那等于
+     「上一 / 下一自家决策」。 */
+  /* 下面这个函数表示「这一帧有没有 AI 决策概率向量」（面板里除「其它」外真有选项）——
+     只说明 AI 数据的有无，与上面的「决策帧」是两个概念（用户 m06670）。 */
+  function nagaFrameChoices(i) {
+    var rs = (App.naga && App.naga.rounds) ? App.naga.rounds[App.roundIndex] : null;
+    if (!rs) { return null; }                                 // 天凤牌谱：只按帧类型判断
+    var nf = rs[i];
+    if (!nf) { return false; }                                // 末帧（和了 / 流局）没有 NAGA 数据
+    var fr = App.rounds[App.roundIndex][i];
+    /* 「有没有概率向量」的判定不随所选 AI 模型变化（用户 m04556 ①）：固定按「平衡形」那一档的报告值判断 */
+    var kf = aiFoldFrame(nf, aiModelIndex());
+    var list = nagaOptions(kf, fr ? fr.state : null, nagaSeatOf(kf));
+    for (var k = 0; k < list.length; k++) { if (!list[k].pass) { return true; } }
+    return false;
+  }
 
-  /* 视为「关键事件」的动作：出牌 / 吃碰杠 / 立直 / 新宝牌 / 和了 / 流局 */
-  var KEY = { discard: 1, call: 1, reach: 1, dora: 1, agari: 1, ryuukyoku: 1 };
+  /* 摸牌帧之后是不是「自摸和了」（第 63 轮，用户 m07289 ③：能和就和，不构成决策点）。 */
+  function selfTsumoAgari(frames, i) {
+    var ev = frames[i] && frames[i].ev;
+    if (!ev || ev.type !== 'draw') { return false; }
+    var nx = frames[i + 1] && frames[i + 1].ev;
+    return !!(nx && nx.type === 'agari' && nx.winner === ev.player && nx.fromWho === ev.player);
+  }
 
-  var AUTO_MS = 500;
+  /* 这一帧有哪些座位「等待做决策」（第 63 轮，用户 m07289）——「决策帧」的判据只和状态有关，
+     与牌谱里实际有没有出现鸣牌无关：
+       · 摸牌帧：摸牌者（自摸和了的摸牌帧不算）；
+       · 吃 / 碰后等待出牌的帧：鸣牌者（暗杠 / 加杠 / 大明杠的宣言帧不出帧）；
+       · 出牌帧：这张牌「可能被他家鸣牌」时，可能鸣牌的那几家各算一个决策者 ——
+         非立直家手里有同种 2 张以上（能碰 / 能大明杠），或下家有能吃的两张且吃后仍有牌可打（食替）；
+       · 立直宣言帧按正常的出牌动作处理，不再单独算关键帧。
+     判据与 mjscore/feats.py responders() / frames 表里 kind='wait' 的行完全一致。 */
+  function decisionSeats(frames, i) {
+    if (!isKeyFrame(frames, i)) { return []; }
+    var fr = frames[i], ev = fr.ev;
+    if (ev.type === 'draw' || ev.type === 'call') { return [ev.player]; }
+    if (ev.type === 'discard' && typeof MJSFEAT.responders === 'function') {
+      return MJSFEAT.responders(fr.state, ev.player, MJLOG.kindOf(ev.tile));
+    }
+    return [];
+  }
+
+  function isKeyFrame(frames, i) {
+    if (i <= 0) { return false; }                             // 第 0 帧是配牌
+    var fr = frames[i];
+    var t = fr && fr.ev ? fr.ev.type : null;
+    var ev = fr ? fr.ev : null;
+    if (t === 'draw') {                                       // 非自摸和了的摸牌帧
+      return !selfTsumoAgari(frames, i);
+    }
+    if (t === 'call') {                                       // 只有吃 / 碰（暗杠 / 加杠 / 大明杠不出帧）
+      return ev.callType === 'chi' || ev.callType === 'pon';
+    }
+    if (t === 'discard') {                                    // 这张牌可能被他家鸣牌吗
+      if (typeof MJSFEAT.responders !== 'function') { return false; }
+      return MJSFEAT.responders(fr.state, ev.player, MJLOG.kindOf(ev.tile)).length > 0;
+    }
+    return false;
+  }
 
   /* ---------------------------------------------------- 牌桌自适应缩放 */
   /* 为了让不同分辨率的显示器上观感一致，牌桌内部所有尺寸都以「一张牌的宽度 --tile-w」为单位。
@@ -58,18 +110,20 @@
 
   var App = {
     view: 'home',
-    version: '',         /* 软件版本号，来自 GET /api/features（m03580：界面显示 v0.1.0）*/
+    version: '',         /* 软件版本号，来自 GET /api/features（第 52 轮起 v0.3.0）*/
     schemaVersion: 0,    /* 数据库结构版本 */
     fileName: '',
     game: null,
+    naga: null,        /* 当前牌谱是 NAGA 报告时 = game.naga（帧对齐的 NAGA 数据，用户 m00080 目标 2）*/
     rounds: [],        /* rounds[i] = frames[] */
     roundIndex: 0,
     frameIndex: 0,
-    selfSeat: 0,       /* 目前固定把玩家 0 放在下方（自家） */
+    selfSeat: 0,       /* = viewRot[0]：坐在下方（主视角）的那一家 */
+    viewRot: [0, 1, 2, 3],  /* 展示位置 → 绝对座位：0 下（主视角）/ 1 右 / 2 上 / 3 左（用户 m03343 ②） */
     hideOthers: false,
-    showList: true,
-    auto: false,
-    timer: null,
+    aiModel: -1,       /* 本帧实际生效的决策数据来源：-1 = 无AI决策（天凤式展示），其余 = 模型下标（用户 m04556 ①） */
+    aiPref: '',        /* 用户的 AI 决策偏好（第零类 key；'' = 无AI决策）：跨牌谱 / 跨帧保留（用户 m06323 ③） */
+    finalShown: false, /* 完场结算框是否已跳出（用户 m05131 ②）：牌谱最终帧之后再点一次「下一步」才为真 */
     /* 牌谱分析 / 牌谱检索相关状态 */
     dbName: '',        /* 当前选中的本地数据库名 */
     dbList: [],        /* 服务端 data/db 下的库 */
@@ -77,8 +131,9 @@
     itemIndex: -1,     /* 当前正在查看的条目下标，-1 = 不在条目模式 */
     itemSource: '',    /* 'query' | 'browse' */
     cache: {},         /* log_id -> 牌谱文本，切换条目时避免重复下载 */
-    /* 首页示例牌谱 / 用户数据目录（来自 /api/health 与 /api/scan；用户 m00178 第 8、9 条） */
-    samples: [],       /* 示例牌谱的绝对路径列表（数据目录可能不在项目里，必须用绝对路径） */
+    /* 用户数据目录（来自 /api/health；用户 m00178 第 8、9 条） */
+    openMode: 'browse', /* 打开方式：'browse'（浏览选择）| 'search'（按特征码搜索），互斥（用户 m03175 ④） */
+    codeIndex: [],     /* 按特征码搜索用的牌谱清单（来自 /api/scan，用户 m03175 ④） */
     dataRoot: '',      /* 用户数据根目录 */
     dbDir: '',         /* data/db 的绝对路径 */
     paipuDir: ''       /* data/paipu 的绝对路径 */
@@ -100,9 +155,60 @@
     for (var i = 0; i < tabs.length; i++) {
       tabs[i].classList.toggle('active', tabs[i].getAttribute('data-view') === name);
     }
-    if (name !== 'replay') { stopAuto(); } else { fitBoard(); }
+    if (name === 'replay') { fitBoard(); }
     if (name === 'analyze' || name === 'search') { refreshDbs(); }
     if (name === 'data') { dmInit(); }
+  }
+
+  /* 「牌谱播放」入口（首页卡片 / 顶部页签）：牌谱检索 / 全部浏览点开的静态帧不算「牌谱播放」
+     状态。静态帧模式下点「牌谱播放」先把牌谱卸载、回到等待选择的播放界面；正常播放已载入的
+     牌谱只是切回播放视图。用户 m04285 ①：先前静态帧模式点页签只重画同一帧（看起来没反应），
+     从首页卡片再进来还会把入口栏 / 拖放提示叠在旧牌桌上。 */
+  function openReplayView() {
+    if (!App.game || App.itemIndex >= 0) { resetReplay(); return; }
+    setView('replay');
+  }
+
+  /* 回到「未载入牌谱」状态：清掉牌谱、退出静态帧条目模式，并把牌桌 / 工具栏 / 各面板的旧 DOM
+     一并清空（否则旧牌桌会留在播放视图里，用户 m04285 ①）。App.items（检索结果 / 全部浏览的
+     条目表）保留 —— 用户之后在检索页再点一行，openItem() 会重新载入该牌谱并回到条目模式。 */
+  function resetReplay() {
+    App.finalShown = false;
+    App.game = null;
+    App.rounds = [];
+    App.roundIndex = 0;
+    App.frameIndex = 0;
+    App.naga = null;
+    App.fileName = '(未命名)';
+    App.itemIndex = -1;
+    App.hideOthers = false;
+    App.viewRot = [0, 1, 2, 3];
+    App.selfSeat = 0;
+    syncItemNav();
+    toggleViewMenu(false);
+    resetAiModel();          /* 本帧生效值回到「无AI决策」；用户偏好保留（用户 m06323 ③） */
+
+    clearNode($('board'));
+    var rs = $('roundSelect');
+    if (rs) { clearNode(rs); rs.value = ''; }
+    clearNode($('eventListBody'));
+    var fk = $('frameKey');
+    if (fk) { fk.textContent = ''; fk.title = ''; }
+    $('rpFile').textContent = '';
+    $('rpFile').title = '';
+    $('rpFrame').textContent = '';
+    var wb = $('warnBar');
+    if (wb) { wb.textContent = ''; wb.classList.add('hidden'); }
+    setFileInfo('未载入牌谱');
+
+    $('rpOpenBar').classList.remove('hidden');
+    showDropZone(true);
+    homeMsg('请「浏览选择」一个本地牌谱（天凤 .tenhou / NAGA .naga / Mortal .mortal-a|b|c），或「按特征码搜索」已下载的牌谱。');
+    setView('replay');
+    syncButtons();
+    syncOthers();
+    syncFeatPanel();
+    renderNagaPanel();
   }
 
   function setFileInfo(text) { $('fileInfo').textContent = text; }
@@ -114,18 +220,33 @@
   }
 
   /* -------------------------------------------------------- 载入牌谱 */
+  /* 牌谱文本有两种：天凤 xml（MJLOG.parse）与 naga 报告（服务端 /api/read 已转成
+     同构 JSON，直接 JSON.parse）。用户 m00080 目标 2。 */
+  function parseGameText(text) {
+    if (/^\s*\{/.test(String(text || ''))) { return JSON.parse(text); }
+    return MJLOG.parse(text);
+  }
+
   function loadText(text, name) {
-    stopAuto();
+    App.finalShown = false;
     var game;
     try {
-      game = MJLOG.parse(text);
+      game = parseGameText(text);
     } catch (err) {
       homeMsg('牌谱解析失败：' + (err && err.message ? err.message : err), true);
       setFileInfo('解析失败');
       return false;
     }
+    App.naga = (game && game.naga) ? game.naga : null;
     if (!game || !game.rounds || !game.rounds.length) {
-      homeMsg('牌谱里没有找到任何对局（缺少 INIT 标签）。', true);
+      /* 原始 NAGA 报告（顶层 pred / info，没有 rounds）说明没经过服务端转换：
+         浏览器里直接解压 .json.gz 只能得到原始报告（用户 m01171 第 1 条）。 */
+      if (game && (game.pred || game.info)) {
+        homeMsg('这是 NAGA 报告的原始数据，需要本地服务转换：请先运行 python server.py，'
+          + '再用它打印的地址打开本页。', true);
+      } else {
+        homeMsg(App.naga ? 'NAGA 牌谱里没有找到任何对局。' : '牌谱里没有找到任何对局（缺少 INIT 标签）。', true);
+      }
       setFileInfo('未载入牌谱');
       return false;
     }
@@ -135,11 +256,17 @@
     App.rounds = REPLAY.buildGame(game);
     App.roundIndex = 0;
     App.frameIndex = 0;
+    /* 新载入的牌谱回到它自己的初始主视角：mortal = 被复盘的那一家，naga / 天凤 = 0（用户 m06323 ①） */
+    setViewSeat((game.meta && typeof game.meta.viewer_seat === 'number') ? game.meta.viewer_seat : 0);
+    toggleViewMenu(false);
+    resetAiModel();          /* 本帧生效值先回「无AI决策」，render() 里再按偏好重选（用户 m06323 ③） */
 
     buildRoundSelect();
     setFileInfo(App.fileName + ' · 共 ' + game.rounds.length + ' 局');
     $('rpFile').textContent = App.fileName;
-    $('rpOpenBar').classList.add('hidden');   /* 载入牌谱后收起「选择牌谱文件」栏 */
+    $('rpFile').title = App.fileName;   /* 工具栏里特征码完整换行显示、不省略，title 仍是完整名（用户 m01518 ①） */
+    $('rpOpenBar').classList.add('hidden');   /* 载入牌谱后收起「浏览选择 / 按特征码搜索」栏 */
+    showDropZone(false);                      /* 拖放提示只在没载入牌谱时显示（用户 m03175 ⑥） */
     homeMsg('');
     setView('replay');
     render();
@@ -147,13 +274,46 @@
     return true;
   }
 
+  /* AI 报告（NAGA：.naga / 旧 .json.gz；Mortal：.mortal-a|b|c / 旧 .mortal / 裸 .json）交给服务端转换：
+     原始报告里没有 rounds / naga 结构，浏览器自己 gunzip 只会得到原始字段，
+     播放视图会误报「缺少 INIT 标签」（用户 m01171 第 1 条；m05937 ③ 起 Mortal 走同一条链路，
+     服务端按文件名后缀 + 内容嗅探分派）。
+     天凤 .tenhou / 旧 .xml、.mjlog 仍然在本地直接解析。 */
+  function isNagaFileName(name) {
+    return /\.(naga|json\.gz|json|gz)$/i.test(String(name || ''));
+  }
+
+  function isMortalFileName(name) {
+    return /\.mortal(-[a-z])?$/i.test(String(name || ''));
+  }
+
+  function uploadNaga(file) {
+    var name = (file && file.name) || '';
+    setFileInfo('读取中… ' + name);
+    apiUpload('/api/naga-convert?name=' + encodeURIComponent(name), file).then(function (d) {
+      loadText(d.text, name);
+    })['catch'](function (e) {
+      homeMsg('AI 报告（NAGA / Mortal）需要本地服务解析：请先运行 python server.py，再用它打印的地址打开本页。'
+        + (e && e.message ? '（' + e.message + '）' : ''), true);
+      setFileInfo('未载入牌谱');
+    });
+  }
+
   function readFile(file) {
     if (!file) { return; }
-    setFileInfo('读取中… ' + file.name);
+    /* 手动「浏览选择…」/ 拖入的牌谱不算静态帧（用户 m04285 ①）：退出条目模式，
+       否则播放视图会一边放新牌谱、一边显示旧检索结果的「上一条目 / 下一条目」。 */
+    App.itemIndex = -1;
+    syncItemNav();
+    var name = file.name || '';
+    /* NAGA / Mortal 报告都交给服务端转换（用户 m05937 ③：两条链路共用 /api/naga-convert，
+       按文件名后缀分派；.json / .gz 两种报告都可能用，服务端再做内容嗅探）。 */
+    if (isNagaFileName(name) || isMortalFileName(name)) { uploadNaga(file); return; }
+    setFileInfo('读取中… ' + name);
     var fr = new FileReader();
-    fr.onload = function () { loadText(String(fr.result), file.name); };
+    fr.onload = function () { loadText(String(fr.result), name); };
     fr.onerror = function () {
-      homeMsg('读取文件失败：' + file.name, true);
+      homeMsg('读取文件失败：' + name, true);
       setFileInfo('未载入牌谱');
     };
     fr.readAsText(file, 'utf-8');
@@ -162,25 +322,127 @@
   /* 载入首页下拉框里选中的示例牌谱：走服务端接口读绝对路径。用户 m00178 第 8 条：
      数据目录固定到 %LOCALAPPDATA% 之后，fetch('data/xxx.xml') 这种相对路径必然 404
      （页面在 /web/ 下，实际请求 /web/data/xxx.xml，而 web/data 根本不存在）。 */
-  function loadSample() {
-    var sel = $('sampleSelect');
-    var path = sel ? sel.value : '';
-    if (!path) {
-      homeMsg('示例牌谱不可用（数据目录里没有牌谱，或本地服务没启动）。'
-        + '可以在播放视图里用「选择牌谱文件」。', true);
-      return;
+  /* ------------------------------------------------ 按特征码搜索 / 拖放区（用户 m03175 ④⑤⑥）
+     打开牌谱有两种互斥方式：浏览选择（原生对话框 / <input type=file>）与按特征码搜索。
+     搜索规则 = 连续子串完全匹配：牌谱特征码（文件名去掉扩展名）完整包含用户输入的字符串。 */
+
+  /* 牌谱特征码 = 文件名去掉新后缀 .tenhou / .naga / .mortal-a|b|c 与旧后缀 .json.gz / .xml / .mjlog / .json / .gz
+     （用户 m05545 ②） */
+  function codeOf(p) {
+    return baseName(p)
+      .replace(/\.json\.gz$/i, '')
+      .replace(/\.(tenhou|naga|mortal(-[a-z])?|xml|mjlog|json|gz)$/i, '')
+      .toLowerCase();
+  }
+
+  /* 两种打开方式互斥：切到「按特征码搜索」时禁用「浏览选择…」按钮，反之亦然。
+     模式存在 App.openMode 里（调用时不带参数就按当前模式刷新），并同步两个 radio 的勾选状态 ——
+     浏览器里 radio 本来会互斥联动，但状态存在这里才不依赖 DOM。 */
+  function syncOpenMode(mode) {
+    if (mode === 'search' || mode === 'browse') { App.openMode = mode; }
+    var search = App.openMode === 'search';
+    $('rpModeBrowse').checked = !search;
+    $('rpModeSearch').checked = search;
+    $('btnPickFile').disabled = search;
+    $('codeInput').disabled = !search;
+    if (search) {
+      if (!App.codeIndex.length) { loadCodeIndex(); }
+      renderCodeResults($('codeInput').value);
+      if ($('codeInput').focus) { $('codeInput').focus(); }
+    } else {
+      $('codeResults').classList.add('hidden');
     }
-    homeMsg('正在载入 ' + baseName(path) + ' …');
-    api('/api/read?path=' + encodeURIComponent(path)).then(function (d) {
-      loadText(d.text || '', baseName(path));
-    })['catch'](function (err) {
-      homeMsg('载入示例失败（' + (err && err.message ? err.message : err) + '）。'
-        + '请确认本地服务已启动（python server.py），或改用「选择牌谱文件」。', true);
-      setFileInfo('未载入牌谱');
+  }
+
+  /* 搜索用的牌谱清单：data/paipu 下的天凤 .tenhou/.xml + NAGA .naga/.json.gz（递归，来自 /api/scan?kind=all） */
+  function loadCodeIndex() {
+    var dir = App.paipuDir || 'data/paipu';
+    return api('/api/scan?dir=' + encodeURIComponent(dir) + '&kind=all').then(function (d) {
+      var files = (d && d.files) || [], out = [], i;
+      for (i = 0; i < files.length; i++) {
+        out.push({ path: files[i], name: baseName(files[i]), code: codeOf(files[i]) });
+      }
+      App.codeIndex = out;
+      return App.codeIndex;
+    })['catch'](function () {
+      App.codeIndex = [];
+      return App.codeIndex;
     });
   }
 
-  /* 「选择牌谱文件…」：桌面版（Electron）走主进程的原生对话框，默认打开牌谱数据根目录
+  /* 结果行里的一段文本（匹配到的子串用 .code-hit 高亮，用户 m03319） */
+  function codeSpan(text, cls) {
+    var sp = document.createElement('span');
+    if (cls) { sp.className = cls; }
+    sp.textContent = text;
+    return sp;
+  }
+
+  /* 结果框：高度固定、单行显示牌谱名，超长靠容器横向滚动（用户 m03175 ⑤） */
+  function renderCodeResults(q) {
+    var box = $('codeResults'), needle = String(q || '').trim().toLowerCase();
+    clearNode(box);
+    box.classList.remove('hidden');
+    if (!needle) { box.classList.add('hidden'); return; }
+    var hits = [], i;
+    for (i = 0; i < App.codeIndex.length; i++) {
+      if (App.codeIndex[i].code.indexOf(needle) >= 0) { hits.push(App.codeIndex[i]); }
+    }
+    if (!hits.length) {
+      var none = document.createElement('div');
+      none.className = 'code-none';
+      none.textContent = '没有找到特征码里包含「' + needle + '」的牌谱。';
+      box.appendChild(none);
+      return;
+    }
+    var max = 200;
+    for (i = 0; i < hits.length && i < max; i++) {
+      var row = document.createElement('div');
+      row.className = 'code-row';
+      row.setAttribute('data-path', hits[i].path);
+      row.setAttribute('title', hits[i].path);
+      var name = hits[i].name;
+      var at = name.toLowerCase().indexOf(needle);
+      if (at < 0) {
+        row.textContent = name;
+      } else {
+        /* 匹配到的子串黄色高亮（用户 m03319）；匹配是按去掉扩展名的特征码算的，
+           但特征码是文件名的前缀，所以同一段子串在文件名里也找得到。 */
+        if (at > 0) { row.appendChild(codeSpan(name.slice(0, at), '')); }
+        row.appendChild(codeSpan(name.slice(at, at + needle.length), 'code-hit'));
+        if (at + needle.length < name.length) {
+          row.appendChild(codeSpan(name.slice(at + needle.length), ''));
+        }
+      }
+      box.appendChild(row);
+    }
+    if (hits.length > max) {
+      var more = document.createElement('div');
+      more.className = 'code-none';
+      more.textContent = '还有 ' + (hits.length - max) + ' 条结果，请输入更长的特征码片段。';
+      box.appendChild(more);
+    }
+  }
+
+  /* 点搜索结果 → 正常播放视图（不是牌谱检索的静态帧模式，用户 m03175 ⑤）：
+     先把条目模式复位，否则控制面板会保持禁用、他家手牌也被强制显示。 */
+  function openPaipuPath(p) {
+    App.itemIndex = -1;
+    App.itemSource = '';
+    App.items = [];
+    App.hideOthers = false;
+    syncItemNav();
+    $('rpOpenBar').classList.add('hidden');
+    loadFromPath(p);
+  }
+
+  /* 牌桌区域的拖放提示：只在没有载入牌谱时显示（用户 m03175 ⑥） */
+  function showDropZone(on) {
+    var dz = $('dropZone');
+    if (dz) { dz.classList.toggle('hidden', !on); }
+  }
+
+  /* 「浏览选择…」：桌面版（Electron）走主进程的原生对话框，默认打开牌谱数据根目录
      （用户 m01084：数据目录固定到 %LOCALAPPDATA% 之后，用户第一次使用时很难自己找到它）。
      浏览器里没有 window.tenhouDesktop 这个桥（<input type=file> 的初始目录无法用脚本指定），
      自动退回原来的行为 —— python server.py + 浏览器、双击 web/index.html 离线播放都不受影响。 */
@@ -253,6 +515,7 @@
     if (!App.rounds.length) { return; }
     if (i < 0) { i = 0; }
     if (i > App.rounds.length - 1) { i = App.rounds.length - 1; }
+    App.finalShown = false;   /* 换局收起完场结算框（用户 m05131 ②） */
     App.roundIndex = i;
     var sel = $('roundSelect');
     if (sel.value !== String(i)) { sel.value = String(i); }
@@ -265,10 +528,38 @@
   function setFrame(i) {
     var frames = App.rounds[App.roundIndex];
     if (!frames) { return; }
+    App.finalShown = false;   /* 跳帧收起完场结算框（用户 m05131 ②） */
     if (i < 0) { i = 0; }
     if (i > frames.length - 1) { i = frames.length - 1; }
     App.frameIndex = i;
     render();
+  }
+
+  /* 「下一步 / 下一决策 / 下一自家决策」在本局内找不到目标帧时不再禁用（用户 m05277 ③）：
+     当前帧还在本局内 ⇒ 跳到本局结算帧；当前帧就是本局结算帧 ⇒ 跳到下一局开局
+     （最后一局的结算帧等同「完场」：跳出完场结算框）。 */
+  /* 「上一步 / 上一决策 / 上一自家决策」在本局内找不到目标帧时的兜底（用户 m05350）：
+     还在本局里 ⇒ 退回本局开局；已经在本局开局 ⇒ 退回上一局结算（上一局末帧）；
+     第 0 局开局无处可退 ⇒ 原地不动。 */
+  function prevFallback() {
+    var frames = App.rounds[App.roundIndex] || [];
+    if (!frames.length) { return; }
+    if (App.frameIndex > 0) { setFrame(0); return; }
+    if (App.roundIndex <= 0) { return; }
+    var prev = App.rounds[App.roundIndex - 1] || [];
+    if (!prev.length) { return; }
+    setRound(App.roundIndex - 1, prev.length - 1);
+  }
+
+  function nextFallback() {
+    var frames = App.rounds[App.roundIndex] || [];
+    if (!frames.length) { return; }
+    if (App.frameIndex < frames.length - 1) { setFrame(frames.length - 1); return; }
+    if (App.roundIndex >= App.rounds.length - 1) {
+      if (!App.finalShown) { App.finalShown = true; render(); }
+      return;
+    }
+    setRound(App.roundIndex + 1, 0);
   }
 
   function stepKey(dir) {
@@ -276,71 +567,255 @@
     if (!frames) { return; }
     var i = App.frameIndex + dir;
     if (dir < 0) {
-      for (; i > 0; i--) { if (frames[i].ev && KEY[frames[i].ev.type]) { break; } }
-    } else {
-      for (; i < frames.length; i++) { if (frames[i].ev && KEY[frames[i].ev.type]) { break; } }
-      if (i > frames.length - 1) { i = frames.length - 1; }
+      for (; i > 0; i--) {
+        if (isKeyFrame(frames, i)) { setFrame(i); return; }
+      }
+      prevFallback();   /* 本局内没有上一个决策帧（用户 m05350） */
+      return;
     }
-    setFrame(i);
+    for (; i < frames.length; i++) {
+      if (isKeyFrame(frames, i)) { setFrame(i); return; }
+    }
+    nextFallback();   /* 本局内没有下一个决策帧（用户 m05277 ③） */
+  }
+
+  /* ------------------------------------------------ 控制面板跳转（用户 m05131 ③④） */
+  /* 是否停在「整个牌谱的最终帧」（最后一局的末帧）——「下一步」在这里保持可用，
+     再点一次只跳出完场结算框，不改变帧号（用户 m05131 ②）。 */
+  function atGameEnd() {
+    if (!App.game || !App.rounds.length) { return false; }
+    var li = App.rounds.length - 1;
+    if (App.roundIndex !== li) { return false; }
+    var frames = App.rounds[li] || [];
+    return frames.length > 0 && App.frameIndex >= frames.length - 1;
+  }
+
+  /* 「完场」= 整个牌谱的结束：跳到最后两局的最终帧并直接跳出结算框（用户 m05131 ④）。 */
+  function showGameEnd() {
+    if (!App.game || !App.rounds.length) { return; }
+    var li = App.rounds.length - 1;
+    setRound(li, (App.rounds[li] || []).length - 1);
+    App.finalShown = true;
+    render();
+  }
+
+  /* 某一帧由谁决策（打点视角的座位）：decisionSeats() 里优先主视角，否则取座位最小的那一家
+     （用户 m05131 ④；等待鸣牌帧一行只属于一家，用户 m07289）。不是决策帧 → null。 */
+  function seatOfFrame(frames, i) {
+    var seats = decisionSeats(frames, i);
+    if (!seats.length) { return null; }
+    return (seats.indexOf(App.selfSeat) >= 0) ? App.selfSeat : seats[0];
+  }
+
+  /* 「上一 / 下一自家决策」：跳到最近一个「等待主视角做决策」的关键帧（用户 m05131 ④）。
+     第 63 轮（用户 m07289 ⑤）：只有主视角本人这一帧确实要做决策才停 —— 出牌帧上等待决策的是
+     「可能鸣牌」的几家，响应者不是主视角时就不算「自家」。 */
+  function stepSelfKey(dir) {
+    var frames = App.rounds[App.roundIndex] || [];
+    for (var i = App.frameIndex + dir; i >= 0 && i < frames.length; i += dir) {
+      if (decisionSeats(frames, i).indexOf(App.selfSeat) < 0) { continue; }
+      setFrame(i); return;
+    }
+    if (dir > 0) { nextFallback(); }   /* 本局内没有下一个自家决策（用户 m05277 ③） */
+    else { prevFallback(); }           /* 本局内没有上一个自家决策（用户 m05350） */
+  }
+
+  /* 完场结算框的数据（用户 m05131 ②）：最后一局末帧的分数排名。
+     名字来自牌谱（天凤 meta.names / NAGA player_info），分数取末帧状态。 */
+  function finalBoxRows() {
+    if (!App.finalShown || App.itemIndex >= 0 || !App.game || !App.rounds.length) { return null; }
+    var li = App.rounds.length - 1;
+    var frames = App.rounds[li] || [];
+    if (!frames.length) { return null; }
+    var st = frames[frames.length - 1].state || {};
+    var rows = [];
+    for (var i = 0; i < 4; i++) {
+      var pl = (st.players && st.players[i]) || {};
+      var sc = (st.scores && typeof st.scores[i] === 'number') ? st.scores[i] : (pl.score || 0);
+      rows.push({ name: pl.name || ('P' + i), score: sc });
+    }
+    rows.sort(function (a, b) { return b.score - a.score; });
+    return rows;
+  }
+
+  /* 画完场结算框（黑底半透明 + 白字大字号）。renderBoard 每次会清空牌桌，所以在 render() 末尾重画。 */
+  function renderFinalBox() {
+    var rows = finalBoxRows();
+    var host = $('board');
+    if (!rows || !host) { return; }
+    var box = document.createElement('div');
+    box.className = 'final-box';
+    for (var i = 0; i < rows.length; i++) {
+      var r = document.createElement('div');
+      r.className = 'fb-row';
+      var a = document.createElement('span'); a.className = 'fb-rank'; a.textContent = (i + 1) + '位';
+      var b = document.createElement('span'); b.className = 'fb-id'; b.textContent = rows[i].name;
+      var c = document.createElement('span'); c.className = 'fb-score'; c.textContent = String(rows[i].score);
+      r.appendChild(a); r.appendChild(b); r.appendChild(c);
+      box.appendChild(r);
+    }
+    host.appendChild(box);
   }
 
   function onAct(act) {
     var frames = App.rounds[App.roundIndex] || [];
+    if (act !== 'allLast') { App.finalShown = false; }   /* 离开终局浮层（用户 m05131 ②） */
     switch (act) {
       case 'first':     setFrame(0); break;
-      case 'prev':      setFrame(App.frameIndex - 1); break;
-      case 'next':      setFrame(App.frameIndex + 1); break;
+      case 'prev':
+      /* 本局没有上一帧时不再禁用：退回本局开局 / 上一局结算（用户 m05350） */
+      if (App.frameIndex <= 0) { prevFallback(); break; }
+      setFrame(App.frameIndex - 1); break;
+      case 'next':
+      /* 牌谱最终帧：再点一次「下一步」跳出完场结算框（浮层，不改变帧号；用户 m05131 ②） */
+      if (!App.finalShown && atGameEnd()) { App.finalShown = true; render(); break; }
+      /* 本局没有下一帧时不再禁用：跳到本局结算帧 / 下一局开局（用户 m05277 ③） */
+      if (App.frameIndex >= frames.length - 1) { nextFallback(); break; }
+      setFrame(App.frameIndex + 1); break;
       case 'last':      setFrame(frames.length - 1); break;
       case 'prevKey':   stepKey(-1); break;
       case 'nextKey':   stepKey(1); break;
+      case 'prevSelf':  stepSelfKey(-1); break;
+      case 'nextSelf':  stepSelfKey(1); break;
+      case 'allFirst':  setRound(0, 0); break;
+      case 'allLast':   showGameEnd(); break;
       case 'prevRound': setRound(App.roundIndex - 1, 0); break;
       case 'nextRound': setRound(App.roundIndex + 1, 0); break;
-      case 'auto':      if (App.auto) { stopAuto(); } else { startAuto(); } break;
-      case 'others':    App.hideOthers = !App.hideOthers; syncOthers(); render(); break;
+      case 'others':
+      if (othersLocked()) { break; }          /* 静态帧禁用（用户 m02984 ③） */
+      App.hideOthers = !App.hideOthers; syncOthers(); render(); break;
+      case 'view':
+      if (othersLocked()) { break; }          /* 静态帧禁用（用户 m03343 ③） */
+      toggleViewMenu(); break;
     }
-  }
-
-  /* -------------------------------------------------------- 自动播放 */
-  function autoBtn() { return document.querySelector('#controls button[data-act="auto"]'); }
-
-  function startAuto() {
-    stopAuto();
-    App.auto = true;
-    var b = autoBtn();
-    if (b) { b.classList.add('on'); b.textContent = '⏸ 暂停'; }
-    App.timer = setInterval(function () {
-      var frames = App.rounds[App.roundIndex];
-      if (!frames) { stopAuto(); return; }
-      if (App.frameIndex >= frames.length - 1) {
-        if (App.roundIndex < App.rounds.length - 1) { setRound(App.roundIndex + 1, 0); }
-        else { stopAuto(); }
-        return;
-      }
-      setFrame(App.frameIndex + 1);
-    }, AUTO_MS);
-  }
-
-  function stopAuto() {
-    if (App.timer) { clearInterval(App.timer); App.timer = null; }
-    App.auto = false;
-    var b = autoBtn();
-    if (b) { b.classList.remove('on'); b.textContent = '▶ 自动播放'; }
   }
 
   /* -------------------------------------------------------- 渲染 */
   /* ① 显示/隐藏他家手牌：按钮文字随状态切换，隐藏时按钮高亮 */
   function othersBtn() { return $('btnOthers'); }
+  /* 静态帧（牌谱检索 / 全部浏览的条目）固定显示他家手牌：隐藏了他家手牌，
+     概率条与决策表会跟着空掉，看着像缺了一块（用户 m02984 ②③） */
+  function othersLocked() { return App.itemIndex >= 0; }
+  /* 静态帧（检索结果 / 全部浏览的条目）只允许用右上角的「上一条目 / 下一条目」跳转，
+     下面的播放控制面板整块禁用（用户 m03089 ①） */
+  function lockControls(locked) {
+    var box = $('controls');
+    if (!box) { return; }
+    box.classList.toggle('locked', !!locked);
+    var bs = box.querySelectorAll('button');
+    for (var i = 0; i < bs.length; i++) { bs[i].disabled = !!locked; }
+  }
   function syncOthers() {
     var b = othersBtn();
     if (!b) { return; }
+    var locked = othersLocked();
+    if (locked) { App.hideOthers = false; }
+    b.disabled = locked;
     b.classList.toggle('on', App.hideOthers);
     b.textContent = App.hideOthers ? '显示他家手牌' : '隐藏他家手牌';
-    b.title = App.hideOthers ? '当前：他家手牌已隐藏' : '当前：他家手牌可见';
+    b.title = locked ? '静态帧（牌谱检索 / 全部浏览）固定显示他家手牌'
+      : (App.hideOthers ? '当前：他家手牌已隐藏' : '当前：他家手牌可见');
   }
 
   function setDisabled(act, off) {
     var b = document.querySelector('#controls button[data-act="' + act + '"]');
-    if (b) { b.disabled = !!off; }
+    if (b) { b.disabled = !!off || othersLocked(); }   /* 静态帧整块禁用（用户 m03089 ①） */
+  }
+
+  /* -------------------------------------------- 切换主视角（用户 m03343 ②）
+     四家的展示位置由「旋转向量」决定：viewRot[展示位置] = 绝对座位，
+     下标 0 下（主视角）/ 1 右（下家）/ 2 上（対面）/ 3 左（上家）。初始 [0,1,2,3]，
+     换主视角只重排这个向量（相对方位自动保持），牌桌 / 概率条 / 决策表跟着整块刷新。 */
+  function setViewSeat(seat) {
+    var s = ((Number(seat) || 0) % 4 + 4) % 4;
+    App.viewRot = [s, (s + 1) % 4, (s + 2) % 4, (s + 3) % 4];
+    App.selfSeat = App.viewRot[0];
+  }
+
+  /* 上拉框的 4 行：按原始牌谱东 1 局的座次 東 > 南 > 西 > 北（用户 m03343 ②） */
+  function viewMenuRows() {
+    var g = App.game || {}, rows = [];
+    var r0 = (g.rounds && g.rounds[0] && g.rounds[0].init) ? g.rounds[0].init : {};
+    var oya = (typeof r0.oya === 'number') ? r0.oya
+      : ((g.meta && typeof g.meta.oya === 'number') ? g.meta.oya : 0);
+    var names = (g.meta && g.meta.names && g.meta.names.length) ? g.meta.names : [];
+    for (var k = 0; k < 4; k++) {
+      var seat = (oya + k) % 4;
+      rows.push({ seat: seat, wind: ['東', '南', '西', '北'][k], name: names[seat] || ('玩家 ' + (seat + 1)) });
+    }
+    return rows;
+  }
+
+  function viewBtn() { return $('btnView'); }
+
+  function renderViewMenu() {
+    var box = $('viewMenu');
+    if (!box) { return; }
+    clearNode(box);
+    var rows = viewMenuRows();
+    for (var i = 0; i < rows.length; i++) {
+      var row = document.createElement('div');
+      row.className = 'view-row' + (rows[i].seat === App.selfSeat ? ' cur' : '');
+      row.setAttribute('data-seat', String(rows[i].seat));
+      row.title = '把 ' + rows[i].name + '（' + rows[i].wind + '家）放到主视角';
+      var w = document.createElement('span');
+      w.className = 'vw-wind';
+      w.textContent = rows[i].wind + '家';
+      var nm = document.createElement('span');
+      nm.className = 'vw-id';
+      nm.textContent = rows[i].name;
+      row.appendChild(w);
+      row.appendChild(nm);
+      box.appendChild(row);
+    }
+  }
+
+  /* 上拉框贴着「切换主视角」按钮向上弹出（用户 m03498：原先 CSS 的 right/bottom 把它钉在了
+     界面右下角）。用按钮与包含块的实时位置算 left / bottom；量不到尺寸时保持 CSS 兜底值。 */
+  function placeViewMenu() {
+    var menu = $('viewMenu'), btn = viewBtn();
+    if (!menu || !btn || !btn.getBoundingClientRect) { return; }
+    var b = btn.getBoundingClientRect();
+    if (!b) { return; }
+    var host = menu.offsetParent;
+    var hb = (host && host.getBoundingClientRect) ? host.getBoundingClientRect()
+      : (($('view-replay') && $('view-replay').getBoundingClientRect) ? $('view-replay').getBoundingClientRect() : null);
+    if (!hb) { return; }
+    var left = b.left - hb.left;                 /* 与按钮左对齐 */
+    var bottom = hb.bottom - b.top + 6;          /* 按钮上沿再往上留 6px */
+    var w = menu.offsetWidth || 0;
+    var maxLeft = (hb.width || 0) - w - 8;
+    if (w && left > maxLeft) { left = maxLeft; }
+    if (!(left > 8)) { left = 8; }
+    menu.style.right = 'auto';
+    menu.style.left = Math.round(left) + 'px';
+    menu.style.bottom = Math.round(bottom) + 'px';
+  }
+
+  function placeViewMenuIfOpen() {
+    var vm = $('viewMenu');
+    if (vm && !vm.classList.contains('hidden')) { placeViewMenu(); }
+  }
+
+  function toggleViewMenu(show) {
+    var box = $('viewMenu');
+    if (!box) { return; }
+    var hide = (show === undefined) ? !box.classList.contains('hidden') : !show;
+    if (hide) { box.classList.add('hidden'); return; }
+    renderViewMenu();
+    box.classList.remove('hidden');
+    placeViewMenu();
+  }
+
+  /* 按钮文字带上当前主视角的玩家 ID（按钮够宽，单行显示得下，用户 m03343 ②） */
+  function syncViewBtn() {
+    var b = viewBtn();
+    if (!b) { return; }
+    var rows = viewMenuRows(), cur = null;
+    for (var i = 0; i < rows.length; i++) { if (rows[i].seat === App.selfSeat) { cur = rows[i]; } }
+    b.textContent = cur ? ('切换主视角：' + cur.name) : '切换主视角';
+    b.title = othersLocked() ? '静态帧（牌谱检索 / 全部浏览）固定把当前决策者放到主视角'
+      : (cur ? ('当前主视角：' + cur.wind + '家 ' + cur.name + '（点击换人）') : '切换主视角');
   }
 
   function syncButtons() {
@@ -349,14 +824,28 @@
     var first = App.frameIndex <= 0;
     var end = App.frameIndex >= last;
     setDisabled('first', first);
-    setDisabled('prev', first);
-    setDisabled('prevKey', first);
-    setDisabled('next', end);
-    setDisabled('nextKey', end);
+    /* 「上一步 / 上一决策」本局内没有目标帧时也不再变灰（用户 m05350）：
+       点它退回本局开局、再点退回上一局结算，兜底逻辑在 onAct / stepKey 里 */
+    setDisabled('prev', false);
+    setDisabled('prevKey', false);
+    /* 「下一步 / 下一决策」本局内没有目标帧时也不再变灰（用户 m05277 ③）：
+       点它跳到本局结算帧、再从结算帧跳到下一局开局，兜底逻辑在 onAct / stepKey 里 */
+    setDisabled('next', false);
+    setDisabled('nextKey', false);
     setDisabled('last', end);
-    setDisabled('auto', last <= 0);
     setDisabled('prevRound', App.roundIndex <= 0);
     setDisabled('nextRound', App.roundIndex >= App.rounds.length - 1);
+    setDisabled('allFirst', App.roundIndex <= 0 && first);     /* 「开局」= 整个牌谱第 0 局第 0 帧（用户 m05131 ④） */
+    setDisabled('allLast', atGameEnd() && App.finalShown);     /* 「完场」只在已弹出结算框时禁用（用户 m05277 ②） */
+    setDisabled('prevSelf', false);
+    setDisabled('nextSelf', false);
+    syncViewBtn();
+    var uBtn = $('btnCopyUrl');
+    if (uBtn) {
+      var u = paipuUrl();
+      uBtn.disabled = !u;
+      uBtn.title = u ? ('复制牌谱 URL：' + u) : '复制原始牌谱 URL';
+    }
   }
 
   function render() {
@@ -365,11 +854,38 @@
     if (!frames) { return; }
     var st = frames[App.frameIndex].state;
 
-    UI.renderBoard($('board'), st, { selfSeat: App.selfSeat, hideOthers: App.hideOthers });
+    /* 静态帧（牌谱检索 / 全部浏览的条目）：主视角固定切到当前决策者（用户 m03343 ③） */
+    if (App.itemIndex >= 0) {
+      var fs = frameSeatOf(st);
+      if (fs !== null && fs !== App.viewRot[0]) { setViewSeat(fs); }
+    }
+
+    /* 每帧按偏好重选决策数据：偏好模型在这一帧有概率表就用它，否则临时退回「无AI决策」，
+       等之后某一帧又有数据时自动切回（用户 m06323 ③）。 */
+    syncAiModel();
+    var nf = aiFrame();       /* 按所选 AI 模型折叠；无AI决策 ⇒ null（不画 AI 专属数据，用户 m04556 ①） */
+    syncAiModelBtn();
+    /* seat = 当前决策者：牌上方的打牌预测柱画在他手上（用户 m02007 ②）。
+     * 「隐藏他家手牌」只影响别家：主视角自己的概率条与决策表照旧显示（用户 m03343 ①）。 */
+    /* 大字（vocalization，用户 m03978 ②）：吃 / 碰 / 杠 / 自摸 / 荣和帧在桌面上画大字，
+     * pos = 该玩家在牌桌上的展示位置（随「切换主视角」一起旋转），坐标见 ui.js 的 VOCAL_POS。 */
+    var vocal = vocalForFrame();
+    /* 黄框（用户 m07820 补充 2）：牌谱检索 / 全部浏览的静态帧里，本帧是「鸣牌响应局面」时，
+       把主视角正在等着回应（吃 / 碰 / 杠）的那张被打出的牌用黄框标出来。
+       等待帧的状态 = 该出牌事件之后 ⇒ 那张牌就是出牌者牌河的最后一张（ui.js 的 riverEl）。 */
+    var mark = null;
+    if (App.itemIndex >= 0 && App.items[App.itemIndex]
+      && App.items[App.itemIndex].kind === 'wait') {
+      var mit = App.items[App.itemIndex];
+      var mfr = (App.rounds[mit.round_index] || [])[mit.frame_index];
+      if (mfr && mfr.ev && mfr.ev.type === 'discard') { mark = { seat: mfr.ev.player }; }
+    }
+    var red = redMarkOf(st);
+    UI.renderBoard($('board'), st, { selfSeat: App.selfSeat, viewRot: App.viewRot, hideOthers: App.hideOthers,
+      vocal: vocal, mark: mark, next: red,
+      naga: nf ? { frame: nf, seat: nagaSeatOf(nf), hideOthers: App.hideOthers } : null });
 
     $('rpFrame').textContent = App.frameIndex + ' / ' + (frames.length - 1) + ' 步';
-    $('rpDesc').textContent = st.desc || '';
-
     /* 静态帧里必须能看到并可复制「牌谱特征码 + 局况 + 本场 + 巡目 + 风位」 */
     var fk = $('frameKey');
     if (fk) {
@@ -386,12 +902,14 @@
       wb.classList.add('hidden');
     }
 
-    $('eventList').classList.toggle('off', !App.showList);
-    if (App.showList) { UI.renderEventList($('eventListBody'), frames, App.frameIndex); }
+    /* 事件列表常态显示（用户 m03175 ①：删掉右上角的勾选项） */
+    UI.renderEventList($('eventListBody'), frames, App.frameIndex);
 
+    renderFinalBox();       /* 完场结算框（用户 m05131 ②）：浮层，不参与步进 */
     syncButtons();
     syncOthers();
     syncFeatPanel();
+    renderNagaPanel();
   }
 
   /* -------------------------------------------------------- 键盘 */
@@ -440,6 +958,23 @@
       opt.body = JSON.stringify(body);
     }
     return fetch(apiBase() + path, opt).then(function (r) {
+      return r.text().then(function (t) {
+        var data = null;
+        try { data = JSON.parse(t); } catch (e) { data = null; }
+        if (!data) { throw new Error('本地服务返回的不是 JSON（HTTP ' + r.status + '）。'); }
+        if (!r.ok || data.ok === false) { throw new Error(data.error || ('HTTP ' + r.status)); }
+        return data;
+      });
+    }, function () {
+      throw new Error('连不上本地服务（' + apiBase() + '）。请在项目根目录运行 "python server.py"，'
+        + '再打开它打印的地址（不要直接用 file:// 打开本页）。');
+    });
+  }
+
+  /* 上传文件字节（NAGA 报告是 gzip 二进制，塞不进 api() 的 JSON body）。
+     浏览器手选 / 拖放的文件没有磁盘路径，只能把字节发给服务端转换（用户 m01171 第 1 条）。 */
+  function apiUpload(path, file) {
+    return fetch(apiBase() + path, { method: 'POST', body: file }).then(function (r) {
       return r.text().then(function (t) {
         var data = null;
         try { data = JSON.parse(t); } catch (e) { data = null; }
@@ -511,7 +1046,7 @@
   function featIsEnum(f) { return !!(f && f.kind === 'enum' && f.values && f.values.length); }
 
   /* ------------------------------------------------------------ 牌谱分析 */
-  var An = { files: [] };
+  var An = { files: [], browse: null, pickerDir: '' };
 
   function setAllFiles(on) {
     var box = $('anFileList');
@@ -533,7 +1068,7 @@
     An.files = files || [];
     if (box) {
       clearNode(box);
-      if (!An.files.length) { box.appendChild(plainRow('（这个目录里没有 .xml 牌谱文件）', 'muted')); }
+      if (!An.files.length) { box.appendChild(plainRow('（这个目录里没有牌谱文件：天凤 .tenhou / .xml 或 NAGA .naga / .json.gz）', 'muted')); }
       for (var i = 0; i < An.files.length; i++) {
         var lab = document.createElement('label');
         lab.className = 'an-file';
@@ -553,12 +1088,69 @@
   }
 
   function scanFiles() {
-    var dir = valOf('anSourceDir', 'data');
+    var dir = valOf('anSourceDir', 'data/paipu');
     setMsg('anMsg', '正在扫描 ' + dir + ' …');
-    api('/api/scan?dir=' + encodeURIComponent(dir)).then(function (d) {
+    api('/api/scan?dir=' + encodeURIComponent(dir) + '&kind=all').then(function (d) {
       renderFileList(d.files);
       setMsg('anMsg', '找到 ' + d.count + ' 个牌谱文件：（' + d.dir + '）');
     })['catch'](function (e) { setMsg('anMsg', '扫描失败：' + e.message, true); });
+  }
+
+  /* 牌谱目录 / 牌谱文件改成下拉选择（用户 m01171 第 2 条）：目录树与文件来自
+     GET /api/paipu-browse，前缀固定 data/paipu；选目录后扫描整个目录，
+     只选一个牌谱文件时只分析这一个。 */
+  function loadPaipuPicker(dir, quiet) {
+    return api('/api/paipu-browse' + (dir ? '?dir=' + encodeURIComponent(dir) : '')).then(function (d) {
+      An.browse = d;
+      An.pickerDir = d.dir_rel;
+      var ds = $('anSourceDir');
+      if (ds && ds.tagName === 'SELECT') {
+        clearNode(ds);
+        for (var i = 0; i < d.dirs.length; i++) {
+          var op = document.createElement('option');
+          op.value = d.dirs[i];
+          op.textContent = d.dirs[i];
+          ds.appendChild(op);
+        }
+        if (d.dir_rel) { ds.value = d.dir_rel; }
+      }
+      var fs = $('anSourceFile');
+      if (fs && fs.tagName === 'SELECT') {
+        clearNode(fs);
+        var whole = document.createElement('option');
+        whole.value = '';
+        whole.textContent = '（整个目录：' + (d.dir_rel || '') + '，共 ' + d.files.length + ' 个牌谱）';
+        fs.appendChild(whole);
+        for (var j = 0; j < d.files.length; j++) {
+          var of = document.createElement('option');
+          of.value = d.files[j];
+          of.textContent = baseName(d.files[j]);
+          fs.appendChild(of);
+        }
+        fs.value = '';
+      }
+      return d;
+    })['catch'](function (e) {
+      An.browse = null;
+      if (!quiet) { setMsg('anMsg', '读取牌谱目录失败：' + e.message, true); }
+      return null;
+    });
+  }
+
+  function anDirChanged() {
+    loadPaipuPicker(valOf('anSourceDir', ''), true).then(function (d) {
+      if (d) { scanFiles(); } else { setMsg('anMsg', '读取牌谱目录失败：请确认本地服务已启动。', true); }
+    });
+  }
+
+  function anFileChanged() {
+    var f = valOf('anSourceFile', '');
+    if (f) {
+      setMsg('anMsg', '只分析选中的这一个牌谱：（' + f + '）');
+      renderFileList([f]);
+      return;
+    }
+    scanFiles();
   }
 
   /* 软件信息：标题栏版本号 + 「--full」说明（都来自 GET /api/features） */
@@ -603,7 +1195,7 @@
       o.value = dbs[i].name;
       o.textContent = dbs[i].name + '（' + ((dbs[i].meta && dbs[i].meta.record_count) || 0) + ' 行'
         + ' · ' + (dbs[i].app_version ? ('v' + dbs[i].app_version) : '版本未记录')
-        + (dbs[i].compatible === false ? ' ⚠ 版本不匹配' : '') + '）';
+        + (dbs[i].compatible === false ? ' ⚠ 版本过低' : '') + '）';
       if (dbs[i].compatible === false) { o.disabled = true; }
       sel.appendChild(o);
     }
@@ -623,7 +1215,7 @@
     for (var i = 0; i < list.length; i++) { if (list[i].name === name) { db = list[i]; } }
     if (!db) { el.textContent = ''; return; }
     el.textContent = '版本 ' + (db.app_version || '未记录')
-      + (db.compatible === false ? ' · ⚠ 版本不匹配，不能扩充，请删除后重新分析' : ' · 可扩充');
+      + (db.compatible === false ? ' · ⚠ 版本过低，不能扩充，请删除后重新分析' : ' · 可扩充');
   }
 
   /* 本次分析写哪个库：新建（数据库名）或用「扩充现有数据库」选中的那个 */
@@ -679,7 +1271,7 @@
     meta.textContent = '打点 ' + ((db.meta && db.meta.record_count) || 0) + ' 行 · '
       + ((db.meta && db.meta.tool) || '-') + ' · ' + Math.max(1, Math.round(db.size / 1024)) + ' KB'
       + ' · 版本 ' + (db.app_version || '未记录')
-      + (db.compatible === false ? ' ⚠ 版本不匹配（不能扩充 / 加载）' : '');
+      + (db.compatible === false ? ' ⚠ 版本过低（不能扩充 / 加载）' : '');
     var use = document.createElement('button');
     use.className = 'ghost';
     use.textContent = '设为当前库';
@@ -736,7 +1328,8 @@
   }
 
   /* ------------------------------------------------------------ 牌谱检索 */
-  var Sc = { conds: [], pageSize: 100 };
+  /* wait = 第三类特征（局面）必选单选（第 63 轮，用户 m07289）：'出牌'（默认）/ '鸣牌响应'。 */
+  var Sc = { conds: [], pageSize: 100, aiMode: '', aiPicks: {}, wait: '出牌' };
 
   function scDbPayload() {
     var custom = valOf('scDbPath', '');
@@ -746,6 +1339,122 @@
     return name ? { db_name: name } : {};
   }
 
+  /* ---------------------- 第零类特征（AI 分析模型）检索方案（用户 m04556 ③）----------------------
+   * 第零类不参与「添加特征词条 + 填取值」的选取方式，而是四种互斥方案：
+   *   任意AI决策 / NAGA决策 / Mortal决策 / 同时具有（勾选的第零类特征必须全为「是」）。
+   * 与第一、二类条件一起 AND 作用于检索；不选择 = 不筛选（保持旧行为）。 */
+  var AI_MODE_LIST = [
+    { key: 'any', name: '任意AI决策', hint: '只要具备任意一种 AI 模型的分析结果' },
+    { key: 'naga', name: 'NAGA决策', hint: '只要具备任意一种 NAGA 系列（NAGA-平衡 / NAGA-超副露 …）' },
+    { key: 'mortal', name: 'Mortal决策', hint: '只要具备任意一种 Mortal 系列（Mortal-4.1-平衡 / 避四 / 争一 …）' },
+    { key: 'multi', name: '同时具有', hint: '勾选的第零类特征必须全部为「是」' }
+  ];
+
+  function aiFeatures() { return MJSFEAT.AI_FEATURES || []; }
+
+  function isAiKey(key) {                     /* 第零类特征的 key（与 mjscore/ai_models.py 的 CHOICES 一致） */
+    var ai = aiFeatures();
+    for (var i = 0; i < ai.length; i++) { if (ai[i].key === key) { return true; } }
+    return false;
+  }
+
+  /* 第三类特征（局面）的 key（第 63 轮，用户 m07289）：只有「等待鸣牌」一项，
+     不进「添加特征词条」的下拉，也不列进「当前帧特征」。 */
+  function isThirdKey(key) {
+    var th = MJSFEAT.THIRD_FEATURES || [];
+    for (var i = 0; i < th.length; i++) { if (th[i].key === key) { return true; } }
+    return false;
+  }
+
+  function aiPickedKeys() {
+    var ai = aiFeatures(), out = [];
+    for (var i = 0; i < ai.length; i++) { if (Sc.aiPicks[ai[i].key]) { out.push(ai[i].key); } }
+    return out;
+  }
+
+  function aiPayload() {                      /* null = 不筛选 */
+    if (!Sc.aiMode) { return null; }
+    return { mode: Sc.aiMode, picks: (Sc.aiMode === 'multi') ? aiPickedKeys() : [] };
+  }
+
+  function setAiMode(mode) {
+    Sc.aiMode = String(mode || '');
+    renderAiPlan();
+  }
+
+  function setAiPick(key, on) {
+    if (on) { Sc.aiPicks[key] = 1; } else { delete Sc.aiPicks[key]; }
+    renderAiPlan();
+  }
+
+  function clearAiPlan() {
+    Sc.aiMode = '';
+    Sc.aiPicks = {};
+    renderAiPlan();
+    setMsg('scMsg', '');
+  }
+
+  /* 第三类特征（局面）单选（第 63 轮，用户 m07289）：与第零类方案、第一/二类条件同时满足（AND）。
+     「出牌」= 只看等待出牌的局面（出牌帧）；「鸣牌响应」= 只看有人打出牌后可能鸣牌的那几家各一行的帧。 */
+  function setWait(v) {
+    Sc.wait = (String(v || '') === '鸣牌响应') ? '鸣牌响应' : '出牌';
+    syncWaitRadios();
+  }
+
+  function waitPayload() { return (Sc.wait === '鸣牌响应') ? '鸣牌响应' : '出牌'; }
+
+  function syncWaitRadios() {
+    var modes = (document.querySelectorAll) ? document.querySelectorAll('input[name="waitMode"]') : [];
+    for (var i = 0; i < modes.length; i++) { modes[i].checked = (modes[i].value === Sc.wait); }
+  }
+
+  function renderAiPlan() {
+    var modesEl = $('aiModes'), picksEl = $('aiPicks');
+    if (!modesEl || !picksEl) { return; }
+    clearNode(modesEl);
+    for (var i = 0; i < AI_MODE_LIST.length; i++) {
+      (function (i) {
+        var m = AI_MODE_LIST[i];
+        var lab = document.createElement('label');
+        lab.title = m.hint;
+        var inp = document.createElement('input');
+        inp.type = 'radio';
+        inp.name = 'aiMode';
+        inp.value = m.key;
+        inp.setAttribute('data-mode', m.key);
+        inp.checked = (Sc.aiMode === m.key);
+        inp.addEventListener('change', function () { setAiMode(m.key); });
+        lab.appendChild(inp);
+        var sp = document.createElement('span');
+        sp.textContent = m.name;
+        lab.appendChild(sp);
+        modesEl.appendChild(lab);
+      })(i);
+    }
+    clearNode(picksEl);
+    var showPicks = (Sc.aiMode === 'multi');
+    picksEl.classList.toggle('hidden', !showPicks);
+    if (!showPicks) { return; }
+    var ai = aiFeatures();
+    for (var j = 0; j < ai.length; j++) {
+      (function (j) {
+        var f = ai[j];
+        var lab = document.createElement('label');
+        lab.title = f.name;
+        var inp = document.createElement('input');
+        inp.type = 'checkbox';
+        inp.setAttribute('data-key', f.key);
+        inp.checked = !!Sc.aiPicks[f.key];
+        inp.addEventListener('change', function () { setAiPick(f.key, !!this.checked); });
+        lab.appendChild(inp);
+        var sp = document.createElement('span');
+        sp.textContent = f.name;
+        lab.appendChild(sp);
+        picksEl.appendChild(lab);
+      })(j);
+    }
+  }
+
   function renderFeatSelect() {
     var sel = $('scFeatSelect');
     if (!sel) { return; }
@@ -753,6 +1462,8 @@
     var used = {};
     for (var i = 0; i < Sc.conds.length; i++) { used[Sc.conds[i].key] = 1; }
     for (var j = 0; j < FEATURES.length; j++) {
+      if (isAiKey(FEATURES[j].key)) { continue; }   /* 第零类走「第零类检索方案」（用户 m04556 ③） */
+      if (isThirdKey(FEATURES[j].key)) { continue; }   /* 第三类走「出牌 / 鸣牌响应」单选（用户 m07289） */
       if (used[FEATURES[j].key]) { continue; }   /* 同一条特征不能重复添加 */
       var o = document.createElement('option');
       o.value = FEATURES[j].key;
@@ -861,7 +1572,14 @@
   }
 
   function checkConds() {
-    if (!Sc.conds.length) { setMsg('scMsg', '「牌谱特征」框还是空的：请先添加至少一条特征。', true); return null; }
+    if (!Sc.conds.length) {
+      /* 只选第零类方案也能检索（用户 m04556 ③）：两者都空才拦住 */
+      if (!aiPayload()) {
+        setMsg('scMsg', '请先添加并填写「牌谱特征」条件，或在上方选择一个「第零类特征」检索方案。', true);
+        return null;
+      }
+      return [];
+    }
     var conds = collectConds();
     for (var i = 0; i < conds.length; i++) {
       if (!conds[i].expr) { setMsg('scMsg', '「' + featName(conds[i].key) + '」的条件还没'
@@ -898,6 +1616,8 @@
     var dbq = scDbPayload();
     if (!dbq.db && !dbq.db_name) { setMsg('scMsg', '请先选择（或填写）要检索的本地数据库文件。', true); return; }
     var body = { conds: conds, limit: Sc.pageSize, offset: 0 };
+    body.ai = aiPayload();                     /* 第零类检索方案（用户 m04556 ③），null = 不筛选 */
+    body.wait = waitPayload();                 /* 第三类特征（局面）单选（用户 m07289），默认「出牌」 */
     body.db = dbq.db || null;
     body.db_name = dbq.db || null ? null : dbq.db_name;
     setMsg('scMsg', '检索中…');
@@ -939,22 +1659,27 @@
       var kindName = '';
       if (on) {
         var k = String(App.items[App.itemIndex].kind || 'draw');
-        kindName = '｜ ' + (k === 'chi' ? '吃后帧' : (k === 'pon' ? '碰后帧' : '摸牌帧'));
+        kindName = '｜ ' + (k === 'chi' ? '吃后帧' : (k === 'pon' ? '碰后帧' : (k === 'wait' ? '鸣牌响应帧' : '摸牌帧')));
       }
       info.textContent = on ? ('条目 ' + (App.itemIndex + 1) + ' / ' + App.items.length
         + '（' + (App.itemSource === 'browse' ? '全部浏览' : '检索结果') + '）' + kindName) : '';
     }
     if (p) { p.classList.toggle('hidden', !on); p.disabled = !on || App.itemIndex <= 0; }
     if (n) { n.classList.toggle('hidden', !on); n.disabled = !on || App.itemIndex >= App.items.length - 1; }
+    syncOthers();       /* 静态帧（条目模式）固定显示他家手牌：按钮禁用状态跟着 itemIndex 走 */
+    lockControls(on);   /* 静态帧：下面的播放控制面板整块禁用（用户 m03089 ①） */
   }
 
   function installGame(text, logId) {
-    loadText(text, logId + '.xml');
+    loadText(text, logId + '.tenhou');
   }
 
   function jumpRow(it) {
     var ri = parseInt(it.round_index, 10);
     if (!(ri >= 0) || ri >= App.rounds.length) { setMsg('scMsg', '这个条目所在的对局不在牌谱里。', true); return; }
+    /* 条目模式（静态帧）强制显示他家手牌，退出条目模式后自动恢复（用户 m02984 ③） */
+    App.hideOthers = false;
+    toggleViewMenu(false);
     App.roundIndex = ri;
     var frames = App.rounds[ri];
     var fi = parseInt(it.frame_index, 10);
@@ -978,7 +1703,7 @@
     if (App.game && gameLogId() === String(logId)) { jumpRow(it); setMsg('scMsg', ''); return; }
     if (App.cache[logId]) { installGame(App.cache[logId], logId); jumpRow(it); setMsg('scMsg', ''); return; }
     setMsg('scMsg', '正在载入牌谱 ' + logId + ' …');
-    api('/api/read?path=' + encodeURIComponent(it.log_path || ('data/' + logId + '.xml'))).then(function (d) {
+    api('/api/read?path=' + encodeURIComponent(it.log_path || ('data/' + logId + '.tenhou'))).then(function (d) {
       App.cache[logId] = d.text;
       installGame(d.text, logId);
       jumpRow(it);
@@ -994,7 +1719,10 @@
   /* ------------------------------------------------ 静态帧的特征串 */
   function gameLogId() {
     var n = String(App.fileName || '');
-    return n.replace(/\.(xml|mjlog)$/i, '') || '(未命名)';
+    return n
+      .replace(/\.json\.gz$/i, '')
+      .replace(/\.(tenhou|naga|mortal(-[a-z])?|xml|mjlog|json|gz)$/i, '')
+      || '(未命名)';
   }
 
   /* 与 mjscore/feats.py row_label() 保持同一格式：
@@ -1023,22 +1751,21 @@
     return gameLogId() + ' ' + jou + ' ' + st.honba + '本場' + ' ' + junme + '巡目' + ' ' + wind + '家';
   }
 
-  function copyFrameKey() {
-    var el = $('frameKey');
-    if (!el) { return; }
-    var text = el.textContent || '';
-    if (!text) { return; }
+  /* 复制文本到剪贴板（clipboard API + execCommand 兜底）；成功后给 node 加 .copied 700ms */
+  function copyTextTo(text, node) {
+    if (!text) { return false; }
     var done = function () {
-      el.classList.add('copied');
-      window.setTimeout(function () { el.classList.remove('copied'); }, 700);
+      if (!node || !node.classList) { return; }
+      node.classList.add('copied');
+      window.setTimeout(function () { node.classList.remove('copied'); }, 700);
     };
     var fallback = function () {
       var ta = document.createElement('textarea');
       ta.value = text;
-      el.appendChild(ta);
+      if (node) { node.appendChild(ta); }
       if (ta.select) { ta.select(); }
       try { if (document.execCommand) { document.execCommand('copy'); } } catch (e) { /* 忽略 */ }
-      el.removeChild(ta);
+      if (node) { node.removeChild(ta); }
       done();
     };
     if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
@@ -1046,19 +1773,618 @@
     } else {
       fallback();
     }
+    return true;
+  }
+
+  function copyFrameKey() {
+    var el = $('frameKey');
+    if (!el) { return; }
+    copyTextTo(el.textContent || '', el);
+  }
+
+  /* 原始牌谱 URL（用户 m03479 ① / m05937 ③）：天凤 = tenhou.net 的观战页、NAGA = 官网 naga.dmv.nico
+     的观看页、Mortal = mjai.ekyu.moe 的报告 JSON 地址。
+     ricochet 代理地址不还原（NAGA 牌谱复制出来的是「naga 开头」的地址）。 */
+  function paipuUrl() {
+    var g = App.game;
+    var meta = (g && g.meta) ? g.meta : null;
+    var id = (meta && meta.log_id) ? String(meta.log_id) : '';
+    if (!id) { id = gameLogId(); }        /* 天凤 xml 的 meta 里没有 log_id ⇒ 用文件名里的特征码 */
+    if (!id || id === '(未命名)') { return ''; }
+    if (App.naga) {
+      var rid = App.naga.report_id ? String(App.naga.report_id) : id;
+      if (App.naga.kind === 'mortal') {     /* Mortal 报告 = mjai.ekyu.moe 的报告 JSON（用户 m05937 ③） */
+        return 'https://mjai.ekyu.moe/report/' + rid + '.json';
+      }
+      return 'https://naga.dmv.nico/htmls/report_viewer.html?report_id=' + rid + '&tw=0';
+    }
+    return 'http://tenhou.net/0/?log=' + id + '&tw=0';
+  }
+
+  function copyUrl() {
+    var btn = $('btnCopyUrl');
+    var url = paipuUrl();
+    if (!url) { return; }
+    copyTextTo(url, btn);
+    if (btn) {
+      btn.textContent = '已复制';
+      window.setTimeout(function () { btn.textContent = '复制url'; }, 700);
+    }
   }
 
 
-  /* ------------------------------------------- 帧特征面板（33 个特征） */
-  /* 当前帧的「打点视角」座位：摸牌帧 = 摸牌者；吃/碰后等待出牌的帧 = 鸣牌者；其他帧 = null */
+  /* 细红框（用户 m08125 ② / m08178 / m08319 ①）：本帧决策者接下来要做的事 ——
+ *   打牌（立直宣言算打出的宣言牌）→ 即将打出的那一张（只给 kind，ui.js 按紫色条那套筛选逻辑挑一张）；
+ *   暗杠 / 加杠 → 准备杠的 4 张（暗杠 = 手里 4 张，加杠 = 手里 1 张 + 副露区那 3 张，给准确 id）。
+ * 第 66 轮（用户 m08319 ①）起不再限定主视角：谁在这一帧做决策（frameSeatOf）就把框画在谁手里 ——
+ * 静态帧的主视角本来就会被调成决策者，所以静态帧看起来依旧是「框主视角」，限定主视角只是表现形式。
+ * 决策者本帧没有要打的牌（鸣牌响应局面、别家出牌后的等待帧等）一律 null。
+ * frames[k].ev = events[k - 1] ⇒ 下一事件 = events[App.frameIndex]。 */
+function redMarkOf(st) {
+  if (!st || !App.game) { return null; }
+  var r = App.game.rounds[App.roundIndex];
+  var self = frameSeatOf(st);
+  if (!r || typeof self !== 'number') { return null; }
+  var evs = r.events || [];
+  var ev = evs[App.frameIndex];
+  if (!ev || ev.player !== self) { return null; }
+  if (ev.type === 'reach') { ev = evs[App.frameIndex + 1]; }
+  if (ev && ev.type === 'discard' && ev.player === self) {
+    return { seat: self, kind: MJLOG.kindOf(ev.tile), tids: [], melds: [] };
+  }
+  if (ev && ev.type === 'call' && ev.player === self
+    && (ev.callType === 'ankan' || ev.callType === 'kakan')) {
+    var ts = ev.tiles || [];
+    if (!ts.length) { return null; }
+    var kind = MJLOG.kindOf(ts[0]);
+    var pl = st.players[self];
+    var hand = [], melds = [];
+    var seq = pl.hand.slice();
+    if (st.drawn && st.drawn.player === self) { seq.push(st.drawn.tile); }
+    for (var i = 0; i < seq.length; i++) {
+      if (MJLOG.kindOf(seq[i]) === kind && hand.indexOf(seq[i]) < 0) { hand.push(seq[i]); }
+    }
+    for (var m = 0; m < pl.melds.length; m++) {
+      var mm = pl.melds[m];
+      if (mm.callType === 'pon' && mm.tiles.length && MJLOG.kindOf(mm.tiles[0]) === kind) {
+        melds = mm.tiles.slice();
+        break;
+      }
+    }
+    return { seat: self, kind: kind, tids: hand, melds: melds };
+  }
+  return null;
+}
+
+/* ------------------- 帧特征面板（40 个特征里的 34 个：不含第零类 5 项与第三类 1 项） */
+  /* 当前帧的「打点视角」座位（第 63 轮，用户 m07289）：
+     条目模式（检索结果）直接用它那一行的 seat —— 等待鸣牌帧一张出牌对应好几行、各家一行；
+     正常播放则取 decisionSeats() 里优先主视角、否则座位最小的那一家；不是决策帧 → null。 */
   function frameSeatOf(st) {
     if (!st) { return null; }
-    if (st.drawn) { return st.drawn.player; }
-    var rnd = App.game && App.game.rounds[App.roundIndex];
-    var ev = rnd && rnd.events[App.frameIndex - 1];
-    if (ev && ev.type === 'call' && (ev.callType === 'chi' || ev.callType === 'pon')) { return ev.player; }
+    var it = (App.itemIndex >= 0) ? App.items[App.itemIndex] : null;
+    var itSeat = it ? parseInt(it.seat, 10) : NaN;
+    if (it && itSeat >= 0 && String(it.log_id) === gameLogId()
+      && parseInt(it.round_index, 10) === App.roundIndex
+      && parseInt(it.frame_index, 10) === App.frameIndex) {
+      return itSeat;
+    }
+    var frames = App.rounds[App.roundIndex] || [];
+    return seatOfFrame(frames, App.frameIndex);
+  }
+  /* ------------- AI 决策模型切换（用户 m04556 ①）-------------
+   * NAGA 报告里 dahai_pred / huro / reach / kan 的外层是「模型」维（naga_types 的档，
+   * 例：{'0':'ニシキ','1':'カガシ','2':'4.1b'}）。App.aiModel = -1 表示「无AI决策」：
+   * 不画任何 AI 专属数据（= 天凤牌谱的展示方式，用户 m04556 ①）。 */
+  var AI_CHOICES = [
+    { key: 'ai_balance', name: 'NAGA-平衡', label: 'NAGA-平衡 决策' },
+    { key: 'ai_superhuro', name: 'NAGA-超副露', label: 'NAGA-超副露 决策' },
+    { key: 'ai_mortal41a', name: 'Mortal-4.1-避四', label: 'Mortal-4.1-避四 决策' },
+    { key: 'ai_mortal41b', name: 'Mortal-4.1-平衡', label: 'Mortal-4.1-平衡 决策' },
+    { key: 'ai_mortal41c', name: 'Mortal-4.1-争一', label: 'Mortal-4.1-争一 决策' }
+  ];
+  /* 与 mjscore/ai_models.py 的 ALIASES 保持一致：报告里 naga_types 的值 → 规范名 */
+  var AI_ALIASES = {
+    'ニシキ': 'NAGA-平衡', 'カガシ': 'NAGA-超副露',
+    'ヒバカリ': 'NAGA-ヒバカリ', 'オメガ': 'NAGA-オメガ', 'ガンマ': 'NAGA-ガンマ',
+    'ニュー': 'NAGA-ニュー', 'シグマ': 'NAGA-シグマ',
+    '4.1a': 'Mortal-4.1-避四', '4.1b': 'Mortal-4.1-平衡', '4.1c': 'Mortal-4.1-争一'
+  };
+
+  function aiNormalize(raw) {
+    var t = String(raw === null || raw === undefined ? '' : raw).trim();
+    if (!t) { return ''; }
+    if (AI_ALIASES[t]) { return AI_ALIASES[t]; }
+    var _mv = /^(\d+(?:\.\d+)?)([a-z]?)$/i.exec(t);
+    if (_mv) {                                  /* 4.1a 避四 / 4.1b 平衡 / 4.1c 争一（用户 m05806 ①） */
+      var _ms = { a: '避四', b: '平衡', c: '争一' }[(_mv[2] || '').toLowerCase()];
+      return 'Mortal-' + _mv[1] + '-' + (_ms || '平衡');
+    }
+    return t;
+  }
+
+  function aiModelList() {                    /* [{index, raw, name, series}]（后端 game.naga.models 优先） */
+    var naga = App.naga;
+    if (!naga) { return []; }
+    if (naga.models && naga.models.length) { return naga.models; }
+    var types = naga.types || {}, out = [];
+    for (var k in types) {
+      if (!Object.prototype.hasOwnProperty.call(types, k)) { continue; }
+      var idx = Number(k);
+      if (!isFinite(idx)) { continue; }
+      var nm = aiNormalize(types[k]);
+      out.push({ index: idx, raw: types[k], name: nm, series: nm ? nm.split('-')[0] : '' });
+    }
+    out.sort(function (a, b) { return a.index - b.index; });
+    return out;
+  }
+
+  function aiChoiceOf(models) {               /* 三个第零类模型在本牌谱里是否可用（缺 ⇒ index = -1） */
+    var map = {};
+    for (var i = 0; i < models.length; i++) { map[models[i].name] = models[i]; }
+    var out = [];
+    for (var j = 0; j < AI_CHOICES.length; j++) {
+      var m = map[AI_CHOICES[j].name] || null;
+      out.push({ key: AI_CHOICES[j].key, name: AI_CHOICES[j].name, label: AI_CHOICES[j].label,
+        index: m ? m.index : -1 });
+    }
+    return out;
+  }
+
+  function aiModelIndex() {                   /* 「平衡形」在模型列表里的下标（关键帧判定用，与所选模型无关） */
+    var mi = App.naga ? App.naga.model_index : null;
+    if (typeof mi === 'number' && mi >= 0) { return mi; }
+    var models = aiModelList();
+    return models.length ? models[0].index : -1;
+  }
+
+  /* 把「每模型」的值折叠到第 idx 个模型：dahai_pred / reach / kan 是「每模型」，huro 是「每座位 × 每模型」。
+     形状容错：非数组 / 旧式扁平数组（外层不是模型维）原样返回。 */
+  function aiPick(v, idx, models) {
+    if (v === null || v === undefined) { return v; }
+    if (!(v instanceof Array)) { return v; }
+    if (!v.length) { return v; }
+    var first = v[0];
+    var perModel = (first && typeof first === 'object');
+    if (!perModel && v.length === models.length) { perModel = true; }   /* 标量数组：长度 == 模型数 */
+    if (!perModel) { return v; }
+    return (idx >= 0 && idx < v.length) ? v[idx] : null;
+  }
+
+  function aiFoldFrame(nf, idx) {             /* 把一帧折叠到第 idx 个模型（不改原对象） */
+    if (!nf) { return null; }
+    var models = aiModelList();
+    if (idx < 0 && models.length) { idx = models[0].index; }
+    var out = {};
+    for (var k in nf) { if (Object.prototype.hasOwnProperty.call(nf, k)) { out[k] = nf[k]; } }
+    out.dahai_pred = aiPick(nf.dahai_pred, idx, models) || [];
+    out.reach = aiPick(nf.reach, idx, models);
+    out.kan = aiPick(nf.kan, idx, models) || {};
+    var huro = {}, src = nf.huro || {};
+    for (var s in src) {
+      if (!Object.prototype.hasOwnProperty.call(src, s)) { continue; }
+      var one = aiPick(src[s], idx, models);
+      if (one) { huro[s] = one; }
+    }
+    out.huro = huro;
+    return out;
+  }
+
+  function aiFrame() {                        /* 当前帧按所选模型折叠后的数据；-1 = 无AI决策 ⇒ null */
+    if (App.aiModel < 0) { return null; }
+    return aiFoldFrame(nagaFrameOf(), App.aiModel);
+  }
+
+  /* ------------- AI 决策偏好：按帧判定 + 跨牌谱保留（用户 m06323 ②③、m06560）-------------
+   * App.aiPref = 第零类 key（'' = 无AI决策）= 「用户最后一次的选择」，跨牌谱 / 跨帧保留；
+   * App.aiModel = 本帧实际生效的模型下标（偏好在这一帧没有决策概率表 ⇒ -1，临时显示「无AI决策」）。
+   * 一帧有没有某个模型的数据，与后端 mjscore/feats.py 的 _model_has_data() 同口径（用户 m06560）：
+   * 数据属于**这一帧的决策者**（nagaSeatOf）—— 帧级 dahai_pred / reach / kan 属于这一帧的 actor，
+   * huro 只看决策者自己那一格。 */
+
+  function aiKeyOfIndex(idx) {                /* 模型下标 → 第零类 key（'' = 认不出） */
+    if (typeof idx !== 'number' || idx < 0) { return ''; }
+    var list = aiChoiceOf(aiModelList());
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].index === idx && list[i].index >= 0) { return list[i].key; }
+    }
+    return '';
+  }
+
+  function aiPrefIndex(pref) {                /* 偏好 key → 本牌谱里的模型下标（-1 = 本牌谱没有这个模型） */
+    if (!pref) { return -1; }
+    var list = aiChoiceOf(aiModelList());
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].key === pref && list[i].index >= 0) { return list[i].index; }
+    }
+    return -1;
+  }
+
+  function anyVal(v) {                        /* {下标: 万分比} 里有没有非 0 值（标量则直接比 0） */
+    if (!v || typeof v !== 'object') { return Number(v) > 0; }
+    for (var k in v) {
+      if (Object.prototype.hasOwnProperty.call(v, k) && Number(v[k]) > 0) { return true; }
+    }
+    return false;
+  }
+
+  function aiFrameHasData(nf, idx, models) {  /* 这一帧的**决策者**有没有第 idx 个模型的概率表（用户 m06560 口径） */
+    if (!nf || typeof idx !== 'number' || idx < 0) { return false; }
+    /* 席位要用「折叠到该模型」后的 huro 判：原始帧的 huro 是每座位 x 每模型（每格一个列表），
+       在这里算不出吃 / 碰 / 杠的最大项，会退化成 actor（第 64 轮，用户 m07820 ① 口径 (a)）。 */
+    var seat = nagaSeatOf(aiFoldFrame(nf, idx));
+    if (typeof seat !== 'number') { return false; }
+    if (nf.actor === seat) {   /* 帧级预测（打哪张 / 立直 / 杠）属于这一帧的 actor = 决策者 */
+      var dp = aiPick(nf.dahai_pred, idx, models);
+      if (dp && dp.length) { return true; }
+      if (Number(aiPick(nf.reach, idx, models)) > 0) { return true; }
+      if (anyVal(aiPick(nf.kan, idx, models))) { return true; }
+    }
+    var hu = nf.huro || {};    /* huro 只看决策者自己那一格 */
+    return anyVal(aiPick(hu[String(seat)], idx, models));
+  }
+
+  function aiFrameKeys(nf) {                  /* 这一帧带决策概率表的模型 key 列表（与入库判定同口径） */
+    var models = aiModelList(), out = [];
+    if (!nf) { return out; }
+    for (var i = 0; i < models.length; i++) {
+      if (aiFrameHasData(nf, models[i].index, models)) { out.push(aiKeyOfIndex(models[i].index)); }
+    }
+    return out;
+  }
+
+  function syncAiModel() {                    /* 每帧把偏好落到可用模型上（用户 m06323 ③） */
+    var pref = App.aiPref || '';
+    var idx = pref ? aiPrefIndex(pref) : -1;
+    if (idx >= 0) {
+      var models = aiModelList();
+      if (!aiFrameHasData(nagaFrameOf(), idx, models)) { idx = -1; }   /* 这一帧没数据 ⇒ 临时「无AI决策」 */
+    }
+    App.aiModel = idx;
+    syncAiModelBtn();
+  }
+
+  function setAiPref(key) {                   /* 直接记偏好（'' = 无AI决策）并立刻按本帧可用性重画 */
+    App.aiPref = key || '';
+    syncAiModel();
+    toggleAiModelMenu(false);
+    if (App.game) { render(); }
+  }
+
+  function resetAiModel() {                   /* 只重置「本帧生效值」，不动用户偏好（用户 m06323 ③） */
+    App.aiModel = -1;
+    toggleAiModelMenu(false);
+    syncAiModelBtn();
+  }
+
+  function setAiModel(idx) {                  /* 菜单点击：记偏好 + 按本帧可用性立刻生效 */
+    App.aiPref = (typeof idx === 'number' && idx >= 0) ? aiKeyOfIndex(idx) : '';
+    syncAiModel();
+    toggleAiModelMenu(false);
+    if (App.game) { render(); }
+  }
+
+
+  function syncAiModelBtn() {
+    var b = $('nagaModelBtn');
+    if (!b) { return; }
+    var list = aiChoiceOf(aiModelList()), cur = null, prefRow = null, n = 0;
+    var pref = App.aiPref || '';
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].index >= 0) { n++; }
+      if (list[i].index === App.aiModel && list[i].index >= 0) { cur = list[i]; }
+      if (pref && list[i].key === pref && list[i].index >= 0) { prefRow = list[i]; }
+    }
+    b.textContent = cur ? cur.label : '无AI决策';
+    if (App.aiModel < 0) {
+      if (prefRow) {   /* 偏好还在、只是这一帧没有数据 ⇒ 临时「无AI决策」，之后自动切回（用户 m06323 ③） */
+        b.title = '本帧没有 ' + prefRow.label + ' 的决策数据；已记住偏好，之后有数据的帧会自动切回';
+      } else if (n) {
+        b.title = '当前：无AI决策（本牌谱含 ' + n + ' 个 AI 模型的决策数据，点击切换）';
+      } else {
+        b.title = '当前：无AI决策（本牌谱不含 AI 决策数据）';
+      }
+    } else {
+      b.title = '当前：' + b.textContent + '（点击切换；「无AI决策」= 天凤牌谱的展示方式）';
+    }
+  }
+
+  function renderAiModelMenu() {
+    var box = $('nagaModelMenu');
+    if (!box) { return; }
+    clearNode(box);
+    var list = aiChoiceOf(aiModelList());
+    var models = aiModelList(), nf = nagaFrameOf();
+    var pref = App.aiPref || '';
+    var rows = [{ label: '无AI决策', index: -1, ok: true, key: '', hasData: true }];
+    for (var i = 0; i < list.length; i++) {
+      rows.push({ label: list[i].label, index: list[i].index, ok: list[i].index >= 0, key: list[i].key,
+        hasData: (list[i].index < 0) ? false : aiFrameHasData(nf, list[i].index, models) });
+    }
+    for (var j = 0; j < rows.length; j++) {
+      var cur = pref ? (rows[j].key === pref) : (rows[j].index === -1);   /* 高亮的是「偏好」而不是生效值 */
+      var row = document.createElement('div');
+      row.className = 'ai-row' + (rows[j].ok ? '' : ' disabled') + (cur ? ' cur' : '');
+      row.setAttribute('data-index', String(rows[j].index));
+      row.textContent = rows[j].label;
+      if (!rows[j].ok) {
+        row.title = rows[j].label + '：本牌谱没有这个模型的分析结果';
+      } else if (!rows[j].hasData) {
+        row.title = rows[j].label + '：本帧没有决策数据（选中后记成偏好，有数据的帧会自动切回）';
+      } else {
+        row.title = rows[j].label;
+      }
+      box.appendChild(row);
+    }
+  }
+
+  function toggleAiModelMenu(show) {
+    var box = $('nagaModelMenu');
+    if (!box) { return; }
+    var hide = (show === undefined) ? !box.classList.contains('hidden') : !show;
+    if (hide) { box.classList.add('hidden'); return; }
+    renderAiModelMenu();
+    box.classList.remove('hidden');
+  }
+
+  // ---------------- NAGA 决策概率展示（用户 m00198 / m01518 ③）----------------
+  // 数据来自 mjscore/naga.py 转换后的 game.naga.rounds[局][帧]，帧下标与 App.frameIndex 对齐
+  // （naga 帧 j 携带的正是我们 events[j] 要兑现的那个决策）。非 NAGA 牌谱时一切留空。
+  function nagaFrameOf() {
+    if (!App.naga || !App.naga.rounds) { return null; }
+    var rs = App.naga.rounds[App.roundIndex];
+    if (!rs || App.frameIndex >= rs.length) { return null; }
+    return rs[App.frameIndex] || null;
+  }
+
+  /* 大字（vocalization，用户 m03978 ②）：官方 viewer 的 replay 状态机在吃 / 碰 / 杠帧给状态对象写
+   * vocalization = チー / ポン / カン（再由 renderBa 用 900 字重画在桌面上）；和了帧官方从结算信息
+   * 取「ツモ / ロン」。我们按事件等价还原：call.chi→チー、pon→ポン、三种杠→カン；
+   * agari 时 winner === fromWho = 自摸 ⇒ ツモ，否则 ロン。拔北（nuki）官方不画大字。 */
+  function vocalTextOf(ev) {
+    if (!ev) { return null; }
+    if (ev.type === 'call') {
+      if (ev.callType === 'chi') { return 'チー'; }
+      if (ev.callType === 'pon') { return 'ポン'; }
+      if (ev.callType === 'ankan' || ev.callType === 'kakan' || ev.callType === 'daiminkan') { return 'カン'; }
+      return null;
+    }
+    if (ev.type === 'agari') { return (ev.winner === ev.fromWho) ? 'ツモ' : 'ロン'; }
     return null;
   }
+
+  /** 当前帧的大字：{ pos, text } 或 null（pos = 展示位置 0 下 / 1 右 / 2 上 / 3 左）
+   *  牌谱检索 / 全部浏览的静态帧不画大字（用户 m04456）。 */
+  function vocalForFrame() {
+    if (App.itemIndex >= 0) { return null; }        /* 静态帧不显示大字（用户 m04456） */
+    var rnd = App.game && App.game.rounds && App.game.rounds[App.roundIndex];
+    if (!rnd || !rnd.events) { return null; }
+    var ev = rnd.events[App.frameIndex - 1];
+    var text = vocalTextOf(ev);
+    if (!text) { return null; }
+    var seat = (ev.type === 'agari') ? ev.winner : ev.player;
+    if (typeof seat !== 'number' || seat < 0 || seat > 3) { return null; }
+    var pos = App.viewRot ? App.viewRot.indexOf(seat) : seat;
+    if (pos < 0) { pos = seat; }
+    return { pos: pos, text: text };
+  }
+
+  function nagaKindId(kind) { return kind * 4 + 1; }        // 避开赤 5（kind*4 会被 Tiles 当成 0m）
+
+  function nagaKindOfName(name) {                           // mjai 牌名 → 0..33
+    var s = String(name || '');
+    if (!s) { return null; }
+    var H = 'ESWNPFC', c = s.charAt(0);
+    if (H.indexOf(c) >= 0) { return 27 + H.indexOf(c); }    // 字牌：E/S/W/N/P/F/C
+    var m = /^([0-9])([mps])r?$/.exec(s);                   // 数牌，允许赤 5 的尾 r（'5pr'）
+    if (!m) { return null; }
+    var num = Number(m[1]);
+    if (num === 0) { num = 5; }                             // '0m' / '0p' / '0s' = 赤 5
+    return { m: 0, p: 1, s: 2 }[m[2]] * 9 + num - 1;
+  }
+
+  function nagaChiPair(kind, idx) {                          // 吃的三种牌对（三样本 24/24 实证）
+    if (idx === 1) { return [kind + 1, kind + 2]; }          // 被打出的牌作最小
+    if (idx === 2) { return [kind - 1, kind + 1]; }          // 作中间
+    if (idx === 3) { return [kind - 2, kind - 1]; }          // 作最大
+    return null;
+  }
+
+  function nagaPctText(p) {                                  // 万分比 → 统一一位小数（用户 m02227 ①）
+    var v = (Number(p) || 0) / 100;
+    return v.toFixed(1) + '%';
+  }
+
+  function nagaSeatOf(nf) {                                  // 本帧「轮到谁决策」
+    if (!nf) { return null; }
+    var huro = nf.huro;
+    if (huro) {
+      var best = null, bestP = 0;
+      for (var s in huro) {
+        if (!Object.prototype.hasOwnProperty.call(huro, s)) { continue; }
+        var m = huro[s] || {}, mx = 0;
+        for (var i in m) {
+          if (!Object.prototype.hasOwnProperty.call(m, i)) { continue; }
+          if (Number(i) > 0 && (m[i] || 0) > mx) { mx = m[i] || 0; }
+        }
+        if (mx > bestP) { bestP = mx; best = Number(s); }
+      }
+      if (best !== null) { return best; }
+      /* 第 64 轮（用户 m07820 ①，口径 (a)）：huro 里列出的席位就是「可能鸣牌的那一家」——
+         吃 / 碰 / 杠概率全是 0（只剩 PASS）时上面取不到最大项，这里退化为那一格
+         （唯一席位就直接用它；多个席位时取 PASS 概率最大的那个）。
+         后端 mjscore/feats.py 的 _model_has_data() 同样认这一格（有数据就算「有」）。 */
+      var uq = null, uqP = -1, hcount = 0;
+      for (var s2 in huro) {
+        if (!Object.prototype.hasOwnProperty.call(huro, s2)) { continue; }
+        hcount += 1;
+        var one2 = huro[s2], p0 = (one2 && typeof one2['0'] === 'number') ? one2['0'] : 0;
+        if (p0 > uqP) { uqP = p0; uq = Number(s2); }
+      }
+      if (hcount === 1) { return uq; }
+      if (uqP > 0) { return uq; }
+    }
+    return (typeof nf.actor === 'number') ? nf.actor : null;
+  }
+
+  function nagaKanInfo(seat, st) {                            // 报告不给杠哪张牌 ⇒ 从手牌推断
+    var out = { ankan: [], kakan: [] };
+    if (!st || !st.players || !st.players[seat]) { return out; }
+    var pl = st.players[seat], cnt = Tiles.countsByKind(pl.hand || []);
+    for (var k in cnt) {
+      if (!Object.prototype.hasOwnProperty.call(cnt, k)) { continue; }
+      if (cnt[k] >= 4) { out.ankan.push(Number(k)); }
+    }
+    var melds = pl.melds || [];
+    for (var i = 0; i < melds.length; i++) {
+      var m = melds[i];
+      if (!m || m.callType !== 'pon' || !m.tiles || !m.tiles.length) { continue; }
+      var kk = Tiles.kindOf(m.tiles[0]);
+      if ((cnt[kk] || 0) > 0) { out.kakan.push(kk); }
+    }
+    return out;
+  }
+
+  function nagaOptions(nf, st, seat) {                        // 只保留 >10% 的选项（用户 m00198 ③）
+    var list = [];
+    if (!nf) { return list; }
+    function push(tiles, word, p, pass) {                   // pass = 只是「过」，不算真决策（用户 m02007 ③）
+      if (!p || p <= 1000) { return; }
+      list.push({ tiles: tiles || [], word: word, pct: p, pctText: nagaPctText(p), pass: !!pass });
+    }
+    if (nf.msg === 'dahai') {                                 // 鸣牌决策：huro（0 过 / 1-3 吃 / 4 碰 / 5 大明杠）
+      var m = (nf.huro || {})[String(seat)] || {};
+      var dk = nagaKindOfName(nf.pai);
+      for (var i in m) {
+        if (!Object.prototype.hasOwnProperty.call(m, i)) { continue; }
+        var idx = Number(i), p = m[i] || 0;
+        if (idx === 0) { push([], 'PASS', p, true); }
+        else if (idx === 4) { push(dk === null ? [] : [dk, dk], '碰', p); }
+        else if (idx === 5) { push(dk === null ? [] : [dk], '大明杠', p); }
+        else if (dk !== null) { var pr = nagaChiPair(dk, idx); if (pr) { push(pr, '吃', p); } }
+      }
+    } else {                                                  // 打牌决策：dahai_pred / reach / kan
+      var dp = nf.dahai_pred || [];
+      for (var k = 0; k < dp.length && k < 34; k++) {
+        if ((dp[k] || 0) > 1000) { push([k], '打', dp[k]); }
+      }
+      var reachItem = null;
+      if (nf.reach !== null && nf.reach !== undefined) {        // 立直是展示规则的特例（用户 m01903 ③）：
+        reachItem = { tiles: [], word: '立直', pct: nf.reach || 0,   // 这一帧只要有立直选项就显示，
+          pctText: nagaPctText(nf.reach || 0), reach: true };        // 不看是否 >10%，且永远排第一
+      }
+      var kan = nf.kan || {}, ki = nagaKanInfo(seat, st);
+      /* 杠的规范名称按**牌局状态**判定（用户 m08623）：手里 4 张 = 暗杠；已有碰副露 + 手里第 4 张 = 加杠。
+       * 报告只给「档位」（kan['1'] = 暗杠、kan['2'] = 加杠），而 Mortal 会把加杠也报成 ankan
+       * （`consumed` 4 张，实测 kyoku 2 entry 10）⇒ 状态里只有一种杠时一律按状态取名。 */
+      var kcands = [];
+      for (var kni = 0; kni < ki.ankan.length; kni++) { kcands.push({ kind: ki.ankan[kni], word: '暗杠', used: false }); }
+      for (var knj = 0; knj < ki.kakan.length; knj++) { kcands.push({ kind: ki.kakan[knj], word: '加杠', used: false }); }
+      var krep = [kan['1'] || 0, kan['2'] || 0], kword = ['暗杠', '加杠'];
+      for (var knd = 0; knd < 2; knd++) {
+        if (!(krep[knd] > 1000)) { continue; }
+        var kpick = null;
+        for (var kne = 0; kne < kcands.length; kne++) {
+          if (!kcands[kne].used && kcands[kne].word === kword[knd]) { kpick = kcands[kne]; break; }
+        }
+        if (!kpick) {                                    /* 报告档位与状态不符：用状态里剩下的那一种 */
+          for (var knf = 0; knf < kcands.length; knf++) { if (!kcands[knf].used) { kpick = kcands[knf]; break; } }
+        }
+        if (kpick) { kpick.used = true; }
+        push(kpick ? [kpick.kind] : [], kpick ? kpick.word : kword[knd], krep[knd]);
+      }
+    }
+    list.sort(function (a, b) { return b.pct - a.pct; });
+    if (reachItem) { list.unshift(reachItem); }
+    return list;
+  }
+
+  function nagaOptEl(it) {
+    var row = document.createElement('div');
+    row.className = 'naga-opt' + (it.other ? ' other' : '') + (it.reach ? ' reach' : '');
+    if (it.tiles.length) {
+      var box = document.createElement('span');
+      box.className = 'naga-opt-tiles';
+      for (var i = 0; i < it.tiles.length; i++) {
+        var tid = nagaKindId(it.tiles[i]);
+        var img = document.createElement('img');
+        img.draggable = false;
+        img.src = Tiles.tileSrc(tid);
+        img.alt = Tiles.tileLabel(tid);
+        img.title = Tiles.tileLabel(tid);
+        box.appendChild(img);
+      }
+      row.appendChild(box);
+    }
+    var w = document.createElement('span');
+    w.className = 'naga-opt-word';
+    w.textContent = it.word;
+    row.appendChild(w);
+    var pc = document.createElement('span');
+    pc.className = 'naga-opt-pct';
+    pc.textContent = it.pctText;
+    row.appendChild(pc);
+    return row;
+  }
+
+  function nagaHudCell(k, v, wide) {
+    var cell = document.createElement('div');
+    cell.className = 'nh-cell' + (wide ? ' nh-wide' : '');
+    var a = document.createElement('span');
+    a.className = 'nh-k';
+    a.textContent = k;
+    var b = document.createElement('span');
+    b.textContent = v;
+    cell.appendChild(a);
+    cell.appendChild(b);
+    return cell;
+  }
+
+  function renderNagaPanel() {                                // 天凤牌谱：三块全部留空（用户 m00198 ⑤）
+    var optsEl = $('nagaOptions'), whoEl = $('nagaWho'), hudEl = $('nagaHud');
+    if (!optsEl || !whoEl || !hudEl) { return; }
+    while (optsEl.firstChild) { optsEl.removeChild(optsEl.firstChild); }
+    while (hudEl.firstChild) { hudEl.removeChild(hudEl.firstChild); }
+    whoEl.textContent = '';
+    whoEl.title = '';
+    var nf = aiFrame();       /* 无AI决策 ⇒ null：三块留空（= 天凤牌谱的展示方式，用户 m04556 ①） */
+    if (!nf) { return; }
+    var st = App.rounds[App.roundIndex][App.frameIndex].state;
+    var seat = nagaSeatOf(nf);
+    /* 隐藏他家手牌时只有「别家」的决策表留空、只保留标题；主视角自己的决策照旧显示（用户 m03343 ①） */
+    if (App.hideOthers && seat !== App.selfSeat) { return; }
+    var name = (seat !== null && st.players[seat]) ? st.players[seat].name : '';
+    var list = nagaOptions(nf, st, seat);
+    /* 没有决策分支的展示帧（报告里没有 dahai_pred / huro，或只剩 PASS）：整块留空、只留标题
+       「NAGA 决策」，否则会只剩下「其它 100%」这种没有信息量的行（用户 m02007 ③）。 */
+    var real = false;
+    for (var q = 0; q < list.length; q++) { if (!list[q].pass) { real = true; break; } }
+    if (!real) { return; }
+    whoEl.textContent = (seat === null) ? '当前没有决策' : ('当前决策：' + name);
+    whoEl.title = whoEl.textContent;
+    var shown = 0;
+    // 立直与打牌（dahai_pred）是同一帧里两个独立的边缘量，「其它」只算打牌 / 鸣牌选项的残差（用户 m01903 ③）
+    for (var i = 0; i < list.length; i++) { if (!list[i].reach) { shown += list[i].pct; } }
+    if (shown < 10000) {                                      // 「其它」= 1 − 已显示概率合计（用户 m01810 ②）
+      list.push({ tiles: [], word: '其它', pct: 10000 - shown, pctText: nagaPctText(10000 - shown), other: true });
+    }
+    for (i = 0; i < list.length; i++) { optsEl.appendChild(nagaOptEl(list[i])); }
+    var hs = (seat === null) ? App.selfSeat : seat;           // 5 个数据（纯文本，用户 m00198 ②）
+    var et = nf.end_type, gr = nf.game_rank;
+    function pct1(r) { return (et && et[r]) ? ((et[r][hs] || 0) / 100).toFixed(1) + '%' : '—'; }
+    hudEl.appendChild(nagaHudCell('流局率', pct1(3)));
+    hudEl.appendChild(nagaHudCell('横移率', pct1(2)));
+    hudEl.appendChild(nagaHudCell('放铳率', pct1(1)));
+    hudEl.appendChild(nagaHudCell('和了率', pct1(0)));
+    var exp = '—';
+    if (gr && gr[hs]) {
+      var sum = 0;
+      for (var r = 0; r < gr[hs].length && r < 4; r++) { sum += (r + 1) * (gr[hs][r] || 0); }
+      exp = (sum / 10000).toFixed(2) + ' 位';
+    }
+    hudEl.appendChild(nagaHudCell('期待顺位', exp, true));
+  }
+
 
   var FeatPanel = { key: '', seq: 0, loading: false, error: '', row: null, usedKeys: {} };
 
@@ -1089,19 +2415,25 @@
   function renderFeatPanel() {
     var box = $('featPanelList');
     if (!box) { return; }
+    renderFeatMode();                    /* 先按当前状态刷新底部局面文字 */
     clearNode(box);
     if (FeatPanel.loading) { box.appendChild(plainRow('正在读取这一帧的特征…', 'muted')); return; }
     if (FeatPanel.error) { box.appendChild(plainRow('读取失败：' + FeatPanel.error, 'warn')); return; }
     var row = FeatPanel.row;
     if (!row) {
       box.appendChild(plainRow(App.game
-        ? '当前帧没有打点行：只有「非自摸的摸牌帧」与「吃/碰后等待出牌的帧」才有特征值。'
+        ? '当前帧没有打点行：只有「非自摸的摸牌帧」、「吃/碰后等待出牌的帧」与「鸣牌响应帧」才有特征值。'
         : '（未载入牌谱）', 'muted'));
       return;
     }
-    var feats = row.feats || {}, used = 0;
+    var feats = row.feats || {}, used = 0, shown = 0;
     for (var i = 0; i < FEATURES.length; i++) {
       var f = FEATURES[i];
+      /* 第零类特征不列进「当前帧特征」（用户 m05937 ②）：牌谱含哪些 AI 模型的信息已经由右上角
+         「NAGA 决策 / Mortal 决策」模型选择按钮体现；第三类「等待鸣牌」（用户 m07289）也不列进来，
+         改由面板底部的局面文字体现。这里只列第一类 17 项 + 第二类 17 项。 */
+      if (isAiKey(f.key) || isThirdKey(f.key)) { continue; }
+      shown += 1;
       var r = document.createElement('div');
       r.className = 'feat-row' + (featUsed(f.key) ? ' used' : '');
       r.setAttribute('data-key', f.key);
@@ -1116,8 +2448,22 @@
       if (featUsed(f.key)) { r.title = '这一条正用于当前检索条件'; used += 1; }
       box.appendChild(r);
     }
-    box.appendChild(plainRow('共 ' + FEATURES.length + ' 个特征'
-      + (used ? ('（高亮 ' + used + ' 条 = 当前检索用到的）') : ''), 'muted'));
+    renderFeatMode();
+  }
+
+  /* 面板底部的局面文字（第三类特征「等待鸣牌」的展示方式，用户 m07289）：
+     大号、醒目的居中文字「出牌局面」/「鸣牌响应局面」，没有打点行时不显示。 */
+  function renderFeatMode() {
+    var el = $('featPanelMode');
+    if (!el) { return; }
+    var row = FeatPanel.row, txt = '';
+    if (row && !FeatPanel.loading && !FeatPanel.error) {
+      var isWait = (row.kind === 'wait')
+        || !!(row.feats && row.feats.meld_wait === '是');
+      txt = isWait ? '鸣牌响应局面' : '出牌局面';
+    }
+    el.textContent = txt;
+    if (el.classList) { el.classList.toggle('hidden', !txt); }
   }
 
   /* 每次 render() 后同步：先看当前帧是不是打点帧，再按「数据库 + 帧」缓存读取 */
@@ -1134,11 +2480,11 @@
       FeatPanel.loading = false;
       FeatPanel.error = '';
       FeatPanel.row = null;
-      if (info) { info.textContent = ''; }
+      if (info) { info.textContent = ''; info.title = ''; }
       renderFeatPanel();
       return;
     }
-    if (info) { info.textContent = frameKeyText(); }
+    if (info) { var fpTitle = frameKeyText(); info.textContent = fpTitle; info.title = fpTitle; }
 
     /* 条目模式：直接取检索结果那一行（/api/detail 用 idx），保证与列表逐字一致 */
     var it = (App.itemIndex >= 0) ? App.items[App.itemIndex] : null;
@@ -1345,11 +2691,11 @@
     var box = $('dlList');
     if (!box) { return; }
     var rel = 'data/paipu/' + valOf('dlSubdir', '');
-    api('/api/scan?dir=' + encodeURIComponent(dirAbs || rel)).then(function (d) {
+    api('/api/scan?dir=' + encodeURIComponent(dirAbs || rel) + '&kind=all').then(function (d) {
       clearNode(box);
       box.appendChild(plainRow('目录 ' + d.dir + '：' + d.count + ' 个牌谱', 'muted'));
-      var src = $('anSourceDir');
-      if (src && (!src.value || src.value === 'data')) { src.value = rel; }
+      /* 分析面板的牌谱目录下拉框跟到刚下载的目录（用户 m01171 第 2 条） */
+      if (An.pickerDir !== rel) { An.pickerDir = rel; loadPaipuPicker(rel, true); }
       for (var i = 0; i < d.files.length && i < 300; i++) {
         var r = document.createElement('div');
         r.className = 'item-row static';
@@ -1591,68 +2937,36 @@
     return i < 0 ? s : s.slice(i + 1);
   }
 
-  function fillSamples() {
-    var sel = $('sampleSelect');
-    if (!sel) { return; }
-    var rows = App.samples || [];
-    clearNode(sel);
-    if (!rows.length) {
-      /* 服务没启动 / 数据目录里还没有牌谱：仍然列出固定清单，保证首页结构稳定 */
-      for (var i = 0; i < SAMPLE_IDS.length; i++) {
-        var o = document.createElement('option');
-        o.value = '';
-        o.textContent = SAMPLE_IDS[i] + '.xml';
-        sel.appendChild(o);
-      }
-      return;
-    }
-    for (var j = 0; j < rows.length; j++) {
-      var op = document.createElement('option');
-      op.value = rows[j];
-      op.textContent = baseName(rows[j]);
-      sel.appendChild(op);
-    }
-  }
-
-  /* 示例牌谱清单 = /api/health 的 paipu_dir（数据目录）+ /api/scan 的文件列表。
-     用户 m00178 第 8 条：数据目录将来固定在 %LOCALAPPDATA% 下，必须用服务端给的绝对路径。 */
-  function loadSamples() {
+  /* 用户数据目录（来自 /api/health）：牌谱在 paipu_dir，分析库在 db_dir。
+     用户 m03175 ③ 删掉「示例牌谱」下拉后，这里只保留目录信息 —— 「浏览选择」的原生对话框
+     默认目录与「按特征码搜索」的扫描目录都要用它。 */
+  function loadHealth() {
     return api('/api/health').then(function (h) {
       App.dataRoot = h.data_root || '';
       App.dbDir = h.db_dir || '';
       App.paipuDir = h.paipu_dir || '';
-      if (!App.paipuDir) { return []; }
-      return api('/api/scan?dir=' + encodeURIComponent(App.paipuDir)).then(function (d) {
-        return (d && d.files) || [];
-      });
-    })['catch'](function () {
-      return [];
-    }).then(function (files) {
-      var list = files || [];
-      var seen = {}, i;
-      for (i = 0; i < list.length; i++) { seen[baseName(list[i]).replace(/\.xml$/i, '')] = list[i]; }
-      var picked = [];
-      for (i = 0; i < SAMPLE_IDS.length; i++) {
-        if (seen[SAMPLE_IDS[i]]) { picked.push(seen[SAMPLE_IDS[i]]); }
-      }
-      for (i = 0; i < list.length && picked.length < SAMPLE_IDS.length; i++) {
-        if (picked.indexOf(list[i]) < 0) { picked.push(list[i]); }
-      }
-      App.samples = picked;
-      fillSamples();
-      return picked;
-    });
+      return App.paipuDir;
+    })['catch'](function () { return ''; });
   }
 
+  /* 拖放区覆盖整个牌桌区域（用户 m03175 ⑥）：事件绑在 .board-box 上，
+     #dropZone 用 pointer-events:none 只负责显示边框与提示文字。 */
   function initDrop() {
+    var box = $('boardBox');
     var dz = $('dropZone');
     ['dragenter', 'dragover'].forEach(function (t) {
-      dz.addEventListener(t, function (e) { e.preventDefault(); dz.classList.add('over'); });
+      box.addEventListener(t, function (e) {
+        e.preventDefault();
+        if (dz) { dz.classList.add('over'); }
+      });
     });
     ['dragleave', 'drop'].forEach(function (t) {
-      dz.addEventListener(t, function (e) { e.preventDefault(); dz.classList.remove('over'); });
+      box.addEventListener(t, function (e) {
+        e.preventDefault();
+        if (dz) { dz.classList.remove('over'); }
+      });
     });
-    dz.addEventListener('drop', function (e) {
+    box.addEventListener('drop', function (e) {
       var fs = e.dataTransfer && e.dataTransfer.files;
       if (fs && fs.length) { readFile(fs[0]); }
     });
@@ -1662,8 +2976,7 @@
   }
 
   function init() {
-    fillSamples();
-    loadSamples();
+    loadHealth();
     initDrop();
 
     $('btnPickFile').addEventListener('click', pickPaipuFile);
@@ -1672,18 +2985,39 @@
       this.value = '';
       readFile(f);
     });
-    $('btnLoadSample').addEventListener('click', loadSample);
     $('btnGoSearch').addEventListener('click', function () { setView('search'); });
-    bind('btnGoReplay', function () {
-      $('rpOpenBar').classList.remove('hidden');
-      homeMsg('请选择一个牌谱文件，或载入示例牌谱。');
-      setView('replay');
-    });
+    /* 首页卡片的「牌谱播放」与顶部页签走同一条入口逻辑（用户 m04285 ①） */
+    bind('btnGoReplay', openReplayView);
     bind('btnOpenPicker', function () { $('rpOpenBar').classList.toggle('hidden'); });
+
+    /* 浏览选择 / 按特征码搜索 两种互斥方式（用户 m03175 ④⑤）：
+       按 id 绑定（而不是按 name 查），浏览器与测试环境都拿得到元素。 */
+    $('rpModeBrowse').addEventListener('change', function () { syncOpenMode('browse'); });
+    $('rpModeSearch').addEventListener('change', function () { syncOpenMode('search'); });
+    $('codeInput').addEventListener('input', function () { renderCodeResults(this.value); });
+    $('codeResults').addEventListener('click', function (e) {
+      var row = e.target && e.target.closest ? e.target.closest('.code-row') : null;
+      if (row) { openPaipuPath(row.getAttribute('data-path')); }
+    });
+    syncOpenMode();
+
+    /* 切换主视角上拉框（用户 m03343 ②）：点一行 = 把那一家的座位转到主视角 */
+    $('viewMenu').addEventListener('click', function (e) {
+      var row = e.target && e.target.closest ? e.target.closest('.view-row') : null;
+      if (!row) { return; }
+      setViewSeat(parseInt(row.getAttribute('data-seat'), 10));
+      toggleViewMenu(false);
+      render();
+    });
     bind('btnGoAnalyze', function () { setView('analyze'); });
 
     /* 牌谱分析 */
     bind('btnScan', scanFiles);
+    var anDir = $('anSourceDir');
+    if (anDir && anDir.addEventListener) { anDir.addEventListener('change', anDirChanged); }
+    var anFile = $('anSourceFile');
+    if (anFile && anFile.addEventListener) { anFile.addEventListener('change', anFileChanged); }
+    loadPaipuPicker('data/paipu', true);   /* 目录树固定 data/paipu（服务没起时静默） */
     bind('btnSelAll', function () { setAllFiles(true); });
     bind('btnSelNone', function () { setAllFiles(false); });
     bind('btnAnalyze', doAnalyze);
@@ -1705,11 +3039,26 @@
     bind('btnClearConds', clearConds);
     bind('btnRunQuery', runQuery);
     bind('btnBrowseAll', browseAll);
+    bind('btnAiClear', clearAiPlan);
+    var waitModes = document.querySelectorAll('input[name="waitMode"]');
+    for (var wmi = 0; wmi < waitModes.length; wmi++) {
+      waitModes[wmi].addEventListener('change', function () { setWait(this.value); });
+    }
+    bind('nagaModelBtn', function () { toggleAiModelMenu(); });
+    var mmBox = $('nagaModelMenu');
+    if (mmBox) {
+      mmBox.addEventListener('click', function (e) {
+        var row = (e.target && e.target.closest) ? e.target.closest('.ai-row') : null;
+        if (!row || row.classList.contains('disabled')) { return; }
+        setAiModel(parseInt(row.getAttribute('data-index'), 10));
+      });
+    }
 
     /* 条目导航 + 特征串复制 */
     bind('btnPrevItem', function () { stepItem(-1); });
     bind('btnNextItem', function () { stepItem(1); });
     bind('frameKey', copyFrameKey);
+    bind('btnCopyUrl', copyUrl);
 
     /* 牌谱下载 */
     bind('btnGoDownload', function () { setView('download'); });
@@ -1727,6 +3076,8 @@
 
     renderFeatSelect();
     renderConds();
+    renderAiPlan();
+    syncWaitRadios();
     markUsedFeatures();
     $('btnBackHome').addEventListener('click', function () { setView('home'); });
 
@@ -1750,18 +3101,16 @@
     for (var i = 0; i < tabs.length; i++) {
       tabs[i].addEventListener('click', function () {
         var v = this.getAttribute('data-view');
-        if (v === 'replay' && !App.game) {
-          /* 没载入牌谱也允许进播放视图：入口（选择文件 / 载入示例）就在那里 */
-          $('rpOpenBar').classList.remove('hidden');
-          homeMsg('请选择一个牌谱文件，或载入示例牌谱。');
-        }
+        /* 没载入牌谱也允许进播放视图：入口（浏览选择 / 按特征码搜索 / 拖入）就在那里。
+           静态帧（牌谱检索 / 全部浏览）不算「牌谱播放」状态，先卸载回等待选择的界面（用户 m04285 ①）。 */
+        if (v === 'replay') { openReplayView(); return; }
         setView(v);
       });
     }
 
     $('controls').addEventListener('click', function (e) {
       var b = e.target && e.target.closest ? e.target.closest('button[data-act]') : null;
-      if (b) { onAct(b.getAttribute('data-act')); }
+      if (b && App.itemIndex < 0) { onAct(b.getAttribute('data-act')); }
     });
 
     $('roundSelect').addEventListener('change', function () {
@@ -1773,16 +3122,14 @@
       if (row) { setFrame(parseInt(row.getAttribute('data-idx'), 10)); }
     });
 
-    $('chkList').addEventListener('change', function () {
-      App.showList = !!this.checked;
-      render();
-      fitBoard();
-    });
-
     document.addEventListener('keydown', onKey);
     window.addEventListener('resize', fitBoard);
+    /* 上拉框开着时跟着按钮走（窗口缩放 / 控制条横向滚动，用户 m03498） */
+    window.addEventListener('resize', placeViewMenuIfOpen);
+    $('controls').addEventListener('scroll', placeViewMenuIfOpen);
 
     syncOthers();
+    syncViewBtn();
     setView('home');
   }
 
@@ -1795,12 +3142,24 @@
   /* 调试入口 */
   window.App = App;
   window.App.loadText = loadText;
+  window.App.isNagaFileName = isNagaFileName;
+  window.App.loadPaipuPicker = loadPaipuPicker;
   window.App.api = api;
   window.App.refreshDbs = refreshDbs;
   window.App.frameKeyText = frameKeyText;
+  window.App.paipuUrl = paipuUrl;
+  window.App.copyUrl = copyUrl;
   window.App.openItem = openItem;
   window.App.setRound = setRound;
   window.App.setFrame = setFrame;
+  window.App.atGameEnd = atGameEnd;
+  window.App.nextFallback = nextFallback;
+  window.App.showGameEnd = showGameEnd;
+  window.App.seatOfFrame = seatOfFrame;
+  window.App.decisionSeats = decisionSeats;
+  window.App.stepSelfKey = stepSelfKey;
+  window.App.finalBoxRows = finalBoxRows;
+  window.App.renderFinalBox = renderFinalBox;
   window.App.features = FEATURES;
   window.App.searchState = Sc;
   window.App.analyzeState = An;
@@ -1810,7 +3169,43 @@
   window.App.fillExtendSelect = fillExtendSelect;
   window.App.featPanelState = FeatPanel;
   window.App.frameSeatOf = frameSeatOf;
+  window.App.redMarkOf = redMarkOf;
+  window.App.nagaFrameOf = nagaFrameOf;
+  window.App.setAiModel = setAiModel;
+  window.App.resetAiModel = resetAiModel;
+  window.App.aiModelList = aiModelList;
+  window.App.aiChoiceOf = aiChoiceOf;
+  window.App.aiNormalize = aiNormalize;
+  window.App.aiFrame = aiFrame;
+  window.App.aiFrameKeys = aiFrameKeys;
+  window.App.aiFrameHasData = aiFrameHasData;
+  window.App.syncAiModel = syncAiModel;
+  window.App.setAiPref = setAiPref;
+  window.App.aiFoldFrame = aiFoldFrame;
+  window.App.syncAiModelBtn = syncAiModelBtn;
+  window.App.toggleAiModelMenu = toggleAiModelMenu;
+  window.App.setWait = setWait;
+  window.App.waitPayload = waitPayload;
+  window.App.setAiMode = setAiMode;
+  window.App.setAiPick = setAiPick;
+  window.App.clearAiPlan = clearAiPlan;
+  window.App.aiPayload = aiPayload;
+  window.App.renderAiPlan = renderAiPlan;
+  window.App.vocalTextOf = vocalTextOf;
+  window.App.vocalForFrame = vocalForFrame;
+  window.App.setViewSeat = setViewSeat;
+  window.App.viewMenuRows = viewMenuRows;
+  window.App.toggleViewMenu = toggleViewMenu;
+  window.App.syncViewBtn = syncViewBtn;
+  window.App.placeViewMenu = placeViewMenu;
+  window.App.isKeyFrame = isKeyFrame;
+  window.App.nagaFrameChoices = nagaFrameChoices;
+  window.App.nagaKindOfName = nagaKindOfName;
+  window.App.nagaChiPair = nagaChiPair;
+  window.App.nagaOptions = nagaOptions;
+  window.App.renderNagaPanel = renderNagaPanel;
   window.App.syncFeatPanel = syncFeatPanel;
+  window.App.renderFeatMode = renderFeatMode;
   window.App.markUsedFeatures = markUsedFeatures;
   window.App.anProgressStart = anProgressStart;
   window.App.anProgressTick = anProgressTick;
@@ -1823,9 +3218,14 @@
   window.App.dlStart = dlStart;
   window.App.dlPoll = dlPoll;
   window.App.baseName = baseName;
-  window.App.fillSamples = fillSamples;
-  window.App.loadSamples = loadSamples;
-  window.App.loadSample = loadSample;
+  window.App.loadHealth = loadHealth;
+  window.App.syncOpenMode = syncOpenMode;
+  window.App.loadCodeIndex = loadCodeIndex;
+  window.App.renderCodeResults = renderCodeResults;
+  window.App.openPaipuPath = openPaipuPath;
+  window.App.openReplayView = openReplayView;
+  window.App.resetReplay = resetReplay;
+  window.App.showDropZone = showDropZone;
   window.App.dataManagerState = Dm;
   window.App.dmInit = dmInit;
   window.App.dmLoad = dmLoad;
