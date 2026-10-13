@@ -276,11 +276,9 @@
       var dp = nf.dahai_pred;
       var p = (dp && dp.length) ? (dp[kind] || 0) : 0;
       if (!(p > 0)) { return; }
-      var maxK = -1, maxP = 0;
-      for (var k = 0; k < dp.length; k++) {
-        if ((dp[k] || 0) > maxP) { maxP = dp[k]; maxK = k; }
-      }
-      var up = el('span', 'tbar up' + (kind === maxK ? ' max' : ''));
+      /* 概率条统一配色（用户 m10014）：默听条一律同一紫色、立直条一律同一红色，
+         不再给「概率最高的那张牌」单独加亮紫高亮（原来的 .max 已删除）。 */
+      var up = el('span', 'tbar up');
       up.style.height = (p / 100).toFixed(2) + '%';
       up.title = '打 ' + Tiles.tileLabel(id) + ' 预测 ' + nagaPctText(p);
       node.appendChild(up);

@@ -487,7 +487,8 @@ check(countCls(byId.board, 'up') === 3 && countCls(byId.board, 'down') === 3,
   + ' / down=' + countCls(byId.board, 'down') + '）');
 check(countCls(byId.board, 'tbar') === 6 && byId.board.querySelector('.p-dangers') === null,
   '两条都画在牌上（.tbar 共 ' + countCls(byId.board, 'tbar') + ' 条），第 43 轮的竖条形态已回滚（用户 m03799 ①）');
-check(countCls(byId.board, 'max') === 1, '概率最高的那张牌的上方柱带高亮框（.max）');
+check(countCls(byId.board, 'max') === 0,
+  '概率条统一配色：不再有 argmax 高亮（.max 已取消，用户 m10014）');
 check(byId.nagaOptions.childNodes.length === 3,
   '打牌选项只显示 >10% + 立直特例：' + byId.nagaOptions.childNodes.length + ' 项（5% 的打 3m 已过滤，5% 的立直保留）');
 check(byId.nagaOptions.childNodes[0].textContent.indexOf('立直') === 0
@@ -1881,6 +1882,14 @@ check(/color:\s*var\(--danger\)/.test(cssRule(cssText, '.naga-opt.reach .naga-op
   '立直行用另一种颜色显示（选择器完整，与打牌 / 鸣牌选项区分）');
 check(/bottom:\s*100%/.test(tbarUpCss) && /width:\s*35%/.test(tbarUpCss) && /left:\s*32\.5%/.test(tbarUpCss),
   '打牌预测柱画在牌上方、宽 35%、left 32.5% ⇒ 水平居中（用户 m03710 ③）');
+check(/background:\s*rgb\(124,\s*59,\s*230\)/.test(tbarUpCss),
+  '默听条统一紫色 rgb(124, 59, 230)（= 原 argmax 色，用户 m10014）');
+check(!/\.tbar\.up\.max/.test(cssText)
+  && /\.tbar\.up\.dama\s*\{[^}]*background:\s*rgb\(124,\s*59,\s*230\)/.test(cssText),
+  'argmax 高亮规则已删除；联合分布条的左半（默听）也用同一紫色（用户 m10014）');
+check(/\.tbar\.up\.riichi\s*\{[^}]*background:\s*#e0503a/.test(cssText)
+  && /\.tbar\.up\.riichi\.solo\s*\{[^}]*left:\s*32\.5%/.test(cssText),
+  '立直条统一红色 #e0503a（半宽 .riichi / 整宽 .solo 两种形态，用户 m10014）');
 check(!/\.tbar-layer/.test(cssText) && !/\.p-dangers/.test(cssText) && !/\.dgr/.test(cssText),
   '第 43 轮的定位层与竖条形态已整体删除（用户 m03799 ①②）');
 var tbarDownCss = cssRule(cssText, '.tbar.down');
@@ -2360,7 +2369,7 @@ global.fetch = function (url, opt) {
                                     app_version: '0.2.0', compatible: true }] });
   }
   if (path.indexOf('/api/features') === 0) {
-    return json({ ok: true, name: '天凤牌谱分析', version: '1.4.1', schema_version: 11,
+    return json({ ok: true, name: '天凤牌谱分析', version: '1.4.2', schema_version: 11,
                   features: MJSFEAT.FEATURES,
                   first_features: MJSFEAT.FIRST_FEATURES, second_features: MJSFEAT.SECOND_FEATURES,
                   third_features: MJSFEAT.THIRD_FEATURES, wait_modes: ['出牌', '鸣牌响应'],
@@ -2774,8 +2783,8 @@ check(byId.featPanelList.querySelectorAll('.feat-row').length === 34, '手动播
 /* (4b) m03580：版本号 / 扩充现有数据库 / --full 说明 */
 check(byId.anTool === undefined, '打点工具选择已删除（m03580）');
 App.loadMeta();   /* init() 时假服务还没装好，这里显式重拉一次 /api/features */
-check(App.version === '1.4.1', 'App.version = ' + App.version);
-check(App.version === '1.4.1' && byId.appVer.textContent === 'v1.4.1',
+check(App.version === '1.4.2', 'App.version = ' + App.version);
+check(App.version === '1.4.2' && byId.appVer.textContent === 'v1.4.2',
       '标题栏显示版本号：' + byId.appVer.textContent);
 check(byId.anFullNote.textContent.indexOf('勾选') >= 0 && byId.anFullNote.textContent.length > 20,
       '--full 说明来自 /api/features：' + byId.anFullNote.textContent.slice(0, 24) + '…');

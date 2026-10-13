@@ -492,15 +492,16 @@ legend { color: var(--fg-dim); padding: 0 8px; }
  * 注意：绝对定位子元素的包含块 = 祖先的 padding edge，而 .tile 没有边框 ⇒ padding box 就是整张牌的
  * 外框，百分比本来就按牌宽 / 牌高算（用户 m03799 ②：不要给牌加定位层，那会把柱子推偏一个白边）。
  * 还要注意：第 33 轮改这一行时把注释的结尾（星号 + 斜线）吃掉了，浏览器会把后面直到下一个结尾之间的
- * 规则全部当作注释 —— 概率条 / .tile.big / .tile.tsumogiri 因此全部失效（第 35 轮修，用户 m02007 ①②）。 */
-.tbar.up { bottom: 100%; left: 32.5%; width: 35%; background: #9C27B0; }
-.tbar.up.max { background: rgb(124, 59, 230); box-shadow: 0 0 0 1px rgb(201, 146, 211); }
+ * 规则全部当作注释 —— 概率条 / .tile.big / .tile.tsumogiri 因此全部失效（第 35 轮修，用户 m02007 ①②）。
+ * 统一配色（用户 m10014）：默听条一律 rgb(124, 59, 230)（= 原来的 argmax 亮紫），立直条一律
+ * #e0503a；「概率最高的那张牌」的亮紫高亮（原来的 .max 选择器）已取消。 */
+.tbar.up { bottom: 100%; left: 32.5%; width: 35%; background: rgb(124, 59, 230); }
 
 /* 新版 NAGA（NAGA-避四 / NAGA-争一）的联合分布条（用户 m09803）：默听支 与 立直支 各占半宽 ——
  * 左半紫 = 不立直打此牌的概率（默听支）、右半红 = 立直打此牌的概率（立直支）；两根高度各自忠实
- * 表示自己的概率值。只出现在立直支的牌是一根整宽红条（.solo）。紫色始终固定 #9C27B0，不随
- * 概率高低变色（用户 m09803 末段）；红色只在联合分布同时给出两支时出现。 */
-.tbar.up.dama { left: 32.5%; width: 17.5%; background: #9C27B0; }
+ * 表示自己的概率值。只出现在立直支的牌是一根整宽红条（.solo）。默听条一律同一紫色
+ * rgb(124, 59, 230)、立直条一律同一红色 #e0503a（用户 m09803 末段 / m10014）。 */
+.tbar.up.dama { left: 32.5%; width: 17.5%; background: rgb(124, 59, 230); }
 .tbar.up.riichi { left: 50%; width: 17.5%; background: #e0503a; }
 .tbar.up.riichi.solo { left: 32.5%; width: 35%; }
 
