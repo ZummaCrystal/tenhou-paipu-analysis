@@ -28,7 +28,7 @@ import re
 import sqlite3
 
 from . import ai_models, feats, mjlog
-from . import __version__ as APP_VERSION   # 软件本体版本，写进 meta.app_version
+from . import __version__ as APP_VERSION, version_compatible   # 软件本体版本 + 兼容判据（用户 m09354 ⑤）
 
 SCHEMA_VERSION = 10  # 10：第一类「等待鸣牌」改列**第三类特征**；打点行改为 kind='wait' 的「鸣牌响应」帧
                      #    （判据 = 可能被他家鸣牌〔吃 / 碰 / 杠，含食替禁止〕，每个可能鸣牌的家各一行；
@@ -146,7 +146,7 @@ def check_version(conn, db_path=""):
 
     ① 结构版本（meta.schema_version）必须等于 SCHEMA_VERSION，否则提示重建；
     ② 软件版本（meta.app_version，第 22 轮起）：记录生成该库的软件本体版本。
-       有记录就必须与当前 __version__ 一致，否则拒绝使用（格式可能已变）；
+       **大版本 + 中版本相同**即可使用（用户 m09354 ⑤，补丁版本不同不影响）；
        没有记录（第 22 轮之前生成的库）按兼容处理，返回 False。
 
     返回 True = 有版本记录且匹配；False = 全新库 / 没有版本记录的库。
@@ -167,9 +167,9 @@ def check_version(conn, db_path=""):
     if row is None or not str(row["v"]).strip():
         return False          # 第 22 轮之前生成的库：没有软件版本记录
     recorded = str(row["v"]).strip()
-    if recorded != APP_VERSION:
+    if not version_compatible(recorded):
         raise ValueError(
-            "数据库版本不匹配（库由软件版本 %s 生成，当前软件版本 %s），"
+            "数据库版本不匹配（库由软件版本 %s 生成，当前软件版本 %s；只有大版本 + 中版本相同的库才能使用），"
             "请删除后重新分析：python analyze.py <牌谱路径> --delete-db <库名>（%s）"
             % (recorded, APP_VERSION, os.path.abspath(db_path)))
     return True

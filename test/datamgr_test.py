@@ -199,6 +199,11 @@ else:
             if f.lower().endswith(_all_suffixes):
                 allpaipu.append(os.path.join(dirpath, f))
     sqlites = [f for f in os.listdir(mig_db) if f.lower().endswith(".sqlite")]
+    real_sqlites = list(sqlites)
+    if not sqlites:
+        # 迁移目录里没有数据库（用户数据里可能没有，或环境不允许写盘）⇒ 越界用例改用占位名（不写盘）
+        sqlites = ["__probe__.sqlite"]
+        print("   （迁移目录没有 .sqlite：越界用例改用占位名 %s，不写盘）" % sqlites[0])
     print("   迁移目录: %s 天凤牌谱 %d 个 / 全类型牌谱 %d 个 / 数据库 %d 个"
           % (mig_data, len(tenhou), len(allpaipu), len(sqlites)))
     os.environ["MJSCORE_DATA_ROOT"] = local
@@ -269,8 +274,11 @@ else:
         finally:
             server.ROOT = _saved_root
         st, ldb = req("/api/fs-list?root=db&rel=")
-        ok(st == 200 and sqlites and sqlites[0] in [f["name"] for f in ldb.get("files", [])],
-           "fs-list(db) 能看到数据库文件")
+        ok(st == 200, "fs-list(db) 返回 200")
+        if real_sqlites:
+            ok(real_sqlites[0] in [f["name"] for f in ldb.get("files", [])], "fs-list(db) 能看到数据库文件")
+        else:
+            print("   （迁移目录没有 .sqlite：跳过「fs-list(db) 能看到数据库文件」）")
 
         # 必须被拒的越界请求（拒绝时不得改动任何文件）
         before = sorted(os.listdir(mig_db))
@@ -292,7 +300,10 @@ else:
         ok(st == 400, "mkdir rel=.. 应 400（实际 %s）" % st)
         after = sorted(os.listdir(mig_db))
         ok(before == after, "被拒的请求不应改动数据库目录")
-        ok(os.path.isfile(os.path.join(mig_db, sqlites[0])), "数据库文件仍在原处")
+        if real_sqlites:
+            ok(os.path.isfile(os.path.join(mig_db, sqlites[0])), "数据库文件仍在原处")
+        else:
+            print("   （迁移目录没有 .sqlite：跳过「数据库文件仍在原处」）")
         print("   400 示例：%s | %s" % (e1.get("error", e1), e2.get("error", e2)))
     finally:
         httpd.shutdown()

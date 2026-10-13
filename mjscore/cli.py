@@ -543,7 +543,7 @@ def list_dbs():
         ver = meta.get("app_version") or ""
         out.append({"name": fn, "path": p, "size": os.path.getsize(p), "meta": meta,
                     "app_version": ver,
-                    "compatible": (not ver) or ver == store.APP_VERSION})
+                    "compatible": store.version_compatible(ver)})
     return out
 
 

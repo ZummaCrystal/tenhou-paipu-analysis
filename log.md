@@ -3048,7 +3048,7 @@ r = t % 3; t = (t // 3) * 4; h = [t, t, t]
 
 ---
 
-*最后更新：第 72 轮（打包发布流程：**跨盘符 relpath 真 bug**（用户 m09228 实测 —— 打包后用户数据在 C:、程序在 D:，`os.path.relpath` 抛 `ValueError: path is on mount 'C:', start on mount 'D:'` ⇒ `/api/paipu-browse` 400，这是「牌谱目录只能拉开很窄的条」的另一半原因）：`mjscore/server.py` 新增 `_paipu_rel()`（只在牌谱根内做 relpath，返回 `data/paipu/...`）、`_rel_or_abs()` 兜住跨盘符；`test/datamgr_test.py` 第 3 节的陈旧期望（只数 `.xml`、硬编码目录名）改成全部后缀 + `scan(kind=all)` + 跨盘符断言（78 / 0）；后端已重新打包并冒烟通过（`/api/paipu-browse?dir=data/paipu` → 200），已由用户 m09307 在普通终端出包：`tenhou-paipu-analysis-1.3.0-setup.exe` = 143,284,238 B，SHA256 `7EEE64A4F11C89577840DF26976F216333DD7EC72C989BBC0699EFF6FF1CEE89`）。
+*最后更新：第 73 轮（**界面整体放大 25%** + 检索分段载入 + 静态帧禁用「局」选择 + **v1.3.1**：大版本 + 中版本相同即可读库（用户 m09339 ①②③ / m09354 ④⑤））。上一轮：第 72 轮（打包发布流程：**跨盘符 relpath 真 bug**（用户 m09228 实测 —— 打包后用户数据在 C:、程序在 D:，`os.path.relpath` 抛 `ValueError: path is on mount 'C:', start on mount 'D:'` ⇒ `/api/paipu-browse` 400，这是「牌谱目录只能拉开很窄的条」的另一半原因）：`mjscore/server.py` 新增 `_paipu_rel()`（只在牌谱根内做 relpath，返回 `data/paipu/...`）、`_rel_or_abs()` 兜住跨盘符；`test/datamgr_test.py` 第 3 节的陈旧期望（只数 `.xml`、硬编码目录名）改成全部后缀 + `scan(kind=all)` + 跨盘符断言（78 / 0）；后端已重新打包并冒烟通过（`/api/paipu-browse?dir=data/paipu` → 200），已由用户 m09307 在普通终端出包：`tenhou-paipu-analysis-1.3.0-setup.exe` = 143,284,238 B，SHA256 `7EEE64A4F11C89577840DF26976F216333DD7EC72C989BBC0699EFF6FF1CEE89`）。
 
 上一轮：第 70 轮（**关键帧判定先于概率过滤**（用户 m09110）：报告给这一帧的决策者列出的可选策略不止「过」才算「面板有内容」（本判定只关 AI 面板，与「决策帧」判定无关）`0.0%` 的吃 / 碰 / 杠选项也算「列出来了」），AI 面板一定显示分析结果；表格本身仍按 10% 门槛筛选，所以低概率的鸣牌选项不会单独列出。用户 m09045 那一帧（上家打 3s、我方有 4s5s 吃 / 2s4s 吃 / 3s3s 碰，ニシキ 给的三个鸣牌选项都是 0.0%）现在显示「PASS 100.0%」+ 5 项分析数据，而不是像改动前那样整块留空；残差不足 0.5% 时不再补「其它 0.0%」。报告侧本就带每个选项的万分比概率 （`huro[座位][模型] = {0:PASS, 1/2/3:吃, 4:碰, 5:大明杠}`），吃三种牌对的下标含义用报告里实际发生的 chi 事件的 `kind` 字段反查证实与本仓 `nagaChiPair()` 一致；Mortal 报告同一套编码（`mjscore/mortal.py` 的 `HURO_PASS/HURO_PON/HURO_KAN`）。41 份 NAGA 报告的 `huro` 键模式统计：**没有任何一格只列 PASS**（最少也带一个吃 / 碰 / 杠键）⇒ 「只有 PASS ⇒ 面板留空」实际主要作用于 Mortal 的 PASS-only 帧与报告没给选项的展示帧。`node test\apptest.js` 795 行 / 0 失败）。上一轮：第 69 轮（README 重写为面向使用者的发布说明 —— 只讲功能 / 界面操作 / 理解方式与麻将术语，不写需求来源、实现方法、踩坑与版本历史；旧版 readme 原样移入 `docs/readme-dev.md` 并加「开发过程记录」说明；顺手修了首页两处旧文案：特征数「18 个第一类」→「17 个第一类 + 1 个第三类」、检索卡片补「鸣牌响应帧」）。上一轮：第 68 轮（用户 m08918：**打包版「牌谱分析」页的「牌谱目录 / 牌谱文件」下拉为空** —— 服务端把 `data/paipu` 这类相对写法一律拼到资源根（打包后 `_MEIPASS` / 安装目录）而不是用户数据根（`%LOCALAPPDATA%\tenhou-paipu-analysis`，`mjscore\paths.py`）⇒ 目录不存在；`mjscore\server.py` 新增 `_user_path()`（绝对路径原样、相对路径先试用户数据根再退资源根），`_abs()` / `/api/paipu-browse` / `/api/scan` / `/api/read` / 数据库与分析路径都走它，`test\datamgr_test.py` 新增第 4 节回归（datamgr 54 / 0、naga 224 / 0）；已发布的 v1.3.0 安装包仍带此 bug，需重新打包后端）。上一轮：第 67 轮（用户 m08700：**打包发布流程 + 应用图标 6m 图案收缩**。① 修掉打包后的后端**一启动就崩**的真 bug：PyInstaller 从 conda base（`D:\coding\anaconda3\Library\bin`）抓了 `libssl-3-x64.dll` / `libcrypto-3-x64.dll`（789,320 / 5,297,992 B），与本环境 `py314_null\Library\bin` 的（1,326,920 / 7,349,064 B）不是一套，和 `DLLs\_ssl.pyd` 不匹配 ⇒ `ImportError: DLL load failed while importing _ssl: 找不到指定的程序`；`packaging\pyi_build.py` 新增 `ssl_pair()` / `fix_ssl_pair()`：把本环境的那一对 `--add-binary` 进包，并在打包后按 SHA256 校验、不一致就覆盖（打印 `OpenSSL : …`）；`build.ps1 -Smoke` 实测后端 0.5 s 就绪、`/api/health` 返回 version 1.3.0。② 图标：`tools\svg2ico.py` 新增 `--content-scale`（牌面白底不缩、只把图案围绕牌面中心收缩），`build.ps1` 用 0.84 ⇒ `build\icon.ico`（39,748 B，16/32/48/64/128/256）四周白边更宽（用户 m08700，与界面牌图的 0.09 牌宽 padding 一致）。无 schema / 特征 / 版本变化（仍 v1.3.0 / schema 10）；`apptest.js` 759 行 / 0 失败、`naga_test.py` 224 / 0、`mortal_test.py` 106 / 0；安装包（electron-builder）需普通终端跑，指纹待补）。
 
@@ -3380,3 +3380,48 @@ r = t % 3; t = (t // 3) * 4; h = [t, t, t]
 - ~~用户在普通终端跑 `build.ps1 -SkipPyi -SkipIcon -SkipTests` 出新的 NSIS 安装包~~ **已完成（用户 m09307）**：`dist\electron\tenhou-paipu-analysis-1.3.0-setup.exe` = 143,284,238 B，SHA256 `7EEE64A4F11C89577840DF26976F216333DD7EC72C989BBC0699EFF6FF1CEE89`（已记入 `readme.md` 第 2.1 节）。
 - git：`git add -A` + `git commit -F build\_scratch\commit_msg.txt`，随后由用户 `git push`。
 - `test/mjscore_test.py` 全量（约 41 分钟）仍需用户本机跑一次。
+---
+
+## 67. 第 73 轮：界面整体放大 25% / 检索分段载入 / 静态帧禁用「局」选择 / v1.3.1 与「大版本 + 中版本」兼容（用户 m09339 ①②③ / m09354 ④⑤）
+
+### 67.1 交付物
+
+| 文件 | 改动 |
+| --- | --- |
+| `web/style.css` | 除 1px / 2px / 3px 边框与 `@media` 断点外，全部固定 px 按 1.25 倍放大（用户 m09339 ①：此前在 125% 浏览器缩放下查看，实际 100% 下组件偏小） |
+| `web/js/app.js` | `BASE_U / MIN_U / MAX_U` 30/9/34 → 37.5/11.25/42.5；检索改分段（`Sc.pageSize = 1000`、`Sc.base` / `Sc.total` / `Sc.fetch`、`loadSegment()`、`openItemGlobal()`、`syncItemNav()` 用全局序号）；`lockControls()` 追加禁用 `#roundSelect`；三处「版本过低」标签改「版本不兼容」 |
+| `web/index.html` | §10 兼容说明整行改成「大版本 + 中版本相同即可用」 |
+| `mjscore/__init__.py` | `__version__ = "1.3.1"`；新增 `version_tuple()` / `major_minor()` / `version_compatible()` |
+| `mjscore/store.py` | `check_version()` 改用 `version_compatible(recorded)`（结构版本仍必须完全一致），文案改「数据库版本不兼容（…只有大版本 + 中版本相同的库才能使用）」 |
+| `mjscore/server.py` | docstring 版本号；`list_dbs` 的 `compatible` 改用 `store.version_compatible(ver)` |
+| `package.json` | `version` → 1.3.1 |
+| `test/apptest.js` | px 断言 ×1.25；v1.3.1；分段检索断言（`limit = 1000`、跨段自动载入）；静态帧 `#roundSelect` 禁用断言 |
+| `test/mjscore_test.py` / `test/naga_test.py` | `APP_VERSION` 1.3.1；新增「大版本 + 中版本相同即兼容」断言 |
+
+- 安装包（用户在普通终端跑 `build.ps1 -SkipIcon -SkipTests`）：`dist\electron\tenhou-paipu-analysis-1.3.1-setup.exe` = 143,286,767 B，SHA256 `F95F577AF7CC761A5438F7DA9B040A05BB7B0B297BA90559134D5AA2BE0016C1`（v1.3.0 的包为 143,284,238 B / `7EEE64A4…`）。
+
+### 67.2 技术要点
+
+1. **界面放大**：牌桌尺寸本来就由 `fitBoard()` 按可用空间自适应（`--tile-w` 单位），所以「放大」= 把固定 px 组件与牌桌单位上限一起乘 1.25；边框宽度（1/2/3px）与 `@media` 断点不动。
+2. **检索分段**：`Sc.base` 是本段第一条的全局序号、`Sc.total` 是命中总数；`loadSegment(base)` 丢掉上一段 rows（用户 m09339 ② 允许「点到第 1001 条时释放第一段」），`openItemGlobal(i)` 在跨段时先载入该段再打开。服务端 `/api/query` / `/api/browse` 一直支持 `limit` / `offset`，无需改动。
+3. **静态帧禁用局选择**：`lockControls(locked)` 原来只禁用 `#controls` 里的 button，现在把 `#roundSelect` 也一起禁用（`rs.disabled = !!locked`）。
+4. **版本兼容**：`version_compatible(recorded, current=None)` —— 取 `major_minor` 比较（`1.3.1` → `(1, 3)`）；`recorded` 为空（第 22 轮以前建的库）按兼容处理。结构版本（`SCHEMA_VERSION`）仍必须完全一致。
+5. **版本号约定**（用户 m09354 ④）：此后不改数据库结构的更新默认只提小版本号，写进 readme §13。
+
+### 67.3 测试
+
+- 六个快档全绿：`test\apptest.js`（776 行 / **0 失败**）、`test\selftest.js` exit 0、`test\uitest.js` exit 0、`test\naga_test.py` 224 / 0、`test\mortal_test.py` 106 / 0、`test\datamgr_test.py` 77 / 0。
+- `test/mjscore_test.py` 全量（约 41 分钟）按用户 m07294 未跑；其期望值已按新口径改（`APP_VERSION` = 1.3.1，新增兼容断言）。
+
+### 67.4 踩坑
+
+1. `mjscore/__init__.py` **文件末尾没有换行** ⇒ 锚点不能带 `\n`（补丁脚本首跑就因为这个锚点全量未写盘）。
+2. px 断言散落在 apptest 多处（20 / 50 / 24 / 46 / 106 / 200 / 900 / 132 / 96 / 240 / 14 / 340 …），界面缩放必须同步改，否则「测试通过但界面没变」。
+3. `datamgr_test.py` 第 3 节用的迁移目录里**可能没有 `.sqlite`**（本次运行就是）⇒ 用占位符，且绝不往该目录写。
+4. 补丁脚本一律 all-or-nothing：任一处锚点命中数不符就整份不写盘（避免半成品）。
+
+### 67.5 待办
+
+1. ~~重新打包 v1.3.1（后端 + NSIS 安装包）~~ **已完成（用户 m09444）**：`tenhou-paipu-analysis-1.3.1-setup.exe` = 143,286,767 B，SHA256 `F95F577AF7CC761A5438F7DA9B040A05BB7B0B297BA90559134D5AA2BE0016C1`；readme §2.1 指纹已同步。
+2. `test/mjscore_test.py` 全量跑一次（用户本机）。
+3. 请用户目视确认 1.25 倍界面（可截图）。

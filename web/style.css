@@ -23,8 +23,8 @@
   --accent-2:  #2f8f63;
   --warn:      #e0b050;
   --danger:    #e06a5a;
-  --tile-w:    22px;
-  --tile-h:    29px;
+  --tile-w:    28px;
+  --tile-h:    36px;
 }
 
 * { box-sizing: border-box; }
@@ -38,7 +38,7 @@ html, body {
 body {
   background: var(--bg);
   color: var(--fg);
-  font: 13px/1.5 "Segoe UI", "Microsoft YaHei", "Meiryo", system-ui, sans-serif;
+  font: 16px/1.5 "Segoe UI", "Microsoft YaHei", "Meiryo", system-ui, sans-serif;
   display: flex;
   flex-direction: column;
 }
@@ -58,34 +58,34 @@ code {
 .topbar {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 8px 14px;
+  gap: 18px;
+  padding: 10px 18px;
   background: var(--bg-panel);
   border-bottom: 1px solid var(--line);
   flex: 0 0 auto;
 }
 
-.brand { font-size: 16px; font-weight: 600; letter-spacing: .5px; }
+.brand { font-size: 20px; font-weight: 600; letter-spacing: .6px; }
 .app-author {
   color: #8a9aa8;
-  font-size: 12px;
-  margin-right: 12px;
+  font-size: 15px;
+  margin-right: 15px;
   white-space: nowrap;
 }
 
-.app-ver { color: var(--fg-dim); font-size: 12px; font-weight: 400; margin-left: 6px; }
+.app-ver { color: var(--fg-dim); font-size: 15px; font-weight: 400; margin-left: 8px; }
 .topbar-spacer { flex: 1 1 auto; }
 
-.tabs { display: flex; gap: 4px; }
+.tabs { display: flex; gap: 5px; }
 
 .tab {
   background: transparent;
   border: 1px solid transparent;
   color: var(--fg-dim);
-  padding: 5px 12px;
-  border-radius: 6px;
+  padding: 6px 15px;
+  border-radius: 8px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 16px;
 }
 .tab:hover { color: var(--fg); background: rgba(255, 255, 255, .06); }
 .tab.active {
@@ -96,7 +96,7 @@ code {
 
 /* 顶栏文件名单行省略号：长文件名折行会改变顶栏高度 ⇒ 播放视图可用高度变化 ⇒ 牌桌缩放跳（用户 m01386） */
 .file-info {
-  color: var(--fg-dim); font-size: 12px;
+  color: var(--fg-dim); font-size: 15px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 32vw;
 }
 
@@ -106,8 +106,8 @@ button {
   color: var(--fg);
   background: #294036;
   border: 1px solid var(--line);
-  padding: 5px 12px;
-  border-radius: 6px;
+  padding: 6px 15px;
+  border-radius: 8px;
   cursor: pointer;
 }
 button:hover:not(:disabled) { background: #33513f; }
@@ -123,17 +123,17 @@ select, input[type="text"], input[type="number"] {
   color: var(--fg);
   background: #24382e;
   border: 1px solid var(--line);
-  border-radius: 5px;
-  padding: 4px 6px;
+  border-radius: 6px;
+  padding: 5px 8px;
 }
 label { color: var(--fg-dim); }
-label.chk { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+label.chk { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
 
 /* ----------------------------------------------------------- 视图 */
 main { flex: 1 1 auto; overflow: auto; }
-.view { padding: 18px; height: 100%; }
+.view { padding: 23px; height: 100%; }
 /* position: relative 是给「回放警告」绝对定位浮层用的（.warn-bar），用户 m01386 */
-#view-replay { position: relative; display: flex; flex-direction: column; height: 100%; padding: 10px 14px; }
+#view-replay { position: relative; display: flex; flex-direction: column; height: 100%; padding: 13px 18px; }
 
 /* ----------------------------------------------------------- 首页 */
 .cards {
@@ -141,12 +141,12 @@ main { flex: 1 1 auto; overflow: auto; }
      前四个 2 x 2，第五个「本地数据管理」单独占一整行（.card.span 跨两列）。 */
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  /* 统一默认高度：每格至少 300px（比「牌谱分析」那张略高），
-     文字超出时行高自动长高（minmax(300px, auto)），不会溢出或裁切 */
-  grid-auto-rows: minmax(300px, auto);
-  gap: 16px;
-  max-width: 1000px;
-  margin: 24px auto 0;
+  /* 统一默认高度：每格至少 375px（比「牌谱分析」那张略高），
+     文字超出时行高自动长高（minmax(375px, auto)），不会溢出或裁切 */
+  grid-auto-rows: minmax(375px, auto);
+  gap: 20px;
+  max-width: 1250px;
+  margin: 30px auto 0;
 }
 
 /* 卡片内部纵向排列，入口按钮贴底对齐（四张卡片看起来整齐） */
@@ -164,45 +164,45 @@ main { flex: 1 1 auto; overflow: auto; }
 .card {
   background: var(--bg-panel);
   border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 18px;
+  border-radius: 13px;
+  padding: 23px;
 }
-.card.wide { max-width: 760px; margin: 24px auto 0; }
-.card h2 { margin: 0 0 10px; font-size: 17px; }
-.card p { margin: 8px 0; }
+.card.wide { max-width: 950px; margin: 30px auto 0; }
+.card h2 { margin: 0 0 13px; font-size: 21px; }
+.card p { margin: 10px 0; }
 
-.row { display: flex; align-items: center; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
+.row { display: flex; align-items: center; gap: 10px; margin: 13px 0; flex-wrap: wrap; }
 
 .open-bar {
-  margin: 0 0 12px;
-  padding: 10px 12px 6px;
+  margin: 0 0 15px;
+  padding: 13px 15px 8px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--bg-panel);
 }
-.open-bar .row { margin: 6px 0; }
+.open-bar .row { margin: 8px 0; }
 
 /* 按特征码搜索（用户 m03175 ④⑤）：输入框要放得下一整个 NAGA 特征码
  * （128 位 hex + v2_2 后缀 = 133 字符），放不下时输入框自身横向滚动。 */
 .code-input {
-  flex: 1 1 420px;
-  min-width: 260px;
-  max-width: 900px;
+  flex: 1 1 525px;
+  min-width: 325px;
+  max-width: 1125px;
   font-family: Consolas, "Courier New", monospace;
-  font-size: 12px;
+  font-size: 15px;
 }
 /* 搜索结果：高度固定、只显示牌谱名（单行不换行，超长靠容器横向滚动），结果多时纵向滚动 */
 .code-results {
-  height: 132px;
+  height: 165px;
   overflow: auto;
-  margin: 6px 0;
+  margin: 8px 0;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--bg);
 }
 .code-row {
-  padding: 3px 10px;
-  font-size: 12px;
+  padding: 3px 13px;
+  font-size: 15px;
   font-family: Consolas, "Courier New", monospace;
   white-space: nowrap;
   cursor: pointer;
@@ -214,45 +214,45 @@ main { flex: 1 1 auto; overflow: auto; }
   color: #14201b;
   border-radius: 2px;
 }
-.code-none { padding: 6px 10px; color: var(--fg-dim); font-size: 12px; }
+.code-none { padding: 8px 13px; color: var(--fg-dim); font-size: 15px; }
 
 .drop-zone {
-  margin: 12px 0;
-  padding: 22px;
+  margin: 15px 0;
+  padding: 28px;
   border: 2px dashed var(--line);
-  border-radius: 8px;
+  border-radius: 10px;
   text-align: center;
   color: var(--fg-dim);
 }
 .drop-zone.over { border-color: var(--accent); color: var(--accent); background: rgba(70, 201, 138, .08); }
 
-.msg { min-height: 18px; color: var(--fg-dim); font-size: 12px; }
-.hint { margin-top: 12px; color: var(--fg-dim); font-size: 12px; }
+.msg { min-height: 23px; color: var(--fg-dim); font-size: 15px; }
+.hint { margin-top: 15px; color: var(--fg-dim); font-size: 15px; }
 .hint summary { cursor: pointer; }
-.hint code { font-size: 11px; }
-.hint > p { margin: 6px 0 0 0; line-height: 1.55; }
-#anExtendRow select { min-width: 240px; }
-#anSourceDir { min-width: 260px; }   /* 牌谱目录下拉（用户 m01171 第 2 条） */
-#anSourceFile { min-width: 220px; }  /* 牌谱文件下拉 */
-#anExtendInfo { color: var(--fg-dim); font-size: 12px; }
+.hint code { font-size: 14px; }
+.hint > p { margin: 8px 0 0 0; line-height: 1.55; }
+#anExtendRow select { min-width: 300px; }
+#anSourceDir { min-width: 325px; }   /* 牌谱目录下拉（用户 m01171 第 2 条） */
+#anSourceFile { min-width: 275px; }  /* 牌谱文件下拉 */
+#anExtendInfo { color: var(--fg-dim); font-size: 15px; }
 
 fieldset {
   border: 1px solid var(--line);
-  border-radius: 8px;
-  margin: 14px 0;
-  padding: 6px 14px 12px;
+  border-radius: 10px;
+  margin: 18px 0;
+  padding: 8px 18px 15px;
 }
-legend { color: var(--fg-dim); padding: 0 6px; }
+legend { color: var(--fg-dim); padding: 0 8px; }
 
 /* ----------------------------------------------------- 播放工具栏 */
-/* 工具栏固定 46px 一行：按钮文字变化（自动播放/暂停、隐藏/显示他家手牌）不再折行把牌桌往下推（用户 m01386） */
+/* 工具栏固定 58px 一行：按钮文字变化（自动播放/暂停、隐藏/显示他家手牌）不再折行把牌桌往下推（用户 m01386） */
 .replay-toolbar {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 0;
-  flex: 0 0 46px;
-  height: 46px;
+  gap: 13px;
+  padding: 8px 0;
+  flex: 0 0 58px;
+  height: 58px;
   flex-wrap: nowrap;
   overflow: hidden;
 }
@@ -260,33 +260,33 @@ legend { color: var(--fg-dim); padding: 0 6px; }
 .replay-toolbar > .topbar-spacer { flex: 1 1 auto; min-width: 0; }
 .replay-toolbar > .file-name { flex: 0 1 auto; min-width: 0; }
 .file-name {
-  color: var(--fg-dim); font-size: 11px; line-height: 15px;
+  color: var(--fg-dim); font-size: 14px; line-height: 19px;
   /* 特征码完整显示、不再省略：允许换行 + 固定两行高度，完整文本另有 title（用户 m01518 ①） */
   white-space: normal; word-break: break-all;
-  max-height: 30px; overflow: hidden;
+  max-height: 38px; overflow: hidden;
   -webkit-user-select: text; user-select: text;
 }
-.frame-info { color: var(--fg-dim); font-size: 12px; font-variant-numeric: tabular-nums; }
+.frame-info { color: var(--fg-dim); font-size: 15px; font-variant-numeric: tabular-nums; }
 
 .warn-bar {
   background: rgba(224, 106, 90, .15);
   border: 1px solid var(--danger);
   color: var(--danger);
-  border-radius: 6px;
-  padding: 6px 10px;
-  font-size: 12px;
+  border-radius: 8px;
+  padding: 8px 13px;
+  font-size: 15px;
   /* 出现/消失不参与布局：绝对定位浮在牌桌下缘（用户 m01386） */
   position: absolute;
-  left: 14px;
-  right: 14px;
-  bottom: 94px;
+  left: 18px;
+  right: 18px;
+  bottom: 118px;
   z-index: 30;
   margin: 0;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, .5);
+  box-shadow: 0 2px 15px rgba(0, 0, 0, .5);
 }
 
 /* -------------------------------------------------------- 播放主体 */
-.replay-body { display: flex; gap: 10px; flex: 1 1 auto; min-height: 0; }
+.replay-body { display: flex; gap: 13px; flex: 1 1 auto; min-height: 0; }
 
 .board-wrap {
   flex: 1 1 auto;
@@ -313,12 +313,12 @@ legend { color: var(--fg-dim); padding: 0 6px; }
  * 没有载入牌谱时显示（载入后由 app.js 加 .hidden）。 */
 .board-box .drop-zone {
   position: absolute;
-  inset: 6px;
+  inset: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   margin: 0;
-  padding: 0 16px;
+  padding: 0 20px;
   pointer-events: none;
 }
 
@@ -406,7 +406,7 @@ legend { color: var(--fg-dim); padding: 0 6px; }
   font-size: calc(var(--tile-w) * .5);
   white-space: nowrap;
   padding: calc(var(--tile-w) * .05) calc(var(--tile-w) * .3);
-  border-radius: 4px;
+  border-radius: 5px;
   background: rgba(255, 255, 255, .05);
 }
 .p-head .wind { font-weight: 700; color: var(--accent); font-size: calc(var(--tile-w) * .72); line-height: 1.05; }
@@ -419,8 +419,8 @@ legend { color: var(--fg-dim); padding: 0 6px; }
 .p-head .p-name { color: var(--fg-dim); font-size: calc(var(--tile-w) * .48); }
 .p-head .badge {
   font-size: calc(var(--tile-w) * .46);
-  padding: 0 5px;
-  border-radius: 4px;
+  padding: 0 6px;
+  border-radius: 5px;
   background: var(--line);
   color: var(--fg);
 }
@@ -428,7 +428,7 @@ legend { color: var(--fg-dim); padding: 0 6px; }
 .badge.oya    { background: #9a7b28; color: #fff; }
 
 /* 手牌：最外侧一排；摸到的牌单独放在面板末端（旋转后即天凤的「自摸牌错开」效果） */
-.p-hand { display: flex; align-items: flex-end; gap: 6px; flex-wrap: nowrap; }
+.p-hand { display: flex; align-items: flex-end; gap: 8px; flex-wrap: nowrap; }
 /* 手牌容器：听牌率条（.p-tenpai）以它为定位参照，竖着贴在手牌左端外侧（用户 m03799 ①） */
 .p-hand .tiles { display: flex; flex-wrap: nowrap; position: relative; }
 /* 摸牌槽位永远存在（没摸到时由 ui.js 加 .empty，只占位不可见）：
@@ -463,7 +463,7 @@ legend { color: var(--fg-dim); padding: 0 6px; }
   align-items: flex-start;
   gap: 1px;
   min-height: calc(var(--tile-h) * 4 + 3px);
-  min-width: calc(var(--tile-w) * 6 + 5px);
+  min-width: calc(var(--tile-w) * 6 + 6px);
 }
 .river-row { display: flex; gap: 1px; }
 .river .tile { margin: 0; }
@@ -568,44 +568,44 @@ legend { color: var(--fg-dim); padding: 0 6px; }
 .center {
   background: var(--bg-cell);
   border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 10px 14px;
+  border-radius: 13px;
+  padding: 13px 18px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
   /* 铺满固定的中行；本局结果改成绝对定位浮层后，中央框内容多少都不再改变自身高度（用户 m01386） */
   height: 100%;
-  /* 也铺满中央列的宽度：役名 / 宝牌信息不再挤在 ~120px 里换行，中央框就不会出滚动条（用户 m02801 ③） */
+  /* 也铺满中央列的宽度：役名 / 宝牌信息不再挤在 ~150px 里换行，中央框就不会出滚动条（用户 m02801 ③） */
   width: 100%;
   position: relative;
   overflow: hidden auto;
 }
 .c-round {
-  font-size: 17px;
+  font-size: 21px;
   font-weight: 700;
   letter-spacing: 1px;
   border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 2px 14px;
+  border-radius: 8px;
+  padding: 2px 18px;
   background: rgba(255, 255, 255, .06);
 }
-.c-honba { font-size: 12px; color: var(--warn); }
-.c-left { display: flex; align-items: baseline; gap: 5px; }
-.c-left .c-x { font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.c-lbl { color: var(--fg-dim); font-size: 11px; }
-.c-kyotaku { display: flex; align-items: center; gap: 4px; }
+.c-honba { font-size: 15px; color: var(--warn); }
+.c-left { display: flex; align-items: baseline; gap: 6px; }
+.c-left .c-x { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.c-lbl { color: var(--fg-dim); font-size: 14px; }
+.c-kyotaku { display: flex; align-items: center; gap: 5px; }
 .c-kyotaku .c-v { font-variant-numeric: tabular-nums; font-weight: 600; }
 .stick {
-  width: 4px;
-  height: 15px;
+  width: 5px;
+  height: 19px;
   border-radius: 2px;
   background: #b8452f;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, .45);
 }
-.c-dora { display: flex; align-items: center; gap: 8px; }
+.c-dora { display: flex; align-items: center; gap: 10px; }
 .c-dora .tiles { display: flex; }
 .c-dora .tile { width: calc(var(--tile-w) * .95); height: calc(var(--tile-h) * .95); }
 /* 本局结果：绝对定位盖在中央信息框上，不再把中央框（也就是整个牌桌）撑高（用户 m01386） */
@@ -618,8 +618,8 @@ legend { color: var(--fg-dim); padding: 0 6px; }
   bottom: 2px;
   background: #16241e;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 8px 12px;
+  border-radius: 10px;
+  padding: 10px 15px;
   overflow: auto;
   display: flex;
   flex-direction: column;
@@ -629,12 +629,12 @@ legend { color: var(--fg-dim); padding: 0 6px; }
    * 结算标题（自摸 / 放铳的绿字）就会被裁掉（用户 m02801 ③）。 */
   justify-content: flex-start;
   gap: 3px;
-  font-size: 12px;
+  font-size: 15px;
 }
 .c-result > :first-child { margin-top: auto; }
 .c-result > :last-child { margin-bottom: auto; }
 /* 宝牌 / 里宝指示牌：标签与牌同排，省下一行高度（用户 m02801 ③） */
-.c-dora-show { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; }
+.c-dora-show { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
 .c-dora-show .tiles { margin-top: 0; }
 /* 结果里的指示牌比手牌小一圈，两行宝牌也放得下 */
 .c-result .tiles .tile { width: calc(var(--tile-w) * .8); height: calc(var(--tile-h) * .8); }
@@ -644,35 +644,35 @@ legend { color: var(--fg-dim); padding: 0 6px; }
 .c-result .tiles { display: flex; margin-top: 3px; }
 
 /* -------------------------------------------------------- 控制按钮 */
-/* 控制条两行七列（用户 m05131 ③④）：整块仍占 50px，牌桌尺寸与位置不变。
+/* 控制条两行七列（用户 m05131 ③④）：整块仍占 63px，牌桌尺寸与位置不变。
  * 上排 = 跨局 / 决策跳转 / 单步 / 主视角；下排 = 整个牌谱的开局与完场、本局的开始与结算、
  * 自家决策跳转、他家手牌开关。删掉了「自动播放」与描述条。
  * 第 7 列给 1.5 倍宽度（切换主视角的按钮文字里带玩家 ID，需要单行放得下）。 */
 .controls {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr)) minmax(0, 1.5fr);
-  grid-auto-rows: 20px;
-  gap: 2px 6px;
+  grid-auto-rows: 25px;
+  gap: 2px 8px;
   align-content: center;
-  padding: 4px 0;
-  flex: 0 0 50px;
-  height: 50px;
+  padding: 5px 0;
+  flex: 0 0 63px;
+  height: 63px;
   overflow: hidden;
 }
 .controls button {
   white-space: nowrap;
   overflow: hidden;
   min-width: 0;
-  padding: 0 6px;
-  font-size: 11px;
+  padding: 0 8px;
+  font-size: 14px;
   line-height: 1;
 }
 /* 切换主视角按钮（用户 m03343 ②）：在上排第七列（1.5 倍宽）单行显示完整 ID；
- * 列数变少后空间足够，不再需要 200px 的最小宽度（用户 m05131 ④）。 */
+ * 列数变少后空间足够，不再需要 250px 的最小宽度（用户 m05131 ④）。 */
 #btnView { min-width: 0; }
 /* 静态帧（检索结果 / 全部浏览的条目）：整块禁用，只能用右上角的条目导航（用户 m03089 ①） */
 #controls.locked button { opacity: .45; pointer-events: none; cursor: not-allowed; }
-.controls::-webkit-scrollbar { height: 6px; }
+.controls::-webkit-scrollbar { height: 8px; }
 .controls::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
 
 /* 切换主视角上拉框（用户 m03343 ②）：4 行 = 東 > 南 > 西 > 北，点一行即换主视角。
@@ -682,24 +682,24 @@ legend { color: var(--fg-dim); padding: 0 6px; }
  * 再长的玩家 ID 也能单行显示（超宽时由 max-width 兜底）。 */
 .view-menu {
   position: absolute;
-  left: 14px;                 /* 兜底值；开着的时候由 placeViewMenu() 贴着按钮改（用户 m03498） */
-  bottom: 96px;               /* 兜底值：浮在控制条上方 */
+  left: 18px;                 /* 兜底值；开着的时候由 placeViewMenu() 贴着按钮改（用户 m03498） */
+  bottom: 120px;               /* 兜底值：浮在控制条上方 */
   z-index: 40;
-  min-width: 240px;
+  min-width: 300px;
   width: max-content;
   max-width: 90vw;
   background: var(--bg-panel);
   border: 1px solid var(--line);
-  border-radius: 8px;
-  box-shadow: 0 -2px 14px rgba(0, 0, 0, .55);
+  border-radius: 10px;
+  box-shadow: 0 -2px 18px rgba(0, 0, 0, .55);
   overflow: hidden;
 }
 .view-row {
   display: flex;
   align-items: baseline;
-  gap: 10px;
-  padding: 7px 12px;
-  font-size: 13px;
+  gap: 13px;
+  padding: 9px 15px;
+  font-size: 16px;
   white-space: nowrap;
   cursor: pointer;
 }
@@ -719,12 +719,12 @@ legend { color: var(--fg-dim); padding: 0 6px; }
   transform: translate(-50%, -50%);
   z-index: 5;
   min-width: calc(var(--tile-w) * 15);            /* 加宽：容纳更长的玩家 ID（用户 m05277 ①） */
-  max-width: calc(100% - 24px);                  /* 再长也不越出牌桌 */
+  max-width: calc(100% - 30px);                  /* 再长也不越出牌桌 */
   padding: calc(var(--tile-h) * .7) calc(var(--tile-w) * 1.2);   /* 文字上下的留白与左右内边距加大（用户 m05277 ①） */
   background: rgba(0, 0, 0, .78);
   border: 2px solid rgba(255, 255, 255, .5);
-  border-radius: 10px;
-  box-shadow: 0 6px 30px rgba(0, 0, 0, .65);
+  border-radius: 13px;
+  box-shadow: 0 8px 38px rgba(0, 0, 0, .65);
   color: #fff;
   font-family: "Noto Sans JP", "Noto Sans JP Variable", "Yu Gothic", "Meiryo", "Microsoft YaHei", sans-serif;
   font-size: calc(var(--tile-h) * .62);
@@ -740,19 +740,19 @@ legend { color: var(--fg-dim); padding: 0 6px; }
 
 /* ---------------------------------------------------------- 事件列表 */
 .event-list {
-  flex: 0 0 250px;
+  flex: 0 0 313px;
   display: flex;
   flex-direction: column;
   min-height: 0;
   min-width: 0;   /* 长事件文本不许把侧栏撑宽（用户 m01386） */
   background: var(--bg-panel);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 10px;
   overflow: hidden;
 }
 .event-list-head {
-  padding: 6px 10px;
-  font-size: 12px;
+  padding: 8px 13px;
+  font-size: 15px;
   color: var(--fg-dim);
   border-bottom: 1px solid var(--line);
   flex: 0 0 auto;
@@ -761,9 +761,9 @@ legend { color: var(--fg-dim); padding: 0 6px; }
 
 .ev-row {
   display: flex;
-  gap: 6px;
-  padding: 2px 10px;
-  font-size: 12px;
+  gap: 8px;
+  padding: 2px 13px;
+  font-size: 15px;
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
@@ -771,7 +771,7 @@ legend { color: var(--fg-dim); padding: 0 6px; }
 .ev-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .ev-row:hover { background: rgba(255, 255, 255, .06); }
 .ev-row.cur { background: var(--accent-2); color: #eafff5; }
-.ev-idx { color: var(--fg-dim); min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; }
+.ev-idx { color: var(--fg-dim); min-width: 38px; text-align: right; font-variant-numeric: tabular-nums; }
 .ev-row.cur .ev-idx { color: #cdeade; }
 .event-list.off { display: none; }
 
@@ -782,25 +782,25 @@ legend { color: var(--fg-dim); padding: 0 6px; }
     grid-template-rows: auto;
     grid-template-areas: "top" "left" "center" "right" "bottom";
   }
-  .cell { min-height: 310px; }
+  .cell { min-height: 388px; }
   .cell-left, .cell-right { height: auto; }
-  .naga-panel { flex-basis: 150px; }
-  .event-list { flex-basis: 200px; }
+  .naga-panel { flex-basis: 188px; }
+  .event-list { flex-basis: 250px; }
 }
 /* ------------------------------------------------ 静态帧里的特征串（可复制） */
 .frame-key {
-  /* 固定 28px：特征码条出现/消失（静态帧 vs 打点帧）不再让牌桌上下跳（用户 m01386） */
+  /* 固定 35px：特征码条出现/消失（静态帧 vs 打点帧）不再让牌桌上下跳（用户 m01386） */
   /* 固定两行高：特征码完整换行显示，出现/消失也不再让牌桌上下跳（用户 m01518 ①） */
-  flex: 0 0 46px;
-  height: 46px;
-  margin: 0 0 6px;
-  padding: 3px 10px;
-  line-height: 19px;
+  flex: 0 0 58px;
+  height: 58px;
+  margin: 0 0 8px;
+  padding: 3px 13px;
+  line-height: 24px;
   background: var(--bg-panel);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 8px;
   color: var(--accent);
-  font-size: 12px;
+  font-size: 15px;
   font-family: Consolas, "Courier New", monospace;
   font-variant-numeric: tabular-nums;
   /* 特征码不省略：自动换行、整串可见（用户 m01518 ①） */
@@ -815,37 +815,37 @@ legend { color: var(--fg-dim); padding: 0 6px; }
 .frame-key.copied { border-color: var(--accent); background: rgba(70, 201, 138, .14); }
 
 /* ---------------------------------------- 条目导航（检索结果 / 全部浏览） */
-.item-info { color: var(--fg-dim); font-size: 12px; font-variant-numeric: tabular-nums; }
+.item-info { color: var(--fg-dim); font-size: 15px; font-variant-numeric: tabular-nums; }
 
 /* ------------------------------------ 牌谱分析：文件列表 / 数据库列表 */
-.sub-h { margin: 14px 0 6px; font-size: 14px; color: var(--fg-dim); font-weight: 600; }
+.sub-h { margin: 18px 0 8px; font-size: 18px; color: var(--fg-dim); font-weight: 600; }
 .file-list,
 .db-list {
-  max-height: 220px;
+  max-height: 275px;
   overflow: auto;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--bg-panel);
-  padding: 4px 8px;
-  margin: 6px 0;
+  padding: 5px 10px;
+  margin: 8px 0;
 }
 .file-list:empty { display: none; }
 .an-file {
   display: block;
-  font-size: 12px;
+  font-size: 15px;
   padding: 2px 0;
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.an-file input { margin-right: 6px; vertical-align: middle; }
+.an-file input { margin-right: 8px; vertical-align: middle; }
 .db-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   padding: 3px 0;
-  font-size: 12px;
+  font-size: 15px;
   border-bottom: 1px solid rgba(255, 255, 255, .05);
 }
 .db-row:last-child { border-bottom: 0; }
@@ -856,43 +856,43 @@ legend { color: var(--fg-dim); padding: 0 6px; }
  * 与第一、二类特征条件同时满足（服务端 AND）。
  * 标题「是否具有AI决策」；框的右端是第三类「出牌 / 鸣牌响应」必选单选（第 63 轮，用户 m07289 的补充要求）。 */
 .ai-plan {
-  margin: 0 0 10px 0; padding: 8px 10px;
-  border: 1px solid var(--line); border-radius: 6px; background: var(--bg-panel);
-  display: flex; align-items: stretch; gap: 12px;
+  margin: 0 0 13px 0; padding: 10px 13px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--bg-panel);
+  display: flex; align-items: stretch; gap: 15px;
 }
 .ai-plan-main { flex: 1 1 auto; min-width: 0; }
 /* 第三类「出牌 / 鸣牌响应」：只放上下两行两个选项，不写标题与说明文字 */
 .wait-plan {
   flex: 0 0 auto;
-  display: flex; flex-direction: column; justify-content: center; gap: 5px;
-  padding-left: 12px; border-left: 1px solid var(--line);
-  font-size: 12px;
+  display: flex; flex-direction: column; justify-content: center; gap: 6px;
+  padding-left: 15px; border-left: 1px solid var(--line);
+  font-size: 15px;
 }
-.wait-plan label { display: flex; align-items: center; gap: 4px; cursor: pointer; white-space: nowrap; }
-.ai-plan-head { display: flex; align-items: baseline; gap: 8px; font-size: 12px; margin-bottom: 5px; }
-.ai-plan-head .muted { font-size: 11px; }
-.ai-modes { display: flex; flex-wrap: wrap; gap: 4px 14px; }
-.ai-modes label { display: flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer; }
-.ai-picks { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 5px; }
-.ai-picks label { display: flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer; }
+.wait-plan label { display: flex; align-items: center; gap: 5px; cursor: pointer; white-space: nowrap; }
+.ai-plan-head { display: flex; align-items: baseline; gap: 10px; font-size: 15px; margin-bottom: 6px; }
+.ai-plan-head .muted { font-size: 14px; }
+.ai-modes { display: flex; flex-wrap: wrap; gap: 5px 18px; }
+.ai-modes label { display: flex; align-items: center; gap: 5px; font-size: 15px; cursor: pointer; }
+.ai-picks { display: flex; flex-wrap: wrap; gap: 5px 18px; margin-top: 6px; }
+.ai-picks label { display: flex; align-items: center; gap: 5px; font-size: 15px; cursor: pointer; }
 
 /* -------------------------------------- 牌谱检索：条件列表 / 结果条目 */
-.cond-list { margin-top: 6px; }
+.cond-list { margin-top: 8px; }
 .cond-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   padding: 2px 0;
 }
-.cond-row label { flex: 0 0 150px; font-size: 12px; }
-.cond-input, .cond-select { flex: 0 1 260px; }
+.cond-row label { flex: 0 0 188px; font-size: 15px; }
+.cond-input, .cond-select { flex: 0 1 325px; }
 .item-list {
   max-height: 46vh;
   overflow: auto;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--bg-panel);
-  margin-top: 6px;
+  margin-top: 8px;
 }
 .item-list:empty { display: none; }
 .item-row {
@@ -904,8 +904,8 @@ legend { color: var(--fg-dim); padding: 0 6px; }
   border-bottom: 1px solid rgba(255, 255, 255, .05);
   color: var(--fg);
   font-family: Consolas, "Courier New", monospace;
-  font-size: 12px;
-  padding: 4px 10px;
+  font-size: 15px;
+  padding: 5px 13px;
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
@@ -914,7 +914,7 @@ legend { color: var(--fg-dim); padding: 0 6px; }
 .item-row:hover { background: rgba(255, 255, 255, .07); }
 .item-row:last-child { border-bottom: 0; }
 
-.hint { margin-top: 10px; font-size: 12px; color: var(--fg-dim); }
+.hint { margin-top: 13px; font-size: 15px; color: var(--fg-dim); }
 .hint summary { cursor: pointer; }
 .hint code { color: var(--accent); }
 
@@ -923,37 +923,37 @@ legend { color: var(--fg-dim); padding: 0 6px; }
 /* ------------------------------------------------ NAGA 决策面板（用户 m00198 / m01518 ③） */
 /* 常驻固定宽度：非 NAGA 牌谱留空 ⇒ 切换牌谱时牌桌不会横向错位（用户 m01518 ⑤） */
 .naga-panel {
-  flex: 0 0 200px;
+  flex: 0 0 250px;
   display: flex;
   flex-direction: column;
   min-height: 0;
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--bg-panel);
 }
 .naga-head {
-  flex: 0 0 28px; height: 28px; display: flex; align-items: center;
-  padding: 0 9px; border-bottom: 1px solid var(--line);
-  color: var(--fg); font-size: 12px;
+  flex: 0 0 35px; height: 35px; display: flex; align-items: center;
+  padding: 0 11px; border-bottom: 1px solid var(--line);
+  color: var(--fg); font-size: 15px;
 }
 /* 决策表标题改成 AI 模型下拉按钮（用户 m04556 ①）：占满整行，点击向下生长选项列表 */
 .naga-model-btn {
-  flex: 0 0 28px; height: 28px; width: 100%;
+  flex: 0 0 35px; height: 35px; width: 100%;
   display: flex; align-items: center;
-  padding: 0 9px;
+  padding: 0 11px;
   border: 0; border-bottom: 1px solid var(--line); border-radius: 0;
-  background: transparent; color: var(--fg); font-size: 12px;
+  background: transparent; color: var(--fg); font-size: 15px;
   text-align: left; cursor: pointer;
 }
 .naga-model-btn:hover { background: var(--bg-cell); color: var(--accent); }
 .naga-model-menu {
-  flex: 0 0 auto; max-height: 180px; overflow: auto;
+  flex: 0 0 auto; max-height: 225px; overflow: auto;
   border-bottom: 1px solid var(--line); background: var(--bg-cell);
 }
 .naga-model-menu .ai-row {
-  padding: 5px 9px; font-size: 12px;
+  padding: 6px 11px; font-size: 15px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   cursor: pointer;
 }
@@ -962,12 +962,12 @@ legend { color: var(--fg-dim); padding: 0 6px; }
 /* 报告里没有这个模型 ⇒ 灰显、不可点（用户 m04556 ①） */
 .naga-model-menu .ai-row.disabled { color: var(--fg-dim); opacity: .5; pointer-events: none; }
 .naga-who {
-  flex: 0 0 20px; height: 20px; line-height: 20px; padding: 0 9px;
-  color: var(--fg-dim); font-size: 11px;
+  flex: 0 0 25px; height: 25px; line-height: 25px; padding: 0 11px;
+  color: var(--fg-dim); font-size: 14px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .naga-options { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 2px 0; }
-.naga-opt { display: flex; align-items: center; gap: 4px; padding: 2px 8px; font-size: 12px; }
+.naga-opt { display: flex; align-items: center; gap: 5px; padding: 2px 10px; font-size: 15px; }
 .naga-opt .naga-opt-tiles { display: flex; gap: 1px; flex: 0 0 auto; }
 .naga-opt .naga-opt-tiles img {
   display: block;
@@ -985,17 +985,17 @@ legend { color: var(--fg-dim); padding: 0 6px; }
   color: var(--accent); font-variant-numeric: tabular-nums;
 }
 .naga-hud {
-  flex: 0 0 auto; min-height: 70px;
-  border-top: 1px solid var(--line); padding: 6px 8px;
-  display: grid; grid-template-columns: 1fr 1fr; gap: 2px 6px;
-  font-size: 12px; font-variant-numeric: tabular-nums;
+  flex: 0 0 auto; min-height: 88px;
+  border-top: 1px solid var(--line); padding: 8px 10px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px;
+  font-size: 15px; font-variant-numeric: tabular-nums;
 }
-.naga-hud .nh-cell { display: flex; justify-content: space-between; gap: 4px; }
+.naga-hud .nh-cell { display: flex; justify-content: space-between; gap: 5px; }
 .naga-hud .nh-wide { grid-column: 1 / span 2; }
 .naga-hud .nh-k { color: var(--fg-dim); }
 
 .feat-panel {
-  flex: 0 0 268px;
+  flex: 0 0 335px;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -1003,22 +1003,22 @@ legend { color: var(--fg-dim); padding: 0 6px; }
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--bg-panel);
 }
-/* 标题行固定 32px 单行：特征码再长也只在本行内省略，不会撑大面板 / 把标题压成竖排（用户 m01386） */
+/* 标题行固定 40px 单行：特征码再长也只在本行内省略，不会撑大面板 / 把标题压成竖排（用户 m01386） */
 .feat-panel-head {
-  padding: 6px 9px;
+  padding: 8px 11px;
   border-bottom: 1px solid var(--line);
   color: var(--fg);
-  font-size: 12px;
+  font-size: 15px;
   display: flex;
   flex-wrap: wrap;
-  gap: 2px 6px;
+  gap: 2px 8px;
   align-content: flex-start;
   /* 固定高度 = 标题行 + 预留 5 行特征码：特征码完整换行显示，帧与帧之间不跳（用户 m01518 ①） */
-  flex: 0 0 106px;
-  height: 106px;
+  flex: 0 0 133px;
+  height: 133px;
   overflow: hidden;
 }
 .feat-panel-head .fp-title { flex: 0 0 auto; }
@@ -1027,20 +1027,20 @@ legend { color: var(--fg-dim); padding: 0 6px; }
   /* 特征码另起一行、占满面板宽度，完整显示（自动换行、不省略）（用户 m01518 ①） */
   flex: 1 1 100%; min-width: 0;
   font-family: Consolas, "Courier New", monospace;
-  font-size: 11px; line-height: 15px;
+  font-size: 14px; line-height: 19px;
   white-space: normal; word-break: break-all;
-  max-height: 75px; overflow: hidden;
+  max-height: 94px; overflow: hidden;
   -webkit-user-select: text; user-select: text;
 }
-.feat-panel-body { overflow: auto; flex: 1 1 auto; padding: 4px 0; }
+.feat-panel-body { overflow: auto; flex: 1 1 auto; padding: 5px 0; }
 /* 局面（第三类特征「等待鸣牌」的展示，用户 m07289）：大号、醒目的居中文字，固定在面板底部
    （flex: 0 0 auto ⇒ 不参与滚动、不顶出滚动条，正文区自己收缩） */
 .feat-panel-mode {
   flex: 0 0 auto;
-  padding: 7px 4px;
+  padding: 9px 5px;
   border-top: 1px solid var(--line);
   text-align: center;
-  font-size: 21px; font-weight: 700; letter-spacing: 3px;
+  font-size: 26px; font-weight: 700; letter-spacing: 3px;
   color: var(--accent);
   -webkit-user-select: text; user-select: text;
 }
@@ -1048,9 +1048,9 @@ legend { color: var(--fg-dim); padding: 0 6px; }
 .feat-row {
   display: flex;
   align-items: baseline;
-  gap: 8px;
-  padding: 2px 9px 2px 6px;
-  font-size: 12px;
+  gap: 10px;
+  padding: 2px 11px 2px 8px;
+  font-size: 15px;
   border-left: 3px solid transparent;
   overflow: hidden;
 }
@@ -1067,19 +1067,19 @@ legend { color: var(--fg-dim); padding: 0 6px; }
 .feat-row.used .feat-name { color: var(--accent); font-weight: 600; }
 .feat-row.used .feat-value { color: var(--accent); }
 
-.progress-box { margin: 8px 0; }
+.progress-box { margin: 10px 0; }
 .progress-track {
-  height: 10px;
+  height: 13px;
   border: 1px solid var(--line);
-  border-radius: 5px;
+  border-radius: 6px;
   background: var(--bg-cell);
   overflow: hidden;
 }
 .progress-bar { height: 100%; width: 0; background: var(--accent-2); }
 .progress-text {
-  margin-top: 4px;
+  margin-top: 5px;
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: 15px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1087,21 +1087,21 @@ legend { color: var(--fg-dim); padding: 0 6px; }
 .item-row.static:hover { background: transparent; }
 
 /* ---- 本地数据管理（用户 m00178 第 9 条） ---- */
-.item-row.dm-row { display: flex; align-items: center; gap: 6px; }
+.item-row.dm-row { display: flex; align-items: center; gap: 8px; }
 .item-row.dm-row .dm-name { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
 .item-row.dm-row .dm-meta { flex: 0 0 auto; color: var(--fg-dim); }
 .item-row.dm-row .dm-go {
   flex: 0 0 auto;
   margin-left: auto;
-  padding: 0 6px;
+  padding: 0 8px;
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: 5px;
   color: var(--fg-dim);
 }
 .item-row.dm-row:hover .dm-go { color: var(--accent); border-color: var(--accent); }
 .item-row.dm-row.sel { background: rgba(255, 255, 255, .14); }
 
 @media (max-width: 1100px) {
-  .feat-panel { flex-basis: 200px; }
-  .naga-panel { flex-basis: 150px; }
+  .feat-panel { flex-basis: 250px; }
+  .naga-panel { flex-basis: 188px; }
 }

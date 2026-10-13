@@ -1779,15 +1779,15 @@ check(/grid-template-rows:\s*calc\(var\(--tile-h\)/.test(boardCss), '牌桌三�
 check(/overflow:\s*hidden/.test(cssRule(cssText, '.board-box')), '#boardBox 不滚动（牌桌缩放不受滚动条影响）');
 var ctrlCss = cssRule(cssText, '.controls');
 check(/display:\s*grid/.test(ctrlCss) && /grid-template-columns:\s*repeat\(6,/.test(ctrlCss)
-  && /grid-auto-rows:\s*20px/.test(ctrlCss) && /flex:\s*0\s+0\s+50px/.test(ctrlCss),
-  '控制条 = 两行七列网格、整块仍占 50px（牌桌尺寸不变，用户 m05131 ④）');
+  && /grid-auto-rows:\s*25px/.test(ctrlCss) && /flex:\s*0\s+0\s+63px/.test(ctrlCss),
+  '控制条 = 两行七列网格、整块仍占 63px（1.25 倍界面，用户 m09339 ①）');
 check(!/\.desc-bar\s*\{/.test(cssText), '描述条样式已删除（用户 m05131 ④）');
 var fboxCss = cssRule(cssText, '.final-box');
 check(/position:\s*absolute/.test(fboxCss) && /rgba\(0,\s*0,\s*0,\s*\.78\)/.test(fboxCss)
   && /color:\s*#fff/.test(fboxCss) && /font-size:\s*calc\(var\(--tile-h\)/.test(fboxCss),
   '完场结算框 = 黑底半透明 + 白字大字号（用户 m05131 ②）');
 check(/\.fb-row\s*\{[^}]*display:\s*flex/.test(cssText), '结算框每行 = flex 一行（排名 / ID / 得点）');
-check(/min-width:\s*calc\(var\(--tile-w\)\s*\*\s*15\)/.test(fboxCss) && /max-width:\s*calc\(100% - 24px\)/.test(fboxCss),
+check(/min-width:\s*calc\(var\(--tile-w\)\s*\*\s*15\)/.test(fboxCss) && /max-width:\s*calc\(100% - 30px\)/.test(fboxCss),
   '结算框加宽到 15 张牌宽（容纳更长的玩家 ID，用户 m05277 ①）');
 check(/padding:\s*calc\(var\(--tile-h\)\s*\*\s*\.7\)/.test(fboxCss) && /line-height:\s*2/.test(fboxCss),
   '结算框上下留白加大、行间距加大（用户 m05277 ①）');
@@ -1795,8 +1795,8 @@ check(/\.fb-row\s*\{[^}]*gap:\s*calc\(var\(--tile-w\)\s*\*\s*1\.4\)/.test(cssTex
   && /\.fb-id\s*\{[^}]*text-overflow:\s*ellipsis/.test(cssText),
   '结算框三列间距加大、玩家 ID 过长时框内省略（用户 m05277 ①）');
 var fkCss = cssRule(cssText, '.frame-key');
-check(/flex:\s*0\s+0\s+46px/.test(fkCss) && /white-space:\s*normal/.test(fkCss)
-  && /word-break:\s*break-all/.test(fkCss), '特征码条固定两行 46px、完整换行不省略（用户 m01518 ①）');
+check(/flex:\s*0\s+0\s+58px/.test(fkCss) && /white-space:\s*normal/.test(fkCss)
+  && /word-break:\s*break-all/.test(fkCss), '特征码条固定两行 58px、完整换行不省略（用户 m01518 ①）');
 check(/\.frame-key:empty\s*\{[^}]*visibility:\s*hidden/.test(cssText), '特征码条为空时只占位不可见');
 check(/\.c-result\s*\{[^}]*position:\s*absolute/.test(cssText), '本局结果改成绝对定位浮层（不再撑高中央框）');
 check(/\.warn-bar\s*\{[^}]*position:\s*absolute/.test(cssText), '回放警告改成绝对定位浮层（出现/消失不影响布局）');
@@ -1804,8 +1804,8 @@ check(/\.file-info\s*\{[^}]*text-overflow:\s*ellipsis/.test(cssText), '顶栏文
 var fpCss = cssRule(cssText, '.feat-panel');
 check(/min-width:\s*0/.test(fpCss) && /overflow:\s*hidden/.test(fpCss), '特征面板 min-width:0 + overflow:hidden（长特征码不再撑宽面板）');
 var fphCss = cssRule(cssText, '.feat-panel-head');
-check(/flex:\s*0\s+0\s+106px/.test(fphCss) && /flex-wrap:\s*wrap/.test(fphCss)
-  && /align-content:\s*flex-start/.test(fphCss), '特征面板标题行 = 标题 + 预留 5 行特征码（固定 106px）');
+check(/flex:\s*0\s+0\s+133px/.test(fphCss) && /flex-wrap:\s*wrap/.test(fphCss)
+  && /align-content:\s*flex-start/.test(fphCss), '特征面板标题行 = 标题 + 预留 5 行特征码（固定 133px）');
 check(/\.feat-panel-head\s+\.muted\s*\{[^}]*white-space:\s*normal/.test(cssText)
   && /\.feat-panel-head\s+\.muted\s*\{[^}]*word-break:\s*break-all/.test(cssText), '标题行里的特征码完整换行显示（不省略，用户 m01518 ①）');
 check(/\.ev-text\s*\{[^}]*text-overflow:\s*ellipsis/.test(cssText), '事件行文本省略号');
@@ -1832,9 +1832,9 @@ check(/\.tbar\.down\.k\s*\{[^}]*background:\s*#2196F3/.test(cssText) && /left:\s
   '三条铳率条 = 上家蓝 / 対面黄 / 下家绿，左偏移 3.4% / 34.1% / 64.8%');
 check(/\.p-hand\s+\.tiles\s*\{[^}]*position:\s*relative/.test(cssText),
   '手牌容器仍是听牌率条的定位参照（position: relative）');
-check(/\.naga-panel\s*\{[^}]*flex:\s*0\s+0\s+200px/.test(cssText), 'NAGA 决策面板常驻固定宽 200px（非 NAGA 牌谱留空也不错位）');
-check(/\.naga-hud\s*\{[^}]*min-height:\s*70px/.test(cssText), 'NAGA 的 5 个数据区固定 min-height:70px');
-check(/max-height:\s*30px/.test(cssText) && !/max-width:\s*340px/.test(cssText), '工具栏特征码不再截成 340px、改为两行完整显示');/* 用户 m02801 ③：中央结算框铺满中央列 + 安全居中（内容超高也不裁掉标题），宝牌行同排 */
+check(/\.naga-panel\s*\{[^}]*flex:\s*0\s+0\s+250px/.test(cssText), 'NAGA 决策面板常驻固定宽 250px（非 NAGA 牌谱留空也不错位）');
+check(/\.naga-hud\s*\{[^}]*min-height:\s*88px/.test(cssText), 'NAGA 的 5 个数据区固定 min-height:88px');
+check(/max-height:\s*38px/.test(cssText) && !/max-width:\s*340px/.test(cssText), '工具栏特征码不再截成 340px、改为两行完整显示');/* 用户 m02801 ③：中央结算框铺满中央列 + 安全居中（内容超高也不裁掉标题），宝牌行同排 */
 check(/\.center\s*\{[^}]*width:\s*100%/.test(cssText), '中央信息框铺满中央列宽度（不再只有 ~120px 内容宽）');
 check(/\.c-result\s*\{[^}]*justify-content:\s*flex-start/.test(cssText)
   && !/\.c-result\s*\{[^}]*justify-content:\s*center/.test(cssText),
@@ -1846,9 +1846,9 @@ check(/\.c-dora-show\s*\{[^}]*display:\s*flex/.test(cssText), '宝牌 / 里宝�
 check(/\.c-result\s+\.tiles\s+\.tile\s*\{[^}]*calc\(var\(--tile-w\)\s*\*\s*\.8\)/.test(cssText),
   '结果里的指示牌缩到 80%（两行宝牌也放得下）');
 /* 用户 m03175 ④⑤⑥：特征码输入框 / 结果框 / 牌桌区域的拖放区 */
-check(/\.code-input\s*\{[^}]*max-width:\s*900px/.test(cssText),
+check(/\.code-input\s*\{[^}]*max-width:\s*1125px/.test(cssText),
   '特征码输入框足够长（放得下 133 字符的特征码，超出时自身横向滚动）');
-check(/\.code-results\s*\{[^}]*height:\s*132px[^}]*overflow:\s*auto/.test(cssText),
+check(/\.code-results\s*\{[^}]*height:\s*165px[^}]*overflow:\s*auto/.test(cssText),
   '搜索结果框高度固定、结果多时纵向滚动');
 check(/\.code-hit\s*\{[^}]*background:\s*#ffd54a/.test(cssText),
       '匹配子串黄色高亮的样式（.code-hit）');
@@ -1860,12 +1860,12 @@ check(/\.board-box\s*\{[^}]*position:\s*relative/.test(cssText)
   '拖放区绝对定位覆盖整个牌桌区域、不吃指针事件（用户 m03175 ⑥）');
 check(!/\.open-bar\s+\.drop-zone/.test(cssText), '打开牌谱栏里不再有拖放区（已搬到牌桌区域）');
 /* 切换主视角（用户 m03343 ②） */
-check(!/#btnView\s*\{[^}]*min-width:\s*200px/.test(cssText),
-  '切换主视角按钮不再要求 200px 最小宽度（改由第 7 列 1.5 倍宽保证单行显示完整 ID，用户 m05131 ④）');
+check(!/#btnView\s*\{[^}]*min-width:\s*250px/.test(cssText),
+  '切换主视角按钮不再要求 250px 最小宽度（改由第 7 列 1.5 倍宽保证单行显示完整 ID，用户 m05131 ④）');
 var vmCss = cssRule(cssText, '.view-menu');
-check(/position:\s*absolute/.test(vmCss) && /bottom:\s*96px/.test(vmCss) && /min-width:\s*240px/.test(vmCss)
+check(/position:\s*absolute/.test(vmCss) && /bottom:\s*120px/.test(vmCss) && /min-width:\s*300px/.test(vmCss)
   && /width:\s*max-content/.test(vmCss), '上拉框浮在控制条上方、够宽：' + vmCss.slice(0, 60));
-check(!/right:\s*14px/.test(vmCss) && /left:\s*14px/.test(vmCss),
+check(!/right:\s*18px/.test(vmCss) && /left:\s*18px/.test(vmCss),
   '上拉框 CSS 不再用 right 钉在右下角（位置交给 JS，兜底 left：' + vmCss.slice(0, 50) + '）');
 check(/white-space:\s*nowrap/.test(cssRule(cssText, '.view-row')), '上拉框每行单行不换行');
 check(/\.view-row\.cur\s*\{[^}]*color/.test(cssText), '当前主视角那一行用强调色');
@@ -2300,7 +2300,7 @@ global.fetch = function (url, opt) {
                                     app_version: '0.2.0', compatible: true }] });
   }
   if (path.indexOf('/api/features') === 0) {
-    return json({ ok: true, name: '天凤牌谱分析', version: '1.3.0', schema_version: 10,
+    return json({ ok: true, name: '天凤牌谱分析', version: '1.3.1', schema_version: 10,
                   features: MJSFEAT.FEATURES,
                   first_features: MJSFEAT.FIRST_FEATURES, second_features: MJSFEAT.SECOND_FEATURES,
                   third_features: MJSFEAT.THIRD_FEATURES, wait_modes: ['出牌', '鸣牌响应'],
@@ -2520,11 +2520,52 @@ check(App.roundIndex === ROW0.round_index, '回退后回到前一个牌谱的帧
 /* 8.6 全部浏览 */
 byId.btnBrowseAll.fire('click');
 var breq = reqs[reqs.length - 1];
-check(breq.url === '/api/browse' && breq.body.limit === 0, '「全部浏览」请求 limit=0（不限行数）');
+check(breq.url === '/api/browse' && breq.body.limit === App.searchState.pageSize,
+  '「全部浏览」也按段载入（limit = ' + App.searchState.pageSize + ' 条，用户 m09339 ②）');
 check(App.itemSource === 'browse' && App.items.length === 2, '浏览条目 ' + App.items.length + ' 个');
 check(!byId.controls.classList.contains('locked'), '① 退出条目模式后控制面板恢复可用（不带 .locked）');
 byId.scResultList.childNodes[0].fire('click');
 check(byId.itemInfo.textContent.indexOf('全部浏览') >= 0, '条目导航标注来源：' + byId.itemInfo.textContent);
+
+/* 8.7 检索分段载入（用户 m09339 ②）：每段 1000 条、翻段时替换上一段、条目号跨段连续 */
+function segThen(o) { return { then: function (cb) { cb(o); return segThen(o); },
+                              'catch': function () { return segThen(o); } }; }
+function segRow(g) {
+  return { kind: 'draw', log_id: 'L' + g, round_index: 0, frame_index: 0, seat: 0,
+           label: 'L' + g + ' 東一局 0本場 1巡目 東家', log_path: 'data/paipu/L' + g + '.tenhou' };
+}
+var SEG_TOTAL = 8, segCalls = [];
+check(App.searchState.pageSize === 1000, '检索每段载入 1000 条（用户 m09339 ②）：' + App.searchState.pageSize);
+App.searchState.fetch = function (offset) {
+  segCalls.push(offset);
+  var rows = [];
+  for (var i = 0; i < App.searchState.pageSize && offset + i < SEG_TOTAL; i++) { rows.push(segRow(offset + i)); }
+  return segThen({ rows: rows, total: SEG_TOTAL });
+};
+App.itemSource = 'query'; App.itemIndex = -1;
+App.items = []; App.searchState.base = -1; App.searchState.total = 0;   /* 清掉上一节（全部浏览）留下的段 */
+App.loadSegment(0);
+check(segCalls.join(',') === '0' && App.searchState.base === 0 && App.searchState.total === SEG_TOTAL
+  && App.items.length === SEG_TOTAL, '第一段载入全部 ' + SEG_TOTAL + ' 条（offset=0）');
+App.itemIndex = SEG_TOTAL - 1; App.syncItemNav();
+check(byId.itemInfo.textContent.indexOf(SEG_TOTAL + ' / ' + SEG_TOTAL) >= 0 && byId.btnNextItem.disabled === true,
+  '末条显示 ' + SEG_TOTAL + ' / ' + SEG_TOTAL + '、下一条目置灰：' + byId.itemInfo.textContent);
+App.loadSegment(0);
+check(segCalls.join(',') === '0', '同一段已在内存、不重复取数');
+App.searchState.pageSize = 3;
+App.loadSegment(3);
+check(segCalls.join(',') === '0,3' && App.searchState.base === 3 && App.items.length === 3
+  && App.items[0].log_id === 'L3', '翻到第 4 条起 ⇒ 载入第二段（offset=3）、第一段被替换（首条 L3）');
+App.itemIndex = 2; App.syncItemNav();
+check(byId.itemInfo.textContent.indexOf('6 / ' + SEG_TOTAL) >= 0 && byId.btnNextItem.disabled === false,
+  '第二段末条 = 6 / 8、仍可「下一条目」：' + byId.itemInfo.textContent);
+App.itemIndex = 0; App.syncItemNav();
+check(byId.itemInfo.textContent.indexOf('4 / ' + SEG_TOTAL) >= 0 && byId.btnPrevItem.disabled === false,
+  '第二段首条 = 4 / 8、仍可「上一条目」：' + byId.itemInfo.textContent);
+App.searchState.pageSize = 1000; App.searchState.fetch = null;
+App.searchState.base = 0; App.searchState.total = 0;
+App.items = []; App.itemIndex = -1; App.syncItemNav();
+
 
 /* 8.8 副露帧条目（第 13 轮新增主体） */
 inp.value = 'call';
@@ -2670,8 +2711,8 @@ check(byId.featPanelList.querySelectorAll('.feat-row').length === 34, '手动播
 /* (4b) m03580：版本号 / 扩充现有数据库 / --full 说明 */
 check(byId.anTool === undefined, '打点工具选择已删除（m03580）');
 App.loadMeta();   /* init() 时假服务还没装好，这里显式重拉一次 /api/features */
-check(App.version === '1.3.0', 'App.version = ' + App.version);
-check(App.version === '1.3.0' && byId.appVer.textContent === 'v1.3.0',
+check(App.version === '1.3.1', 'App.version = ' + App.version);
+check(App.version === '1.3.1' && byId.appVer.textContent === 'v1.3.1',
       '标题栏显示版本号：' + byId.appVer.textContent);
 check(byId.anFullNote.textContent.indexOf('勾选') >= 0 && byId.anFullNote.textContent.length > 20,
       '--full 说明来自 /api/features：' + byId.anFullNote.textContent.slice(0, 24) + '…');
@@ -2681,7 +2722,7 @@ App.fillExtendSelect([
 ]);
 check(byId.anExtendDb.childNodes.length === 2, '扩充下拉 ' + byId.anExtendDb.childNodes.length + ' 个库');
 check(byId.anExtendDb.childNodes[0].textContent.indexOf('v0.2.0') >= 0
-      && byId.anExtendDb.childNodes[1].textContent.indexOf('版本过低') >= 0,
+      && byId.anExtendDb.childNodes[1].textContent.indexOf('版本不兼容') >= 0,
       '扩充下拉显示版本 / 不匹配标记：' + byId.anExtendDb.childNodes[1].textContent);
 App.anSetMode('extend');
 check(App.analyzeState.mode === 'extend' && !byId.anExtendRow.classList.contains('hidden')

@@ -5,7 +5,7 @@
 都经由这个本地服务完成：
 
     GET  /                       302 跳转到 /web/index.html（页面在 web/，素材在 media/）
-    GET  /api/health             {ok:true, name, version, author, author_email}（软件名 / 版本号 v1.3.0 / 作者）
+    GET  /api/health             {ok:true, name, version, author, author_email}（软件名 / 版本号 v1.3.1 / 作者）
     GET  /api/features           40 个特征定义（5 个第零类 + 17 个第一类 + 17 个第二类 + 1 个第三类，
                                  第 52 / 59 / 60 轮；第零类自第 60 轮起**按帧判定**；
                                  第 63 轮 / 用户 m07289：「等待鸣牌」改列第三类，检索改用「出牌 / 鸣牌响应」单选）

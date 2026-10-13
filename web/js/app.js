@@ -81,7 +81,7 @@
   /* 为了让不同分辨率的显示器上观感一致，牌桌内部所有尺寸都以「一张牌的宽度 --tile-w」为单位。
      这里先把单位设成基准值量出牌桌的自然尺寸，再按可用空间等比缩放这个单位。
      面板里有几处固定像素的间隙，所以迭代两次逼近。 */
-  var BASE_U = 30, MIN_U = 9, MAX_U = 34;
+  var BASE_U = 38, MIN_U = 11, MAX_U = 43;   /* 第 73 轮：整体放大 1.25 倍（用户 m09339 ①） */
 
   function setTileUnit(u) {
     var st = document.documentElement && document.documentElement.style;
@@ -704,6 +704,9 @@
     box.classList.toggle('locked', !!locked);
     var bs = box.querySelectorAll('button');
     for (var i = 0; i < bs.length; i++) { bs[i].disabled = !!locked; }
+    /* 静态帧同时禁用右上角的「局」下拉框：只允许用「上一条目 / 下一条目」切换（用户 m09339 ③） */
+    var rs = $('roundSelect');
+    if (rs) { rs.disabled = !!locked; }
   }
   function syncOthers() {
     var b = othersBtn();
@@ -782,11 +785,11 @@
       : (($('view-replay') && $('view-replay').getBoundingClientRect) ? $('view-replay').getBoundingClientRect() : null);
     if (!hb) { return; }
     var left = b.left - hb.left;                 /* 与按钮左对齐 */
-    var bottom = hb.bottom - b.top + 6;          /* 按钮上沿再往上留 6px */
+    var bottom = hb.bottom - b.top + 8;          /* 按钮上沿再往上留 8px */
     var w = menu.offsetWidth || 0;
-    var maxLeft = (hb.width || 0) - w - 8;
+    var maxLeft = (hb.width || 0) - w - 10;
     if (w && left > maxLeft) { left = maxLeft; }
-    if (!(left > 8)) { left = 8; }
+    if (!(left > 10)) { left = 10; }
     menu.style.right = 'auto';
     menu.style.left = Math.round(left) + 'px';
     menu.style.bottom = Math.round(bottom) + 'px';
@@ -1195,7 +1198,7 @@
       o.value = dbs[i].name;
       o.textContent = dbs[i].name + '（' + ((dbs[i].meta && dbs[i].meta.record_count) || 0) + ' 行'
         + ' · ' + (dbs[i].app_version ? ('v' + dbs[i].app_version) : '版本未记录')
-        + (dbs[i].compatible === false ? ' ⚠ 版本过低' : '') + '）';
+        + (dbs[i].compatible === false ? ' ⚠ 版本不兼容' : '') + '）';
       if (dbs[i].compatible === false) { o.disabled = true; }
       sel.appendChild(o);
     }
@@ -1215,7 +1218,7 @@
     for (var i = 0; i < list.length; i++) { if (list[i].name === name) { db = list[i]; } }
     if (!db) { el.textContent = ''; return; }
     el.textContent = '版本 ' + (db.app_version || '未记录')
-      + (db.compatible === false ? ' · ⚠ 版本过低，不能扩充，请删除后重新分析' : ' · 可扩充');
+      + (db.compatible === false ? ' · ⚠ 版本不兼容，不能扩充，请删除后重新分析' : ' · 可扩充');
   }
 
   /* 本次分析写哪个库：新建（数据库名）或用「扩充现有数据库」选中的那个 */
@@ -1271,7 +1274,7 @@
     meta.textContent = '打点 ' + ((db.meta && db.meta.record_count) || 0) + ' 行 · '
       + ((db.meta && db.meta.tool) || '-') + ' · ' + Math.max(1, Math.round(db.size / 1024)) + ' KB'
       + ' · 版本 ' + (db.app_version || '未记录')
-      + (db.compatible === false ? ' ⚠ 版本过低（不能扩充 / 加载）' : '');
+      + (db.compatible === false ? ' ⚠ 版本不兼容（不能扩充 / 加载）' : '');
     var use = document.createElement('button');
     use.className = 'ghost';
     use.textContent = '设为当前库';
@@ -1329,7 +1332,10 @@
 
   /* ------------------------------------------------------------ 牌谱检索 */
   /* wait = 第三类特征（局面）必选单选（第 63 轮，用户 m07289）：'出牌'（默认）/ '鸣牌响应'。 */
-  var Sc = { conds: [], pageSize: 100, aiMode: '', aiPicks: {}, wait: '出牌' };
+  /* pageSize = 每段载入的结果条数；base = 当前段在全局结果里的起点；total = 全局命中数
+     （用户 m09339 ②：结果超过一段时按段载入，翻到别的段就把上一段换掉，内存不随总数增长） */
+  var Sc = { conds: [], pageSize: 1000, aiMode: '', aiPicks: {}, wait: '出牌',
+             base: 0, total: 0, fetch: null };
 
   function scDbPayload() {
     var custom = valOf('scDbPath', '');
@@ -1606,7 +1612,14 @@
       }
     }
     var info = $('scResultInfo');
-    if (info) { info.textContent = rows.length ? ('显示 ' + rows.length + ' 条') : ''; }
+    if (info) {
+      if (!rows.length) { info.textContent = ''; }
+      else {
+        var total = Sc.total || (Sc.base + rows.length);
+        info.textContent = '第 ' + (Sc.base + 1) + ' ~ ' + (Sc.base + rows.length) + ' 条（共 ' + total
+          + ' 条）' + (total > rows.length ? '；翻段时自动载入' : '');
+      }
+    }
   }
 
   function runQuery() {
@@ -1615,38 +1628,49 @@
     markUsedFeatures();
     var dbq = scDbPayload();
     if (!dbq.db && !dbq.db_name) { setMsg('scMsg', '请先选择（或填写）要检索的本地数据库文件。', true); return; }
-    var body = { conds: conds, limit: Sc.pageSize, offset: 0 };
-    body.ai = aiPayload();                     /* 第零类检索方案（用户 m04556 ③），null = 不筛选 */
-    body.wait = waitPayload();                 /* 第三类特征（局面）单选（用户 m07289），默认「出牌」 */
-    body.db = dbq.db || null;
-    body.db_name = dbq.db || null ? null : dbq.db_name;
+    var ai = aiPayload();                      /* 第零类检索方案（用户 m04556 ③），null = 不筛选 */
+    var wait = waitPayload();                  /* 第三类特征（局面）单选（用户 m07289），默认「出牌」 */
+    var dbid = dbq.db || null, dbname = (dbq.db || null) ? null : dbq.db_name;
+    /* 分段载入（用户 m09339 ②）：同一套条件可以反复按 offset 取，翻段时复用 */
+    Sc.fetch = function (offset) {
+      return api('/api/query', { conds: conds, limit: Sc.pageSize, offset: offset,
+        ai: ai, wait: wait, db: dbid, db_name: dbname });
+    };
     setMsg('scMsg', '检索中…');
-    api('/api/query', body).then(function (d) {
+    Sc.fetch(0).then(function (d) {
       App.items = d.rows || [];
+      Sc.base = 0;
+      Sc.total = (typeof d.total === 'number') ? d.total : App.items.length;
       App.itemIndex = -1;
       App.itemSource = 'query';
       renderResults(App.items);
       syncItemNav();
-      setMsg('scMsg', '命中 ' + d.total + ' 个打点帧（条件：' + (d.used || []).join('、')
-        + '）。点条目跳转到对应帧；条目名＝牌谱特征码 + 局况 + 本场 + 巡目 + 风位。');
+      setMsg('scMsg', '命中 ' + Sc.total + ' 个打点帧（条件：' + (d.used || []).join('、')
+        + '）。点条目跳转到对应帧；条目名＝牌谱特征码 + 局况 + 本场 + 巡目 + 风位。'
+        + (Sc.total > Sc.pageSize ? '结果多于 ' + Sc.pageSize + ' 条：用「上一条目 / 下一条目」翻到下一段时自动载入。' : ''));
     })['catch'](function (e) { setMsg('scMsg', '检索失败：' + e.message, true); });
   }
 
   function browseAll() {
     var dbq = scDbPayload();
     if (!dbq.db && !dbq.db_name) { setMsg('scMsg', '请先选择（或填写）要浏览的本地数据库文件。', true); return; }
-    var body = { limit: 0, offset: 0 };
-    body.db = dbq.db || null;
-    body.db_name = dbq.db || null ? null : dbq.db_name;
+    var dbid = dbq.db || null, dbname = (dbq.db || null) ? null : dbq.db_name;
+    /* 全部浏览同样按段载入（用户 m09339 ②）：库大时一次读全部会很慢 */
+    Sc.fetch = function (offset) {
+      return api('/api/browse', { limit: Sc.pageSize, offset: offset, db: dbid, db_name: dbname });
+    };
     setMsg('scMsg', '正在读取全部条目…');
-    api('/api/browse', body).then(function (d) {
+    Sc.fetch(0).then(function (d) {
       App.items = d.rows || [];
+      Sc.base = 0;
+      Sc.total = (typeof d.total === 'number') ? d.total : App.items.length;
       App.itemIndex = -1;
       App.itemSource = 'browse';
       renderResults(App.items);
       syncItemNav();
-      setMsg('scMsg', '全部浏览：共 ' + d.total + ' 个打点帧（按牌谱特征码顺序）。点任意条目进入阅图模式，'
-        + '再用「上一条目 / 下一条目」切换。');
+      setMsg('scMsg', '全部浏览：共 ' + Sc.total + ' 个打点帧（按牌谱特征码顺序）。点任意条目进入阅图模式，'
+        + '再用「上一条目 / 下一条目」切换。'
+        + (Sc.total > Sc.pageSize ? '（每段 ' + Sc.pageSize + ' 条，翻段时自动载入）' : ''));
     })['catch'](function (e) { setMsg('scMsg', '读取失败：' + e.message, true); });
   }
 
@@ -1654,6 +1678,8 @@
   function syncItemNav() {
     var info = $('itemInfo'), p = $('btnPrevItem'), n = $('btnNextItem');
     var on = App.itemIndex >= 0 && App.items.length > 0;
+    var gi = Sc.base + App.itemIndex;                  /* 全局条目号（跨分段，用户 m09339 ②） */
+    var total = Sc.total || (Sc.base + App.items.length);
     if (info) {
       info.classList.toggle('hidden', !on);
       var kindName = '';
@@ -1661,11 +1687,11 @@
         var k = String(App.items[App.itemIndex].kind || 'draw');
         kindName = '｜ ' + (k === 'chi' ? '吃后帧' : (k === 'pon' ? '碰后帧' : (k === 'wait' ? '鸣牌响应帧' : '摸牌帧')));
       }
-      info.textContent = on ? ('条目 ' + (App.itemIndex + 1) + ' / ' + App.items.length
+      info.textContent = on ? ('条目 ' + (gi + 1) + ' / ' + total
         + '（' + (App.itemSource === 'browse' ? '全部浏览' : '检索结果') + '）' + kindName) : '';
     }
-    if (p) { p.classList.toggle('hidden', !on); p.disabled = !on || App.itemIndex <= 0; }
-    if (n) { n.classList.toggle('hidden', !on); n.disabled = !on || App.itemIndex >= App.items.length - 1; }
+    if (p) { p.classList.toggle('hidden', !on); p.disabled = !on || gi <= 0; }
+    if (n) { n.classList.toggle('hidden', !on); n.disabled = !on || gi >= total - 1; }
     syncOthers();       /* 静态帧（条目模式）固定显示他家手牌：按钮禁用状态跟着 itemIndex 走 */
     lockControls(on);   /* 静态帧：下面的播放控制面板整块禁用（用户 m03089 ①） */
   }
@@ -1711,9 +1737,33 @@
     })['catch'](function (e) { setMsg('scMsg', '载入牌谱失败：' + e.message, true); });
   }
 
+  /* 分段载入 / 跨段跳转（用户 m09339 ②）：i 是**全局**条目下标；不在当前段就换段
+     （换段 = 丢掉上一段的 rows，只保留当前段，内存不随结果总数增长）。 */
+  function loadSegment(base) {
+    if (!Sc.fetch) { return null; }
+    if (App.items.length && base === Sc.base) { return null; }   /* 已在内存 */
+    setMsg('scMsg', '正在载入第 ' + (base + 1) + ' 条起的结果…');
+    return Sc.fetch(base).then(function (d) {
+      App.items = d.rows || [];
+      Sc.base = base;
+      if (typeof d.total === 'number') { Sc.total = d.total; }
+      renderResults(App.items);
+      return App.items.length;
+    })['catch'](function (e) { setMsg('scMsg', '载入失败：' + e.message, true); return 0; });
+  }
+
+  function openItemGlobal(i) {
+    if (!(i >= 0) || (Sc.total && i >= Sc.total)) { return; }
+    var base = Math.floor(i / Sc.pageSize) * Sc.pageSize;
+    if (App.items.length && base === Sc.base) { openItem(i - base); return; }
+    var pend = loadSegment(base);
+    if (!pend) { openItem(i - base); return; }
+    pend.then(function (n) { if (n) { openItem(i - base); } });
+  }
+
   function stepItem(dir) {
     if (App.itemIndex < 0) { return; }
-    openItem(App.itemIndex + dir);
+    openItemGlobal(Sc.base + App.itemIndex + dir);
   }
 
   /* ------------------------------------------------ 静态帧的特征串 */
@@ -3162,6 +3212,9 @@ function redMarkOf(st) {
   window.App.paipuUrl = paipuUrl;
   window.App.copyUrl = copyUrl;
   window.App.openItem = openItem;
+  window.App.loadSegment = loadSegment;      /* 用户 m09339 ②：分段载入（测试用） */
+  window.App.openItemGlobal = openItemGlobal;
+  window.App.syncItemNav = syncItemNav;
   window.App.setRound = setRound;
   window.App.setFrame = setFrame;
   window.App.atGameEnd = atGameEnd;
