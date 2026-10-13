@@ -533,6 +533,22 @@ check(byId.nagaOptions.childNodes.length === 3 && byId.nagaOptions.textContent.i
   && byId.nagaOptions.textContent.indexOf('其它') >= 0 && byId.nagaOptions.textContent.indexOf('5.0%') >= 0,
   '鸣牌选项（碰 75% / PASS 20% / 其它 5%）= ' + byId.nagaOptions.textContent);
 check(countCls(byId.nagaOptions, 'other') === 1, '「其它」行带 .other 标记（弱化显示）');
+/* 「其它」按显示值补足到 100.0%（用户 m09901）：真实例 —— 唯一过门槛的选项 9954 万分比显示成 99.5%，
+   原始残差 46（0.46%）不足旧的 0.5% 阈值而被省略，表内合计只剩 99.5%；现在应补出「其它 0.5%」。 */
+var savedNfOther = App.naga.rounds[0][2];
+var dp9954 = nagaZeroM();
+dp9954[1] = 9954;                                       // 打 2m 99.54%（显示 99.5%）
+App.naga.rounds[0][2] = { msg: 'tsumo', actor: 0, pai: '4s', reach: null, dahai_pred: dp9954,
+  end_type: NAGA_ET, game_rank: NAGA_GR };
+App.renderNagaPanel();
+check(byId.nagaOptions.childNodes.length === 2
+  && byId.nagaOptions.textContent.indexOf('99.5%') >= 0
+  && byId.nagaOptions.textContent.indexOf('其它') >= 0
+  && byId.nagaOptions.textContent.indexOf('0.5%') >= 0
+  && countCls(byId.nagaOptions, 'other') === 1,
+  '显示值 99.5% ⇒ 补「其它 0.5%」，表内合计 = 100.0%（用户 m09901）= ' + byId.nagaOptions.textContent);
+App.naga.rounds[0][2] = savedNfOther;
+App.renderNagaPanel();
 
 /* ④ 杠的规范名称按**牌局状态**判定（用户 m08623）：手里 4 张 = 暗杠、碰副露 + 手里第 4 张 = 加杠、
    huro 档位 5 = 大明杠。Mortal 会把加杠报成 ankan（consumed 4 张）⇒ 不能按报告档位贴标签。 */
@@ -587,7 +603,7 @@ check(byId.nagaWho.textContent.indexOf('当前决策：A') >= 0 && byId.nagaOpti
   + ' / ' + byId.nagaOptions.textContent);
 check(byId.nagaOptions.childNodes.length === 1 && byId.nagaOptions.textContent.indexOf('碰') < 0
   && byId.nagaOptions.textContent.indexOf('吃') < 0 && countCls(byId.nagaOptions, 'other') === 0,
-  '10% 门槛保留：0.0% 的吃 / 碰选项不进表格，残差不足 0.5% 也不补「其它」（用户 m09110）= '
+  '10% 门槛保留：0.0% 的吃 / 碰选项不进表格；显示值合计已到 100.0% ⇒ 不补「其它」（用户 m09110 / m09901）= '
   + byId.nagaOptions.textContent);
 check(byId.nagaHud.childNodes.length === 5,
   '关键帧照旧给出 5 项 AI 分析数据（流局率 / 横移率 / 放铳率 / 和了率 / 期待顺位）= '

@@ -2425,10 +2425,19 @@ function redMarkOf(st) {
     var shown = 0;
     // 立直与打牌（dahai_pred）是同一帧里两个独立的边缘量，「其它」只算打牌 / 鸣牌选项的残差（用户 m01903 ③）
     for (var i = 0; i < list.length; i++) { if (!list[i].reach) { shown += list[i].pct; } }
-    /* 「其它」= 1 − 已显示概率合计（用户 m01810 ②）；一个选项都没过门槛时不再补「其它 100%」
-       这种没有信息量的行（用户 m02007 ③、m09110）。 */
-    if (list.length && (10000 - shown) >= 50) {          // 残差不足 0.5% 就省略（否则会出现「其它 0.0%」）
-      list.push({ tiles: [], word: '其它', pct: 10000 - shown, pctText: nagaPctText(10000 - shown), other: true });
+    /* 「其它」= 100.0% − 表内已显示选项的**显示值**合计（用户 m01810 ②；用户 m09901）。
+       必须按显示值（一位小数）而不是原始万分比判断：9954（99.54%）会显示成 99.5%，原始残差只有 0.46%
+       却仍会在表里留下「合计 99.5%」的观感；一个选项都没过门槛、或显示值合计已到 100.0%
+       （甚至因报告分布不归一而超过 100%）时，不再补这种没有信息量的行（用户 m02007 ③、m09110）。 */
+    if (list.length) {
+      var shownTxt = 0;                                   // 立直与打牌是两个独立的边缘量，不计入（用户 m01903 ③）
+      for (var j = 0; j < list.length; j++) {
+        if (!list[j].reach) { shownTxt += Math.round(list[j].pct / 10) / 10; }
+      }
+      var restTxt = Math.round((100 - shownTxt) * 10) / 10;
+      if (restTxt >= 0.1) {
+        list.push({ tiles: [], word: '其它', pct: 10000 - shown, pctText: restTxt.toFixed(1) + '%', other: true });
+      }
     }
     for (i = 0; i < list.length; i++) { optsEl.appendChild(nagaOptEl(list[i])); }
     var hs = (seat === null) ? App.selfSeat : seat;           // 5 个数据（纯文本，用户 m00198 ②）
