@@ -6,7 +6,7 @@
 
     GET  /                       302 跳转到 /web/index.html（页面在 web/，素材在 media/）
     GET  /api/health             {ok:true, name, version, author, author_email}（软件名 / 版本号 v1.3.1 / 作者）
-    GET  /api/features           40 个特征定义（5 个第零类 + 17 个第一类 + 17 个第二类 + 1 个第三类，
+    GET  /api/features           42 个特征定义（7 个第零类 + 17 个第一类 + 17 个第二类 + 1 个第三类，
                                  第 52 / 59 / 60 轮；第零类自第 60 轮起**按帧判定**；
                                  第 63 轮 / 用户 m07289：「等待鸣牌」改列第三类，检索改用「出牌 / 鸣牌响应」单选）
                                  + 第零类检索方案（ai_modes）+ 第三类局面选项（wait_modes）+ 打点口径
@@ -34,7 +34,7 @@
     POST /api/browse            {db_name, db, limit, offset} -> 全部浏览（按特征码顺序；limit<=0 = 全部）
     POST /api/detail            {db_name, db, idx} -> 单行详情
     POST /api/round-frames      {db_name, db, log_id, round_index} -> 一局内的打点行
-    POST /api/frame-feats       {db_name, db, log_id, round_index, frame_index, seat} -> 单帧 40 个特征值
+    POST /api/frame-feats       {db_name, db, log_id, round_index, frame_index, seat} -> 单帧 42 个特征值
     POST /api/download          {url | text | url_file, subdir} -> 下载牌谱到 data/paipu/<子目录>（后台线程）
     GET  /api/download-progress 牌谱下载进度（前端轮询；{progress:{...}}）
     POST /api/delete-db         {name, db_name} -> 删除数据库

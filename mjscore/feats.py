@@ -20,15 +20,17 @@
 打点视角：**当前决策者**（等待出牌的摸牌者 / 刚吃碰的人 / 能鸣牌的响应者）。
 「自家」= 当前决策者、「他家」= 另外三家（用户 m06801 / m06832）。
 
-第零类特征 5 项（用户 m04556 ② / m05937 ②；第 60 轮起改为**按帧判定**，用户 m06323 ①、口径按 m06560 更正）：
+第零类特征 7 项（用户 m04556 ② / m05937 ② / m09507；第 60 轮起改为**按帧判定**，用户 m06323 ①、口径按 m06560 更正）：
      值「是 / 否」，判定 = 「这一帧**做决策的那名玩家**带该模型的决策概率表」
      （帧级 dahai_pred / reach / kan 属于这一帧的 actor，huro 只看这名玩家那一格；与牌谱初始的主视角无关）
      A NAGA-平衡 分析             是/否              (naga_types 含「ニシキ」⇒ 是；列 f_ai_balance)
      B NAGA-超副露 分析           是/否              (含「カガシ」；列 f_ai_superhuro)
-     C Mortal-4.1-避四 分析       是/否              (含「4.1a」；列 f_ai_mortal41a)
-     D Mortal-4.1-平衡 分析       是/否              (含「4.1b」；列 f_ai_mortal41b)
-     E Mortal-4.1-争一 分析       是/否              (含「4.1c」；列 f_ai_mortal41c)
-   天凤牌谱五项都是「否」，没有该模型概率表的帧也是「否」；
+     C NAGA-避四 分析             是/否              (含「アナンタ」；列 f_ai_naga_avoid4，用户 m09507)
+     D NAGA-争一 分析             是/否              (含「ウロボロス」；列 f_ai_naga_aggressive，用户 m09507)
+     E Mortal-4.1-避四 分析       是/否              (含「4.1a」；列 f_ai_mortal41a)
+     F Mortal-4.1-平衡 分析       是/否              (含「4.1b」；列 f_ai_mortal41b)
+     G Mortal-4.1-争一 分析       是/否              (含「4.1c」；列 f_ai_mortal41c)
+   天凤牌谱七项都是「否」，没有该模型概率表的帧也是「否」；
     第零类**不参与**「添加特征词条再填取值」的选取方式，
    检索走四种互斥方案（用户 m04556 ③），见 store.compile_ai()。
 
@@ -88,7 +90,7 @@ _BAKAZE = ["東", "南", "西", "北"]
 
 # ------------------------------------------------------------------ 特征注册表
 # col: SQLite 列名；kind: enum(枚举) / int(整数)；values: 值域（前端据此渲染下拉选取）
-# 顺序 = 第零类 5 项（AI_FEATURES，用户 m04556 ② / m05937 ②）→ 第一类 17 项（BASE_FEATURES，
+# 顺序 = 第零类 7 项（AI_FEATURES，用户 m04556 ② / m05937 ② / m09507）→ 第一类 17 项（BASE_FEATURES，
 # 第 11 项是「立直家（他家）一发巡」（用户 m02357））→ 第二类 17 项 → 第三类 1 项（THIRD_FEATURES，
 # 「等待鸣牌」，用户 m07289）。数据库列顺序 / 界面显示顺序都按最终 FEATURES。
 BASE_FEATURES = [
@@ -115,7 +117,7 @@ BASE_FEATURES = [
 ]
 
 # ---------------- 第零类特征：牌谱文件里含哪些 AI 模型的分析结果（用户 m04556 ②）
-# 天凤牌谱三项都是「否」；NAGA 报告按 naga_types 里的模型判定，规范名见 mjscore/ai_models.py。
+# 天凤牌谱七项都是「否」；NAGA / Mortal 报告按 naga_types / model_tag 判定，规范名见 mjscore/ai_models.py。
 # 第零类**不参与**「添加特征词条再给取值」的选取方式：检索用四种互斥方案（用户 m04556 ③），见 store.compile_ai()。
 AI_FEATURES = [
     {"key": key, "name": name, "col": col, "kind": "enum", "values": [YES, NO], "model": model}
@@ -128,7 +130,7 @@ AI_KEYS = [f["key"] for f in AI_FEATURES]
 # kind = int(整数) / float(实数)：期望特征是实数，检索条件支持小数（见 store.parse_cond）。
 # 算法只在 Python 一侧实现（expect 的枚举开销很大，移植到 js 风险过高）：--tool node 时
 # node 算第一类 17 项（web/js/mjsfeat.js 与这里同构，用户 m06832；「等待鸣牌」是第三类，用户 m07289）：
-# 这 17 列由 cli.fill_second_class 用 Python 补齐；第零类 3 列由 cli.fill_ai 按牌谱来源补（用户 m04556 ②）。
+# 这 17 列由 cli.fill_second_class 用 Python 补齐；第零类 7 列由 cli.fill_ai 按牌谱来源补（用户 m04556 ②）。
 SHANTEN_FEATURES = [
     {"key": "shanten_kokushi", "name": "国士無双向听数", "col": "s_shanten_kokushi",
      "kind": "int", "min": -1, "max": 3},
@@ -167,7 +169,7 @@ THIRD_KEYS = [f["key"] for f in THIRD_FEATURES]
 # 第一类 17 项的最终顺序（用户 m02357：「立直家（他家）一发巡」紧随「立直家（他家）数量」；
 # 用户 m04556 ② 把原第 1 项「NAGA决策」移到第零类、用户 m07289 把「等待鸣牌」移到第三类 ⇒ 剩下的就是 BASE_FEATURES）
 FIRST_KEYS = [f["key"] for f in BASE_FEATURES]
-# 最终注册表 = 第零类 5 项 + 第一类 17 项 + 第二类 17 项 + 第三类 1 项（共 40 项；列顺序 / 界面顺序都按它）
+# 最终注册表 = 第零类 7 项 + 第一类 17 项 + 第二类 17 项 + 第三类 1 项（共 42 项；列顺序 / 界面顺序都按它）
 FEATURES = AI_FEATURES + BASE_FEATURES + SECOND_FEATURES + THIRD_FEATURES
 
 BY_KEY = {f["key"]: f for f in FEATURES}
@@ -382,7 +384,7 @@ def ai_values(game):
     """牌谱文件级的第零类特征取值（用户 m04556 ②）：这份牌谱含哪些 AI 模型的分析结果。
 
     只看「牌谱里有没有这个模型」一个条件，**不区分帧**（打点入库走 ai_frame_values()，
-    用户 m06323 ① 起第零类是逐帧判定的）；天凤牌谱没有 models 键 ⇒ 五项全「否」。
+    用户 m06323 ① 起第零类是逐帧判定的）；天凤牌谱没有 models 键 ⇒ 七项全「否」。
     """
     flags = ai_models.value_map(_naga_models(game))
     return dict((k, YES if flags.get(k) else NO) for k in AI_KEYS)

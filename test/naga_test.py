@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 r"""naga 正式测试（第 27 轮：NAGA 报告适配层 / 流局种类推断，用户 m00653）。
 
 覆盖：
@@ -11,9 +11,9 @@ r"""naga 正式测试（第 27 轮：NAGA 报告适配层 / 流局种类推断�
   4. 真实样本（build\_scratch\naga_samples\ 里的 naga 报告，存在时才跑）：三处流局都是
      荒牌流局，听牌家 = [2] / [0,3] / [0]，且与报告 deltas 反推的收支一致
  5. 打点链路 / 存储集成（第 29 轮，用户 m00080 目标 3）：目录扫描认得 .naga（旧 .json / .json.gz）、
-    log_id = 完整 report_id、每行 40 个特征（5 第零类 + 17 第一类 + 17 第二类 + 1 第三类）、第零类五项**按帧判定**
+    log_id = 完整 report_id、每行 42 个特征（7 第零类 + 17 第一类 + 17 第二类 + 1 第三类）、第零类七项**按帧判定**
      （第 60 轮 / 用户 m06323 ①，口径按 m06560 更正：这一帧的决策者持有该模型的决策概率表才是「是」；
-     天凤五项全「否」）、f_ai_* 入库、schema_version = 10、天凤 / NAGA / Mortal 混编进同一个库
+     天凤七项全「否」）、f_ai_* 入库、schema_version = 11、天凤 / NAGA / Mortal 混编进同一个库
   6. 本地服务接口（第 30 轮，用户 m01171 第 1 / 2 条）：POST /api/naga-convert 把浏览器
      手选 / 拖放进来的报告字节转成同构 JSON（与 naga.to_game 逐字节一致）、坏内容被拒；
      GET /api/paipu-browse 只列 data/paipu 里的子目录与牌谱文件（越界目录被拒）
@@ -39,10 +39,14 @@ r"""naga 正式测试（第 27 轮：NAGA 报告适配层 / 流局种类推断�
 15. 第 63 轮（用户 m07289）：关键帧 / wait 行的判据改成「这张牌**可能**被他家鸣牌」（碰 / 大明杠 =
     非立直家同种 ≥2；吃 = 只有下家、且吃后还剩可打的牌〔食替〕），wait 行改为「可能鸣牌的那一家各一行」；
     「等待鸣牌」编为**第三类特征**（1 项，不进检索下拉、不列进「当前帧特征」，改由面板底部的局面文字体现）、
-    检索新增必选单选「出牌 / 鸣牌响应」、每行 40 个特征（5 第零类 + 17 第一类 + 17 第二类 + 1 第三类）、
+    检索新增必选单选「出牌 / 鸣牌响应」、每行 42 个特征（7 第零类 + 17 第一类 + 17 第二类 + 1 第三类）、
     v1.3.1 / schema 10
 16. 第 65 轮（用户 m08125 ①）：加杠副露的 4 张牌回归 —— 报告里的加杠事件只带「加进去的那一张」，
     replay 必须把它并回原来的碰（4 张同种牌），否则牌桌上会整组消失
+17. 第 74 轮（用户 m09507）：新版 NAGA 报告（アナンタ / ウロボロス）—— 别名补 NAGA-避四 / NAGA-争一、
+    第零类 5 项 → 7 项（共 42 项）、新模型的打牌分布取 dahai_detail（37 槽，末 3 槽 = 赤 5）折叠回 34 槽；
+    新模型的「立直概率」= dahai_detail 的立直支之和（官方 viewer 口径，与 dahai_pred 的两支相加同源）；
+    schema 10 → 11
 
 运行：
   python test\naga_test.py
@@ -54,7 +58,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from mjscore import naga, paths, replay  # noqa: E402
+from mjscore import ai_models, feats, naga, paths, replay  # noqa: E402
 import urllib.parse  # noqa: E402
 
 try:
@@ -288,7 +292,7 @@ RID_S5 = "3180043a69ad5cbf353fba1bde67491ff135d60f7902cbe654db9057f40ee4e0v2_2"
 
 
 def section5():
-    print("---- 5. 打点链路 / 存储集成（40 个特征 + 第零类 5 项 + 天凤/NAGA 混编）")
+    print("---- 5. 打点链路 / 存储集成（42 个特征 + 第零类 7 项 + 天凤/NAGA 混编）")
     import json as _json
     import shutil
     from mjscore import cli, feats, store
@@ -322,25 +326,25 @@ def section5():
 
         recs = feats.records_for_game(game)
         check(len(recs) > 0, "NAGA 报告打出 %d 行" % len(recs))
-        eq(len(recs[0]["feats"]), 40, "每行 40 个特征（5 第零类 + 17 第一类 + 17 第二类 + 1 第三类）")
+        eq(len(recs[0]["feats"]), 42, "每行 42 个特征（7 第零类 + 17 第一类 + 17 第二类 + 1 第三类）")
         eq(recs[0]["feats"]["ai_balance"], "是",
            "决策者（0 号家）的帧 + 该帧有概率表 → NAGA-平衡 分析 = 是（用户 m06560）")
         eq((recs[0]["feats"]["ai_superhuro"], recs[0]["feats"]["ai_mortal41a"],
             recs[0]["feats"]["ai_mortal41b"], recs[0]["feats"]["ai_mortal41c"]), ("否", "否", "否", "否"),
-           "报告里只有ニシキ ⇒ 其余四项第零类 = 否（用户 m05937 ②）")
+           "报告里只有ニシキ ⇒ 其余六项第零类 = 否（用户 m05937 ② / m09507）")
         eq((recs[0]["ai_models"], recs[0]["ai_series"]), ("NAGA-平衡", "NAGA"), "决策者那一行辅助列 = 规范名 / 系列")
         eq(len(recs), 3, "两次非自摸摸牌各打一行 + 1 行鸣牌响应帧（6p 下家能吃，用户 m07289）")
         eq((recs[2]["kind"], recs[2]["seat"], recs[2]["feats"]["meld_wait"]),
            ("wait", 2, "是"), "出牌 6p 后下家（2 号家）能吃 ⇒ 该家一行鸣牌响应帧，等待鸣牌 = 是")
         eq((recs[0]["kind"], recs[0]["seat"], recs[0]["feats"]["meld_wait"]), ("draw", 0, "否"),
            "摸牌帧的「等待鸣牌」= 否（第三类特征，用户 m07289）")
-        eq([recs[1]["feats"][k] for k in feats.AI_KEYS], ["否"] * 5,
-           "1 号家的决策帧没有概率表 ⇒ 五项全「否」（用户 m06560）")
+        eq([recs[1]["feats"][k] for k in feats.AI_KEYS], [feats.NO] * len(feats.AI_KEYS),
+           "1 号家的决策帧没有概率表 ⇒ 七项全「否」（用户 m06560）")
         eq((recs[1]["ai_models"], recs[1]["ai_series"]), ("", ""), "没有概率表的那一行辅助列为空串")
         check(recs[0]["url"].startswith("https://naga.dmv.nico/htmls/report_viewer.html?report_id="),
               "url 指向 NAGA 观看页（%s…）" % recs[0]["url"][:58])
 
-        # fill_ai：node / python / fixture 三条路径统一补第零类 5 项 + 两个辅助列
+        # fill_ai：node / python / fixture 三条路径统一补第零类 7 项 + 两个辅助列
         th_log = "2026083020gm-00a9-0000-e9ce1efe"
         fake = [{"log_id": th_log, "feats": {}},
                 {"log_id": RID_S5, "round_index": 0, "ev_index": 0, "seat": 0, "feats": {}},
@@ -353,29 +357,30 @@ def section5():
         eq((fake[2]["ai_models"], fake[2]["ai_series"]), ("", ""), "无概率表的帧两个辅助列为空串")
         eq(cli.file_log_id(th_log + ".xml"), th_log, "file_log_id 对天凤 xml 仍用文件名")
 
-        # 入库：schema 10 + f_ai_*（按帧判定）+ 40 项
+        # 入库：schema 11 + f_ai_*（按帧判定）+ 42 项
         db = os.path.join(tmp, "an.sqlite")
         res = cli.analyze([path], db=db, tool="python")
         eq(res["tool"], "python", "analyze 用 python 打点")
         eq((res["sources"], res["rounds"]), (1, 1), "入库 1 个来源 / 1 局")
         conn = store.connect(db, create=False)
         try:
-            eq(store.get_meta(conn).get("schema_version"), "10",
-               "meta.schema_version = 10（第三类特征 + 鸣牌响应判据，用户 m07289）")
+            eq(store.get_meta(conn).get("schema_version"), str(store.SCHEMA_VERSION),
+               "meta.schema_version = %d（第 74 轮：第零类 7 项 + 新 NAGA 两模型）" % store.SCHEMA_VERSION)
             eq(store.source_ids(conn), {RID_S5}, "source.log_id = 完整 report_id")
             dist = dict(conn.execute("SELECT f_ai_balance, COUNT(*) FROM frame GROUP BY f_ai_balance").fetchall())
             eq(dist, {"是": 1, "否": len(recs) - 1},
                "f_ai_balance：决策者帧 = 是（1 行）/ 其余 %d 行 = 否（用户 m06560）" % (len(recs) - 1))
             _other = conn.execute("SELECT COUNT(*) FROM frame WHERE f_ai_superhuro <> '否'"
+                                  " OR f_ai_naga_avoid4 <> '否' OR f_ai_naga_aggressive <> '否'"
                                   " OR f_ai_mortal41a <> '否' OR f_ai_mortal41b <> '否'"
                                   " OR f_ai_mortal41c <> '否'").fetchone()[0]
-            eq(_other, 0, "该样本只含「ニシキ」⇒ 其余四项第零类全为「否」")
+            eq(_other, 0, "该样本只含「ニシキ」⇒ 其余六项第零类全为「否」")
             idx, seat = conn.execute("SELECT idx, seat FROM frame WHERE f_ai_balance = '是' LIMIT 1").fetchone()
             one = store.query_detail(conn, idx)
-            eq(len(one["feats"]), 40, "query_detail 展开 40 个特征")
+            eq(len(one["feats"]), 42, "query_detail 展开 42 个特征")
             eq(one["feats"]["ai_balance"], "是", "库里的 NAGA-平衡 分析 = 是")
             ff = store.frame_feats(conn, RID_S5, one["round_index"], one["frame_index"], seat)
-            eq(len((ff or {}).get("feats") or {}), 40, "frame_feats 返回 40 项特征")
+            eq(len((ff or {}).get("feats") or {}), 42, "frame_feats 返回 42 项特征")
             eq((ff or {}).get("feats", {}).get("ai_balance"), "是", "frame_feats 里的 NAGA-平衡 分析 = 是")
             eq(store.list_feature_values(conn, "ai_balance"),
                [{"value": "否", "count": len(recs) - 1}, {"value": "是", "count": 1}],
@@ -383,11 +388,12 @@ def section5():
             idxs = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'index'")]
             check("frame_ai" in idxs, "frame_ai 索引已建")
 
-            # 混编：把同一帧改写成天凤来源（第零类五项 = 否）插进同一个库
+            # 混编：把同一帧改写成天凤来源（第零类七项 = 否）插进同一个库
             row = dict(recs[0])
             row["log_id"] = th_log
             row["feats"] = dict(row["feats"])
-            for _k in ("ai_balance", "ai_superhuro", "ai_mortal41a", "ai_mortal41b", "ai_mortal41c"):
+            for _k in ("ai_balance", "ai_superhuro", "ai_naga_avoid4", "ai_naga_aggressive",
+                       "ai_mortal41a", "ai_mortal41b", "ai_mortal41c"):
                 row["feats"][_k] = "否"
             row["ai_models"] = ""
             row["ai_series"] = ""
@@ -1019,6 +1025,50 @@ def section11():
                 "（加杠曾只带 1 张导致 4 张消失，用户 m08125 ①）")
 
 
+# --------------------------------------------------- 12. 新版 NAGA（アナンタ / ウロボロス，用户 m09507）
+def section12():
+    print("---- 12. 新版 NAGA 报告：别名 / 37 槽折叠 / 第零类 7 项")
+    eq(ai_models.normalize("アナンタ"), ai_models.NAGA_AVOID4, "アナンタ → NAGA-避四")
+    eq(ai_models.normalize("ウロボロス"), ai_models.NAGA_AGGRESSIVE, "ウロボロス → NAGA-争一")
+    eq(ai_models.series_of(ai_models.NAGA_AVOID4), "NAGA", "NAGA-避四 属 NAGA 系列")
+    eq(ai_models.series_of(ai_models.NAGA_AGGRESSIVE), "NAGA", "NAGA-争一 属 NAGA 系列")
+    eq([m["name"] for m in ai_models.model_list({"0": "ニシキ", "1": "アナンタ", "2": "ウロボロス"})],
+       ["NAGA-平衡", "NAGA-避四", "NAGA-争一"], "新版 naga_types → 三个模型名（用户 m09507）")
+    eq(len(ai_models.CHOICES), 7, "第零类 7 项")
+    eq([c[0] for c in ai_models.CHOICES],
+       ["ai_balance", "ai_superhuro", "ai_naga_avoid4", "ai_naga_aggressive",
+        "ai_mortal41a", "ai_mortal41b", "ai_mortal41c"], "第零类 key 顺序（NAGA 三项在前，用户 m09507）")
+    eq(len(feats.FEATURES), 42, "总特征 42 项（7 + 17 + 17 + 1）")
+    arr = [0] * 37
+    arr[34] = 3000; arr[4] = 100
+    arr[35] = 2000; arr[13] = 50
+    arr[36] = 4000; arr[22] = 10
+    out = naga._collapse_dahai(arr)
+    eq(len(out), 34, "折叠后 34 槽")
+    eq((out[4], out[13], out[22]), (3100, 2050, 4010), "赤 5 的 34 / 35 / 36 折回 5m / 5p / 5s")
+    eq(naga._collapse_dahai([0] * 34 + [0, 0, 3000], [0] * 34 + [0, 0, 1000])[22], 4000,
+       "两支逐槽相加后再折叠（官方 viewer 的 gt(a[0] + a[1])）")
+    fr = {"info": {"msg": {"type": "tsumo", "actor": 0, "pai": "5m", "tsumo": []}},
+          "dahai_pred": [[100] * 34, [0] * 34, [0] * 34],
+          "reach": [5000, None, None],
+          "dahai_detail": [None, [[0] * 34 + [0, 0, 6000], [0] * 34 + [800, 0, 0]],
+                           [[0] * 34 + [0, 0, 7000], [0] * 37]]}
+    em = naga._frame(fr, ai_models.model_list({"0": "ニシキ", "1": "アナンタ", "2": "ウロボロス"}))
+    eq(em["dahai_pred"][0], [100] * 34, "ニシキ 的 dahai_pred 原样保留（零变化前提，用户 m09507）")
+    eq(em["dahai_pred"][1][22], 6000, "アナンタ 的边际打牌分布 = 两支相加（赤 5s 槽折回 5s）")
+    eq(em["dahai_pred"][1][4], 800, "アナンタ 立直支里的 5m 也并入边际分布")
+    eq(em["dahai_pred"][2][22], 7000, "ウロボロス 同理（立直支全 0）")
+    eq(em["reach"][0], 5000, "ニシキ 的 reach 原样保留")
+    eq(em["reach"][1], 800, "アナンタ 的立直概率 = 立直支之和（官方 viewer 口径）")
+    eq(em["reach"][2], 0, "ウロボロス 的立直支全 0 ⇒ 这一帧立直概率 0")
+    fr2 = {"info": {"msg": {"type": "dahai", "actor": 1, "pai": "1m", "tsumo": []}},
+           "dahai_pred": [[100] * 34, [0] * 34, [0] * 34],
+           "dahai_detail": [None, [[0] * 34 + [0, 0, 6000], [0] * 37], None]}
+    em2 = naga._frame(fr2, ai_models.model_list({"0": "ニシキ", "1": "アナンタ", "2": "ウロボロス"}))
+    eq(em2["dahai_pred"][1][22], 6000, "不是立直决策帧也照样用 detail 算边际打牌分布")
+    eq("reach" in em2, False, "报告没标立直决策 ⇒ 不补 reach（沿用报告原始取值）")
+
+
 def main():
     print("naga_test：第 27 轮 NAGA 报告适配层（流局种类推断 + 听牌自算）+ 第 29 轮打点链路集成")
     section1()
@@ -1032,6 +1082,7 @@ def main():
     section9()
     section10()
     section11()
+    section12()
     print("=== 结果：通过 %d 项，失败 %d 项 ===" % (OK[0], BAD[0]))
     if BAD[0]:
         print("有失败用例")

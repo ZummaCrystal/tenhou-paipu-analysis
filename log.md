@@ -3048,7 +3048,9 @@ r = t % 3; t = (t // 3) * 4; h = [t, t, t]
 
 ---
 
-*最后更新：第 73 轮（**界面整体放大 25%** + 检索分段载入 + 静态帧禁用「局」选择 + **v1.3.1**：大版本 + 中版本相同即可读库（用户 m09339 ①②③ / m09354 ④⑤））。上一轮：第 72 轮（打包发布流程：**跨盘符 relpath 真 bug**（用户 m09228 实测 —— 打包后用户数据在 C:、程序在 D:，`os.path.relpath` 抛 `ValueError: path is on mount 'C:', start on mount 'D:'` ⇒ `/api/paipu-browse` 400，这是「牌谱目录只能拉开很窄的条」的另一半原因）：`mjscore/server.py` 新增 `_paipu_rel()`（只在牌谱根内做 relpath，返回 `data/paipu/...`）、`_rel_or_abs()` 兜住跨盘符；`test/datamgr_test.py` 第 3 节的陈旧期望（只数 `.xml`、硬编码目录名）改成全部后缀 + `scan(kind=all)` + 跨盘符断言（78 / 0）；后端已重新打包并冒烟通过（`/api/paipu-browse?dir=data/paipu` → 200），已由用户 m09307 在普通终端出包：`tenhou-paipu-analysis-1.3.0-setup.exe` = 143,284,238 B，SHA256 `7EEE64A4F11C89577840DF26976F216333DD7EC72C989BBC0699EFF6FF1CEE89`）。
+*最后更新：第 76 轮（AI 决策表「其它」行按**显示值**补足到 100.0%，用户 m09901；1.4.1 尚未打包发布，修复并入同一版本）。上一轮：第 75 轮（**新版 NAGA 联合分布展示**：NAGA-避四 / NAGA-争一 的决策表直接列「打 xx」/「打 xx 立直」、概率条在既能默听打又能立直打的牌上左右一分为二（左半紫 / 右半红）；旧模型展示零变化；按用户 m09354 ④ 只提小版本号 ⇒ **v1.4.1**（库结构不变，仍 schema 11）。上一轮：第 74 轮（**新版 NAGA 报告支持**：アナンタ → `NAGA-避四`、ウロボロス → `NAGA-争一`；第零类 5 → 7 项（共 42 特征）；两款新模型的打牌概率取 `dahai_detail` 的 37 档合并回 34 档 ⇒ **v1.4.0 / schema 11**（用户 m09507）；已有模型（含天凤 / Mortal）展示零变化；立直概率按官方 viewer 1.2.2 口径从 `dahai_detail` 的立直支还原，并修掉旧报告立直概率恒 0.0% 的 bug）
+
+上一轮：第 73 轮（**界面整体放大 25%** + 检索分段载入 + 静态帧禁用「局」选择 + **v1.3.1**：大版本 + 中版本相同即可读库（用户 m09339 ①②③ / m09354 ④⑤））。上一轮：第 72 轮（打包发布流程：**跨盘符 relpath 真 bug**（用户 m09228 实测 —— 打包后用户数据在 C:、程序在 D:，`os.path.relpath` 抛 `ValueError: path is on mount 'C:', start on mount 'D:'` ⇒ `/api/paipu-browse` 400，这是「牌谱目录只能拉开很窄的条」的另一半原因）：`mjscore/server.py` 新增 `_paipu_rel()`（只在牌谱根内做 relpath，返回 `data/paipu/...`）、`_rel_or_abs()` 兜住跨盘符；`test/datamgr_test.py` 第 3 节的陈旧期望（只数 `.xml`、硬编码目录名）改成全部后缀 + `scan(kind=all)` + 跨盘符断言（78 / 0）；后端已重新打包并冒烟通过（`/api/paipu-browse?dir=data/paipu` → 200），已由用户 m09307 在普通终端出包：`tenhou-paipu-analysis-1.3.0-setup.exe` = 143,284,238 B，SHA256 `7EEE64A4F11C89577840DF26976F216333DD7EC72C989BBC0699EFF6FF1CEE89`）。
 
 上一轮：第 70 轮（**关键帧判定先于概率过滤**（用户 m09110）：报告给这一帧的决策者列出的可选策略不止「过」才算「面板有内容」（本判定只关 AI 面板，与「决策帧」判定无关）`0.0%` 的吃 / 碰 / 杠选项也算「列出来了」），AI 面板一定显示分析结果；表格本身仍按 10% 门槛筛选，所以低概率的鸣牌选项不会单独列出。用户 m09045 那一帧（上家打 3s、我方有 4s5s 吃 / 2s4s 吃 / 3s3s 碰，ニシキ 给的三个鸣牌选项都是 0.0%）现在显示「PASS 100.0%」+ 5 项分析数据，而不是像改动前那样整块留空；残差不足 0.5% 时不再补「其它 0.0%」。报告侧本就带每个选项的万分比概率 （`huro[座位][模型] = {0:PASS, 1/2/3:吃, 4:碰, 5:大明杠}`），吃三种牌对的下标含义用报告里实际发生的 chi 事件的 `kind` 字段反查证实与本仓 `nagaChiPair()` 一致；Mortal 报告同一套编码（`mjscore/mortal.py` 的 `HURO_PASS/HURO_PON/HURO_KAN`）。41 份 NAGA 报告的 `huro` 键模式统计：**没有任何一格只列 PASS**（最少也带一个吃 / 碰 / 杠键）⇒ 「只有 PASS ⇒ 面板留空」实际主要作用于 Mortal 的 PASS-only 帧与报告没给选项的展示帧。`node test\apptest.js` 795 行 / 0 失败）。上一轮：第 69 轮（README 重写为面向使用者的发布说明 —— 只讲功能 / 界面操作 / 理解方式与麻将术语，不写需求来源、实现方法、踩坑与版本历史；旧版 readme 原样移入 `docs/readme-dev.md` 并加「开发过程记录」说明；顺手修了首页两处旧文案：特征数「18 个第一类」→「17 个第一类 + 1 个第三类」、检索卡片补「鸣牌响应帧」）。上一轮：第 68 轮（用户 m08918：**打包版「牌谱分析」页的「牌谱目录 / 牌谱文件」下拉为空** —— 服务端把 `data/paipu` 这类相对写法一律拼到资源根（打包后 `_MEIPASS` / 安装目录）而不是用户数据根（`%LOCALAPPDATA%\tenhou-paipu-analysis`，`mjscore\paths.py`）⇒ 目录不存在；`mjscore\server.py` 新增 `_user_path()`（绝对路径原样、相对路径先试用户数据根再退资源根），`_abs()` / `/api/paipu-browse` / `/api/scan` / `/api/read` / 数据库与分析路径都走它，`test\datamgr_test.py` 新增第 4 节回归（datamgr 54 / 0、naga 224 / 0）；已发布的 v1.3.0 安装包仍带此 bug，需重新打包后端）。上一轮：第 67 轮（用户 m08700：**打包发布流程 + 应用图标 6m 图案收缩**。① 修掉打包后的后端**一启动就崩**的真 bug：PyInstaller 从 conda base（`D:\coding\anaconda3\Library\bin`）抓了 `libssl-3-x64.dll` / `libcrypto-3-x64.dll`（789,320 / 5,297,992 B），与本环境 `py314_null\Library\bin` 的（1,326,920 / 7,349,064 B）不是一套，和 `DLLs\_ssl.pyd` 不匹配 ⇒ `ImportError: DLL load failed while importing _ssl: 找不到指定的程序`；`packaging\pyi_build.py` 新增 `ssl_pair()` / `fix_ssl_pair()`：把本环境的那一对 `--add-binary` 进包，并在打包后按 SHA256 校验、不一致就覆盖（打印 `OpenSSL : …`）；`build.ps1 -Smoke` 实测后端 0.5 s 就绪、`/api/health` 返回 version 1.3.0。② 图标：`tools\svg2ico.py` 新增 `--content-scale`（牌面白底不缩、只把图案围绕牌面中心收缩），`build.ps1` 用 0.84 ⇒ `build\icon.ico`（39,748 B，16/32/48/64/128/256）四周白边更宽（用户 m08700，与界面牌图的 0.09 牌宽 padding 一致）。无 schema / 特征 / 版本变化（仍 v1.3.0 / schema 10）；`apptest.js` 759 行 / 0 失败、`naga_test.py` 224 / 0、`mortal_test.py` 106 / 0；安装包（electron-builder）需普通终端跑，指纹待补）。
 
@@ -3425,3 +3427,113 @@ r = t % 3; t = (t // 3) * 4; h = [t, t, t]
 1. ~~重新打包 v1.3.1（后端 + NSIS 安装包）~~ **已完成（用户 m09444）**：`tenhou-paipu-analysis-1.3.1-setup.exe` = 143,286,767 B，SHA256 `F95F577AF7CC761A5438F7DA9B040A05BB7B0B297BA90559134D5AA2BE0016C1`；readme §2.1 指纹已同步。
 2. `test/mjscore_test.py` 全量跑一次（用户本机）。
 3. 请用户目视确认 1.25 倍界面（可截图）。
+
+
+---
+
+## 68. 第 74 轮：新版 NAGA 报告（アナンタ / ウロボロス）支持 —— NAGA-避四 / NAGA-争一（用户 m09507，v1.4.0 / schema 11）
+
+### 68.1 交付物
+| 文件 | 改动 |
+| --- | --- |
+| `mjscore/ai_models.py` | 新增 `NAGA_AVOID4 = "NAGA-避四"`（アナンタ）/ `NAGA_AGGRESSIVE = "NAGA-争一"`（ウロボロス）+ 别名；`CHOICES` 5 → 7 项（新 NAGA 两项排在 Mortal 之前），列名 `f_ai_naga_avoid4` / `f_ai_naga_aggressive` |
+| `mjscore/feats.py` | 第零类 5 → 7 项、总特征 40 → 42 |
+| `mjscore/naga.py` | `_DAHAI_TAIL = {34: 4, 35: 13, 36: 22}` + `_collapse_dahai()`：新版模型的打牌分布 `dahai_detail[m][0]` 是 37 档（末 3 档 = 赤 5m / 赤 5p / 赤 5s），合并回 34 档填进 `dahai_pred[m]`；原有模型的分支一字不动；`_model_values` 区分「每模型扁平列表」与「单值列表」（修掉旧报告立直概率恒 0.0%） |
+| `mjscore/store.py` | `SCHEMA_VERSION` 10 → 11、`frame_ai` 索引 7 列、口径说明 42 项 |
+| `mjscore/cli.py` / `mjscore/server.py` | 文案：第零类 7 项 / 42 个特征 |
+| `mjscore/__init__.py` / `package.json` | v1.3.1 → **v1.4.0** |
+| `web/js/mjsfeat.js` / `web/js/app.js` | 前端 AI 特征与模型下拉同步 7 项（`AI_CHOICES`、`AI_ALIASES` 加 アナンタ / ウロボロス） |
+| `test/naga_test.py` | 新增第 12 节（别名 / 37→34 折叠 / `_frame()` 填充）；40 → 42、schema 10 → 11（244 / 0） |
+| `test/mjscore_test.py` | 第零类 7 项、42 特征、`APP_VERSION` 1.4.0、枚举 14 → 16 项 |
+| `test/mortal_test.py` / `test/apptest.js` | 「五项全否」→ 按 `len(feats.AI_KEYS)`；模型菜单 8 行（无AI决策 + 7）/ 特征下拉 42 − 7 − 1 = 34 |
+
+### 68.2 技术要点
+1. 新版 NAGA 报告的**结构不变**（`naga_version [2,2]`、`pred` / 帧字段 / 帧数 = 事件数），只有 `naga_types` 换成 `{'0':'ニシキ','1':'アナンタ','2':'ウロボロス'}`，并新增 `dahai_detail` / `hora` / `ankan_pai` / `kakan_pai` 四个字段。
+2. **零变化前提**（用户 m09507）：41 份旧 `.naga` 的 `dahai_pred`（21,619 帧）/ `huro`（5,434）/ `kan`（195）/ `reach`（826）转换结果与改动前逐字节一致；`_frame()` 只在新模型自己的 `dahai_pred` 缺失 / 全 0 时才用 `dahai_detail` 覆盖。
+3. **37 档的语义**：末 3 档 = 赤 5m / 赤 5p / 赤 5s（`_DAHAI_TAIL = {34: 4, 35: 13, 36: 22}`）；与报告自带的 `info.msg.pred_dahai`（34 档）交叉验证：合并后一致率 99.8%（2,467 / 2,471），不合并只有 2,452。
+4. `huro` / `kan` 仍是「每模型一格」⇒ 两位新模型天然可用；**立直概率 = `dahai_detail[m][1]`（立直支）各槽之和**（官方 viewer 1.2.2 的 `gt()` / `mt()` 口径：`dahai_detail` = `[ダマ支(37), 立直支(37)]`、`dahai_pred` = 两支逐槽相加后把末 3 档并回 34 档、`reach` 有报告值时优先用报告值）。实测新 4 份报告 3,979 帧里补出 reach 的帧 = 66（= ニシキ 的 reach 帧数 8+17+12+29）、口径一致 132（66×2）、边际打牌分布一致 3,601；旧 41 份 44,168 帧的 `dahai_pred` + `reach` 与改动前逐字节一致。
+5. 数据库结构变更 ⇒ `SCHEMA_VERSION = 11`，v1.3.x 建的库要用 `--delete-db` 重新分析；软件版本提到 v1.4.0（不改库结构的更新仍只提小版本号）。
+
+### 68.3 测试
+`naga_test.py` 244 / 0（含新增第 12 节）、`mortal_test.py` 106 / 0、`datamgr_test.py` 77 / 0、`node test\apptest.js` 801 行 / 0 失败、`selftest.js` / `uitest.js` 通过；`test/mjscore_test.py` 全量按用户 m07294 不跑（期望值已同步）。
+
+### 68.4 踩坑
+1. 新版报告的 `dahai_pred` 对 アナンタ / ウロボロス 是**全 0** 的定长 34 数组（不是缺失）⇒ 不能用「有没有这个键」判断，得看「全 0」。
+2. `dahai_detail` 是 `[每模型 [ダマ时的打牌联合分布(37), 立直时的打牌联合分布(37)]]`（不是「打牌分布 + 备用全 0 数组」），第一层可能为 `null`（ニシキ）。
+3. 官方 viewer 1.2.2 的 `mt()` / `gt()` 才是 `dahai_detail` 的正确口径（两支相加 + 末 3 档并回）；只看第一支会低估打牌分布、并会得出「新模型没有立直概率」的错误结论。另外 `mjscore/naga.py::_model_values` 原先把「扁平标量列表且长度 == 模型数」（= 旧报告的 `reach`）当成单模型值复制 ⇒ 逐个模型位置被包成嵌套列表 ⇒ 前端 `aiPick` 取到列表 ⇒ `Number(list)` = NaN ⇒ `nagaPctText` 兜底 0 ⇒ **NAGA 报告的立直概率此前恒显示 0.0%**（既有 bug，本轮一并修好）。
+4. 补丁脚本对 CJK 锚点必须先用 `repr()` 对齐缩进（本轮第一次补丁因文档串缩进 5 空格 vs 4 空格失败）；`_rd.py --grep` 的模式里不要混 `\"`（PowerShell 会把尾部引号吃掉 ⇒ `bad escape (end of pattern)`）。
+
+### 68.5 待办
+1. 用户目视确认：新版 NAGA 报告下模型下拉多出「NAGA-避四 决策 / NAGA-争一 决策」，两款新模型的决策面板与打牌概率条正常。
+2. 新模型的立直概率已按官方 viewer 口径还原（见 68.2 第 4 条）；报告另带 `hora`（各家各模型和了率）/ `ankan_pai` / `kakan_pai`（杠哪张 + 概率）等信息，本轮未使用 —— 是否需要展示待用户决定。
+3. `test/mjscore_test.py` 全量跑一次（用户本机）；重新打包 v1.4.0 后更新 readme §2.1 指纹。
+
+
+## 69. 第 75 轮：新版 NAGA 联合分布展示（决策表 + 概率条左右分色，用户 m09803，v1.4.1 / schema 11）
+
+### 69.1 交付物
+
+| 文件 | 改动 |
+| --- | --- |
+| `mjscore/naga.py` | `_frame()` 在有 `dahai_detail` 时输出 `dahai_split`（每模型 `{"dama": [34], "riichi": [34]}`，两支各自折叠 37→34） |
+| `web/js/app.js` | `aiFoldFrame` 折叠 `dahai_split`；`nagaOptions` 打牌分支联合分布感知（列「打 xx」/「打 xx 立直」；有 split 时不再单独出「立直」行） |
+| `web/js/ui.js` | `addNagaBars` 新增 split 分支（左半紫 / 右半红，高度各自独立；只有一支时画整宽单色） |
+| `web/style.css` | 新增 `.tbar.up.dama` / `.tbar.up.riichi` / `.tbar.up.riichi.solo` |
+| `test/apptest.js` | 新增联合分布断言（表行、无单独立直行、4 根条的顺序与高度、solo/dama 计数） |
+| `test/mjscore_test.py` | 版本兼容断言按 1.4.1 重写（原为 1.3.x 时代写法，已陈旧） |
+| `mjscore/__init__.py` / `package.json` | v1.4.0 → **v1.4.1**（不改库结构；顺手修 docstring「第零类 5 项」→ 7 项） |
+| `readme.md` / `log.md` | 决策表与概率柱的联合分布口径、版本历史、本节 |
+
+### 69.2 技术要点
+
+1. **联合分布**：新版 NAGA 的 `dahai_detail[m] = [默听支(37), 立直支(37)]`，两支还原后就是「打哪张牌 × 是否立直」的联合分布。旧模型只给两组边缘分布（打牌分布 + 立直概率），无法重构联合分布 ⇒ 旧模型展示一字不变（用户 m09507 的零变化前提保持）。
+2. **决策表**：新模型直接列 `打2m 60.0%`（默听支）与 `打3p立直 36.2%`（立直支），门槛仍是 10%（万分比 1000）；出现 split 时抑制单独的「立直」行。杠 / 鸣牌行与 NAGA-平衡形式相同。
+3. **概率条**：既能默听打又能立直打 ⇒ 整宽紫条从中间一分为二（左半紫 = 默听打、右半红 = 立直打），高度各自忠实；只在默听支 ⇒ 整宽紫条；只在立直支 ⇒ 整宽红条。
+4. **按值变色并不存在**：全仓 `web/js/*.js` 没有任何按概率值改色相的逻辑（grep `hsl` / `rgba(` / `toString(16)` 均 0 命中），紫条固定 `#9C27B0`；唯一随值变化的是 argmax 的 `.max`（更亮的紫 + 1px 浅紫描边，与官方 viewer 1.2.2 一致）。
+
+### 69.3 测试
+
+`node test\apptest.js` 全部通过（含 4 条新断言）· `node test\selftest.js` / `node test\uitest.js` exit 0 · `python test\naga_test.py` 244 / 0 · `python test\mortal_test.py` 106 / 0 · `python test\datamgr_test.py` 77 / 0。`test/mjscore_test.py` 全量按用户 m07294 未跑。
+
+### 69.4 踩坑
+
+1. `dahai_split` 只在有 `dahai_detail` 的模型上出现（其余为 `null`），前端必须判「该模型没有 split」，否则旧报告会拿到 `null`。
+2. apptest 的新断言块必须保存并还原 `App.naga.rounds[0][1]` / `App.rounds[0][1].state` / `aiModel`，否则后面的天凤、Mortal、检索等节会读到被改过的合成帧。
+3. `test/mjscore_test.py` 的版本兼容断言是 1.3.x 时代写的，版本提升后会失败 —— 全量测试不常跑，容易长期潜伏；改版本号时要一起改。
+4. 概率条的左右半用绝对定位百分比（左 32.5% / 宽 17.5%、右 50% / 宽 17.5%），不要改 `.tile.bars` 的宽度或 padding，否则与牌面对不齐。
+
+### 69.5 待办
+
+1. 目视确认：新版 NAGA 报告下「打 xx / 打 xx 立直」表与左右分色条；旧报告（NAGA-平衡 / 超辅露 / Mortal / 天凤）应完全不变。
+2. `test/mjscore_test.py` 全量仍需用户本机跑（约 41 分钟）。
+3. 重新打包 v1.4.1 后更新 `readme.md` §2.1 的发布包指纹。
+
+
+## 70. 第 76 轮：AI 决策表「其它」行按显示值补足到 100.0%（用户 m09901，仍 v1.4.1）
+
+### 70.1 现象与根因
+
+- 现象（用户 m09901，v1.3.1 打包版截图）：NAGA-平衡 决策面板只有一行「打 99.5%」，没有任何「其它」行，表内合计看起来不到 100%。
+- 复核（同一份报告 `742da5a7814ee495c45060984b58774588097c85a6c78ece185802b099fbb50bv2_2.naga` 東一局 8巡目 北家 = 帧 65 / 147）：这一帧只有 1 个选项过 10% 门槛 —— 打 2m = 9954 万分比（99.54%）⇒ **显示成 99.5%**；原始残差 46 万分比 = 0.46% 小于旧代码的 0.5%（50 万分比）阈值 ⇒「其它」被省略。
+- 结论：不是取整算错，而是「0.5% 阈值」与「一位小数显示」叠加后的表现问题（46 < 50，但显示上就是 99.5% + 0.0%）。
+
+### 70.2 改法（`web/js/app.js` 的 `renderNagaPanel`）
+
+- 改用**表内已显示选项的显示值合计**求残差：每项按 `Math.round(pct / 10) / 10` 取一位小数（立直行不计入，它与打牌是两个独立的边缘量，用户 m01903 ③）。
+- 残差 ≥ 0.1% 就补一行「其它」，其数字 = `100.0 − 显示值合计`（保证表内合计 = 100.0%）。
+- 显示值合计已达 100.0%（如 9999 显示 100.0%）或超过 100%（报告分布本身不归一）时不补；一个选项都没过门槛时也不补。
+- 旧例不回归：打 30% + 打 20% ⇒「其它 50.0%」；碰 75% + PASS 20% ⇒「其它 5.0%」；打 99.54% ⇒ 新增「其它 0.5%」。
+
+### 70.3 测试
+
+`test/apptest.js` 新增断言（9954 ⇒ 2 行：`打 99.5%` + `其它 0.5%`），并把「残差不足 0.5% 也不补」的旧文案改成「显示值合计已到 100.0% ⇒ 不补」；`node test\apptest.js` 全部通过。版本仍 **v1.4.1**（1.4.1 还没打包发布，本轮修复并入同版本；库结构不变，仍 schema 11）。
+
+### 70.4 踩坑
+
+1. 判断「表里合计对不对」必须按**显示值**（一位小数），不能按原始万分比 —— 两者可以差 0.05 个百分点，正好跨过阈值。
+2. 「其它」的 `pct`（排序用）仍保留原始残差，只让 `pctText` 用显示残差，避免影响排序与 `.other` 弱化样式。
+
+### 70.5 待办
+
+1. v1.3.1 维护版是否也要这一处修复（用户 m09901 询问维护流程）：从 `stable/1.3.1` 拉维护分支 → 同一处改动 → 版本 1.3.2 → 重新打包。
+2. `readme.md` §5.4 已同步「其它」口径；版本历史条目已补注。

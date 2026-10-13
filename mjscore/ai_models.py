@@ -6,6 +6,10 @@
 用户 m05806 ①：Mortal 的名字里不再带风格字母（``Mortal-4.1b-平衡`` → ``Mortal-4.1-平衡``），
 风格一律由 ``-避四 / -平衡 / -争一`` 表示（4.1a 避四 / 4.1b 平衡 / 4.1c 争一）。
 
+第 74 轮（用户 m09507）：新版 NAGA 报告的 naga_types 里出现「アナンタ / ウロボロス」，
+分别命名为 NAGA-避四 / NAGA-争一（同属 NAGA 系列）；它们是「ニシキ」之外的两种 NAGA 形态，
+打牌概率只给 `dahai_detail`（37 槽，含赤 5）而不给 `dahai_pred`，见 naga._collapse_dahai()。
+
 官方 viewer（static/naga_report/1.1.3/js/index.js）**直接拿 naga_types 的值当模型显示名**，
 源码与官网都没有「バランス / 超副露 / Mortal」这些字样，所以「ニシキ = 平衡形」「カガシ = 超副露形」
 这组别名按用户 m04556 给出的口径写在这里（唯一的映射表）。
@@ -20,6 +24,8 @@ SERIES_MORTAL = "Mortal"
 # 规范名：报告 `naga_types` 的原始值 -> 对外名称
 BALANCED = "NAGA-平衡"          # ニシキ：NAGA 的平衡（バランス）形
 SUPER_HURO = "NAGA-超副露"      # カガシ：NAGA 的超副露形
+NAGA_AVOID4 = "NAGA-避四"       # アナンタ：新版 NAGA 的避四形（用户 m09507）
+NAGA_AGGRESSIVE = "NAGA-争一"   # ウロボロス：新版 NAGA 的争一形（用户 m09507）
 # Mortal 4.1 的三种风格（用户 m05806 ①）：a = 避四、b = 平衡、c = 争一
 MORTAL_41A = "Mortal-4.1-避四"
 MORTAL_41B = "Mortal-4.1-平衡"
@@ -29,6 +35,8 @@ MORTAL_TAG_TO_NAME = {"4.1a": MORTAL_41A, "4.1b": MORTAL_41B, "4.1c": MORTAL_41C
 ALIASES = {
     "ニシキ": BALANCED,
     "カガシ": SUPER_HURO,
+    "アナンタ": NAGA_AVOID4,
+    "ウロボロス": NAGA_AGGRESSIVE,
     "ヒバカリ": "NAGA-ヒバカリ",
     "オメガ": "NAGA-オメガ",
     "ガンマ": "NAGA-ガンマ",
@@ -47,6 +55,8 @@ _VERSION_RE = re.compile(r"^\d+(?:\.\d+)?[a-z]?$", re.I)
 CHOICES = [
     ("ai_balance", "NAGA-平衡 分析", "f_ai_balance", BALANCED),
     ("ai_superhuro", "NAGA-超副露 分析", "f_ai_superhuro", SUPER_HURO),
+    ("ai_naga_avoid4", "NAGA-避四 分析", "f_ai_naga_avoid4", NAGA_AVOID4),
+    ("ai_naga_aggressive", "NAGA-争一 分析", "f_ai_naga_aggressive", NAGA_AGGRESSIVE),
     ("ai_mortal41a", "Mortal-4.1-避四 分析", "f_ai_mortal41a", MORTAL_41A),
     ("ai_mortal41b", "Mortal-4.1-平衡 分析", "f_ai_mortal41b", MORTAL_41B),
     ("ai_mortal41c", "Mortal-4.1-争一 分析", "f_ai_mortal41c", MORTAL_41C),

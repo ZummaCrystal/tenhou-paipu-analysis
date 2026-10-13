@@ -1924,11 +1924,13 @@ function redMarkOf(st) {
   }
   /* ------------- AI 决策模型切换（用户 m04556 ①）-------------
    * NAGA 报告里 dahai_pred / huro / reach / kan 的外层是「模型」维（naga_types 的档，
-   * 例：{'0':'ニシキ','1':'カガシ','2':'4.1b'}）。App.aiModel = -1 表示「无AI决策」：
+   * 例：{'0':'ニシキ','1':'アナンタ','2':'ウロボロス'}）。App.aiModel = -1 表示「无AI决策」：
    * 不画任何 AI 专属数据（= 天凤牌谱的展示方式，用户 m04556 ①）。 */
   var AI_CHOICES = [
     { key: 'ai_balance', name: 'NAGA-平衡', label: 'NAGA-平衡 决策' },
     { key: 'ai_superhuro', name: 'NAGA-超副露', label: 'NAGA-超副露 决策' },
+    { key: 'ai_naga_avoid4', name: 'NAGA-避四', label: 'NAGA-避四 决策' },
+    { key: 'ai_naga_aggressive', name: 'NAGA-争一', label: 'NAGA-争一 决策' },
     { key: 'ai_mortal41a', name: 'Mortal-4.1-避四', label: 'Mortal-4.1-避四 决策' },
     { key: 'ai_mortal41b', name: 'Mortal-4.1-平衡', label: 'Mortal-4.1-平衡 决策' },
     { key: 'ai_mortal41c', name: 'Mortal-4.1-争一', label: 'Mortal-4.1-争一 决策' }
@@ -1936,6 +1938,7 @@ function redMarkOf(st) {
   /* 与 mjscore/ai_models.py 的 ALIASES 保持一致：报告里 naga_types 的值 → 规范名 */
   var AI_ALIASES = {
     'ニシキ': 'NAGA-平衡', 'カガシ': 'NAGA-超副露',
+    'アナンタ': 'NAGA-避四', 'ウロボロス': 'NAGA-争一',   /* 用户 m09507 */
     'ヒバカリ': 'NAGA-ヒバカリ', 'オメガ': 'NAGA-オメガ', 'ガンマ': 'NAGA-ガンマ',
     'ニュー': 'NAGA-ニュー', 'シグマ': 'NAGA-シグマ',
     '4.1a': 'Mortal-4.1-避四', '4.1b': 'Mortal-4.1-平衡', '4.1c': 'Mortal-4.1-争一'
@@ -2008,6 +2011,8 @@ function redMarkOf(st) {
     var out = {};
     for (var k in nf) { if (Object.prototype.hasOwnProperty.call(nf, k)) { out[k] = nf[k]; } }
     out.dahai_pred = aiPick(nf.dahai_pred, idx, models) || [];
+    /* 新版 NAGA 的联合分布（用户 m09803）：每模型一份 { dama:[34], riichi:[34] } */
+    out.dahai_split = aiPick(nf.dahai_split, idx, models) || null;
     out.reach = aiPick(nf.reach, idx, models);
     out.kan = aiPick(nf.kan, idx, models) || {};
     var huro = {}, src = nf.huro || {};
@@ -2321,13 +2326,27 @@ function redMarkOf(st) {
         else if (idx === 5) { pushHuro(dk === null ? [] : [dk], '大明杠', p); }
         else if (dk !== null) { var pr = nagaChiPair(dk, idx); if (pr) { pushHuro(pr, '吃', p); } }
       }
-    } else {                                                  // 打牌决策：dahai_pred / reach / kan
-      var dp = nf.dahai_pred || [];
-      for (var k = 0; k < dp.length && k < 34; k++) {
-        if ((dp[k] || 0) > 1000) { push([k], '打', dp[k]); }
+    } else {                                     // 打牌决策：dahai_pred / dahai_split / reach / kan
+      /* 新版 NAGA（アナンタ = NAGA-避四 / ウロボロス = NAGA-争一）给的是「是否立直 × 打哪张牌」
+         的联合分布（用户 m09803）：默听支 → 「打 xx」、立直支 → 「打·立直 xx」，两表共同构成这一帧
+         的决策空间；此时不再单独列「立直」行（立直与打牌本来就是同一个动作）。
+         旧模型只给边缘分布（dahai_pred / reach）⇒ 走原来的两条分支，展示一字不变。 */
+      var sp = nf.dahai_split;
+      var split = (sp && sp.dama && sp.riichi) ? sp : null;
+      if (split) {
+        for (var ks = 0; ks < 34; ks++) {
+          var dv = split.dama[ks] || 0, rv = split.riichi[ks] || 0;
+          if (dv > 1000) { push([ks], '打', dv); }
+          if (rv > 1000) { push([ks], '打·立直', rv); }
+        }
+      } else {
+        var dp = nf.dahai_pred || [];
+        for (var k = 0; k < dp.length && k < 34; k++) {
+          if ((dp[k] || 0) > 1000) { push([k], '打', dp[k]); }
+        }
       }
       var reachItem = null;
-      if (nf.reach !== null && nf.reach !== undefined) {        // 立直是展示规则的特例（用户 m01903 ③）：
+      if (!split && nf.reach !== null && nf.reach !== undefined) { // 立直是展示规则的特例（用户 m01903 ③）：
         reachItem = { tiles: [], word: '立直', pct: nf.reach || 0,   // 这一帧只要有立直选项就显示，
           pctText: nagaPctText(nf.reach || 0), reach: true };        // 不看是否 >10%，且永远排第一
       }
@@ -2425,10 +2444,19 @@ function redMarkOf(st) {
     var shown = 0;
     // 立直与打牌（dahai_pred）是同一帧里两个独立的边缘量，「其它」只算打牌 / 鸣牌选项的残差（用户 m01903 ③）
     for (var i = 0; i < list.length; i++) { if (!list[i].reach) { shown += list[i].pct; } }
-    /* 「其它」= 1 − 已显示概率合计（用户 m01810 ②）；一个选项都没过门槛时不再补「其它 100%」
-       这种没有信息量的行（用户 m02007 ③、m09110）。 */
-    if (list.length && (10000 - shown) >= 50) {          // 残差不足 0.5% 就省略（否则会出现「其它 0.0%」）
-      list.push({ tiles: [], word: '其它', pct: 10000 - shown, pctText: nagaPctText(10000 - shown), other: true });
+    /* 「其它」= 100.0% − 表内已显示选项的**显示值**合计（用户 m01810 ②；用户 m09901）。
+       必须按显示值（一位小数）而不是原始万分比判断：9954（99.54%）会显示成 99.5%，原始残差只有 0.46%
+       却仍会在表里留下「合计 99.5%」的观感；一个选项都没过门槛、或显示值合计已到 100.0%
+       （甚至因报告分布不归一而超过 100%）时，不再补这种没有信息量的行（用户 m02007 ③、m09110）。 */
+    if (list.length) {
+      var shownTxt = 0;                                   // 立直与打牌是两个独立的边缘量，不计入（用户 m01903 ③）
+      for (var j = 0; j < list.length; j++) {
+        if (!list[j].reach) { shownTxt += Math.round(list[j].pct / 10) / 10; }
+      }
+      var restTxt = Math.round((100 - shownTxt) * 10) / 10;
+      if (restTxt >= 0.1) {
+        list.push({ tiles: [], word: '其它', pct: 10000 - shown, pctText: restTxt.toFixed(1) + '%', other: true });
+      }
     }
     for (i = 0; i < list.length; i++) { optsEl.appendChild(nagaOptEl(list[i])); }
     var hs = (seat === null) ? App.selfSeat : seat;           // 5 个数据（纯文本，用户 m00198 ②）

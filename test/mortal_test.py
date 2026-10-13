@@ -301,14 +301,14 @@ def section5():
         game = mortal.to_game(_report(tag))
         vals = feats.ai_values(game)
         yes = sorted(k for k, v in vals.items() if v == feats.YES)
-        eq((len(vals), yes), (5, [key]), "model_tag %s -> 只有 %s = 是" % (tag, key))
+        eq((len(vals), yes), (7, [key]), "model_tag %s -> 只有 %s = 是（第零类 7 项）" % (tag, key))
         eq(feats.ai_models_text(game), dict((("4.1a", "Mortal-4.1-避四"), ("4.1b", "Mortal-4.1-平衡"),
                                              ("4.1c", "Mortal-4.1-争一")))[tag],
            "辅助列 ai_models = 规范模型名")
         eq(feats.ai_series_text(game), "Mortal", "辅助列 ai_series = Mortal")
         eq(feats.paipu_url_of(game, "fb13c2973c0eabb3"),
            "https://mjai.ekyu.moe/report/fb13c2973c0eabb3.json", "打点行 url = Mortal 报告地址")
-    eq(sorted(feats.ai_values({}).values()), [feats.NO] * 5, "天凤牌谱五项全「否」")
+    eq(sorted(feats.ai_values({}).values()), [feats.NO] * len(feats.AI_KEYS), "天凤牌谱七项全「否」")
     eq(feats.viewer_seat({}), 0, "没有 meta / viewer_seat 时主视角按 0（NAGA / 天凤口径）")
     game = mortal.to_game(_report("4.1b"))
     eq(game["meta"].get("viewer_seat"), 0, "mortal 牌谱的播放初始主视角 = 被复盘的那一家（review.player_id）")
@@ -330,14 +330,14 @@ def section5():
     # 同一帧、别人（seat = 1）那一行 ⇒ 五项全「否」、辅助列空串（数据只属于决策者）
     other = cli.fill_ai([{"log_id": game["log_id"], "round_index": ri, "ev_index": ev,
                           "seat": 1, "feats": {}}], [game])[0]
-    eq([other["feats"][k] for k in feats.AI_KEYS], [feats.NO] * 5,
-       "不是决策者的行 ⇒ 五项全「否」（用户 m06560）")
+    eq([other["feats"][k] for k in feats.AI_KEYS], [feats.NO] * len(feats.AI_KEYS),
+       "不是决策者的行 ⇒ 七项全「否」（用户 m06560）")
     eq((other["ai_models"], other["ai_series"]), ("", ""), "不是决策者的行 ⇒ 辅助列空串")
     # 没有概率表的帧（第 2 局没有任何 entry）⇒ 就算 seat 是被复盘的那一家也全「否」
     nohit = cli.fill_ai([{"log_id": game["log_id"], "round_index": 1, "ev_index": 0,
                           "seat": 0, "feats": {}}], [game])[0]
-    eq([nohit["feats"][k] for k in feats.AI_KEYS], [feats.NO] * 5,
-       "该帧没有决策概率表 ⇒ 五项全「否」（用户 m06560）")
+    eq([nohit["feats"][k] for k in feats.AI_KEYS], [feats.NO] * len(feats.AI_KEYS),
+       "该帧没有决策概率表 ⇒ 七项全「否」（用户 m06560）")
     eq(feats.ai_frame_keys(game, 1, 0), [], "第 2 局没有 entry ⇒ 没有带概率表的帧")
 
 

@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 """SQLite 打点数据库：建库 / 写库 / 检索 / 导出。
 
-表结构（star schema，压缩维度 = 40 个特征：5 个第零类 + 17 个第一类 + 17 个第二类 + 1 个第三类；
-第零类 5 项 = **这一帧**有没有对应 AI 模型的决策概率表（按帧判定：这一帧做决策的那名玩家带该模型的数据
+表结构（star schema，压缩维度 = 42 个特征：7 个第零类 + 17 个第一类 + 17 个第二类 + 1 个第三类；
+第零类 7 项 = **这一帧**有没有对应 AI 模型的决策概率表（按帧判定：这一帧做决策的那名玩家带该模型的数据
 才是「是」；第 52 轮 / 用户 m04556 ②、第 59 轮 / m05937 ②、第 60 轮 / m06323 ① / m06560。模型名 =
-NAGA-平衡 / NAGA-超副露 / Mortal-4.1-避四 / Mortal-4.1-平衡 / Mortal-4.1-争一，列 f_ai_balance /
-f_ai_superhuro / f_ai_mortal41a / f_ai_mortal41b / f_ai_mortal41c；另有辅助列 ai_models / ai_series
+NAGA-平衡 / NAGA-超副露 / NAGA-避四 / NAGA-争一 / Mortal-4.1-避四 / Mortal-4.1-平衡 / Mortal-4.1-争一，列
+f_ai_balance / f_ai_superhuro / f_ai_naga_avoid4 / f_ai_naga_aggressive / f_ai_mortal41a / f_ai_mortal41b /
+f_ai_mortal41c；另有辅助列 ai_models / ai_series
 供按系列聚合），天凤 / NAGA / Mortal 报告可混编进同一个库）：
     meta          库级元信息（schema 版本、软件版本、工具、口径说明、特征注册表）
     feature_def   40 个特征的注册表（key / 中文名 / 类型 / 值域 / 列名）
@@ -30,7 +31,9 @@ import sqlite3
 from . import ai_models, feats, mjlog
 from . import __version__ as APP_VERSION, version_compatible   # 软件本体版本 + 兼容判据（用户 m09354 ⑤）
 
-SCHEMA_VERSION = 10  # 10：第一类「等待鸣牌」改列**第三类特征**；打点行改为 kind='wait' 的「鸣牌响应」帧
+SCHEMA_VERSION = 11  # 11：第零类补 NAGA-避四 / NAGA-争一（新增 f_ai_naga_avoid4 / f_ai_naga_aggressive，
+                     #     新版 NAGA 报告的两种新形态，用户 m09507）⇒ schema 10 及以前的库不再支持
+                     # 10：第一类「等待鸣牌」改列**第三类特征**；打点行改为 kind='wait' 的「鸣牌响应」帧
                      #    （判据 = 可能被他家鸣牌〔吃 / 碰 / 杠，含食替禁止〕，每个可能鸣牌的家各一行；
                      #    用户 m07289）—— 行集与特征分类都变了 ⇒ schema 9 及以前的库不再支持（第 63 轮 / v1.3.0）；
                      # 9：新增第一类特征「等待鸣牌」列 f_meld_wait（用户 m06832）+ 打点行新增 kind='wait'
@@ -92,7 +95,8 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS frame_flags ON frame (f_riichi_self, f_meld_self, f_meld_self_n)",
     "CREATE INDEX IF NOT EXISTS frame_others ON frame (f_riichi_others_n, f_meld_others_n, f_meld2_others_n, f_meld3_others_n)",
     "CREATE INDEX IF NOT EXISTS frame_oya ON frame (f_oya_riichi, f_oya_meld, f_oya_meld_n)",
-    "CREATE INDEX IF NOT EXISTS frame_ai ON frame (f_ai_balance, f_ai_superhuro, f_ai_mortal41a, f_ai_mortal41b, f_ai_mortal41c)",
+    "CREATE INDEX IF NOT EXISTS frame_ai ON frame (f_ai_balance, f_ai_superhuro, f_ai_naga_avoid4, "
+    "f_ai_naga_aggressive, f_ai_mortal41a, f_ai_mortal41b, f_ai_mortal41c)",
     # 第三类特征「等待鸣牌」（用户 m07289）：检索页「出牌 / 鸣牌响应」单选按它筛选
     "CREATE INDEX IF NOT EXISTS frame_wait ON frame (f_meld_wait)",
 ]
@@ -114,10 +118,10 @@ DOUKOU = ("打点对象 = 决策帧，分两类（第三类特征「等待鸣牌
           "吃/碰/大明杠不算）+ 1；鸣牌响应帧的巡目 = 该家下一次出牌会是第几巡（用户 m06832）。"
           "副露 = 吃/碰/加杠/大明杠/暗杠 的组数（拔北不计）；供托 = 立直棒×1000 + 本场×300；"
           "顺位同分时按自风 東→南→西→北 排先；该家自己就是亲家时，亲家（他家）三项记 否/否/0。")
-FULL_NOTE = ("--full（同时写入原始数据）：勾选时除了 40 个特征值，还把该帧的原始数据"
+FULL_NOTE = ("--full（同时写入原始数据）：勾选时除了 42 个特征值，还把该帧的原始数据"
              "（手牌 / 副露 / 宝牌指示牌 / 分数 / 牌谱路径）写进 frame_full 表 —— "
              "以后新增特征时可以只按这些原始数据重算，不必重新解析 XML；"
-"不勾选时只写 40 个特征值（库更小、写库略快），但后续新增特征只能重新分析全部牌谱。")
+"不勾选时只写 42 个特征值（库更小、写库略快），但后续新增特征只能重新分析全部牌谱。")
 
 
 # ------------------------------------------------------------------ 连接与建库

@@ -229,7 +229,7 @@ def merge_second_class(records, extra):
 
 
 def fill_ai(records, games):
-    """给打点行补第零类特征 5 项 + 辅助列 ai_models / ai_series（用户 m04556 ② / m05937 ②）。
+    """给打点行补第零类特征 7 项 + 辅助列 ai_models / ai_series（用户 m04556 ② / m05937 ② / m09507）。
 
     node / python / fixture 三条路径都经过这里：**逐行按帧判定**（用户 m06323 ①，口径按 m06560 更正）——
     只有「这一帧**做决策的那名玩家**（= 打点行的 seat 列）带该模型的决策概率表」才是「是」
@@ -241,7 +241,7 @@ def fill_ai(records, games):
         game = by_id.get(rec.get("log_id"))
         vals, models_txt, series_txt = feats.ai_frame_values(
             game, rec.get("round_index"), rec.get("ev_index"), rec.get("seat"))
-        rec.setdefault("feats", {}).update(vals)     # 第零类 5 项（是/否，按帧判定）
+        rec.setdefault("feats", {}).update(vals)     # 第零类 7 项（是/否，按帧判定）
         rec["ai_models"] = models_txt               # 辅助列：规范名逗号串
         rec["ai_series"] = series_txt               # 辅助列：系列名逗号串
     return records
@@ -379,7 +379,7 @@ def _analyze(inputs, db=None, db_name=None, tool="auto", full=False, node=None,
         if progress:
             progress(stage="写库", files_done=len(files), current="", events_total=len(records))
 
-    fill_ai(records, games)        # 第零类 5 项 + ai_models / ai_series：三条打点路径统一补
+    fill_ai(records, games)        # 第零类 7 项 + ai_models / ai_series：三条打点路径统一补
     log_full = bool(full)
     if progress:
         progress(stage="写库")
@@ -601,7 +601,7 @@ def main(argv=None):
     ap.add_argument("--list-dbs", action="store_true", help="列出 data/db 下的数据库")
     ap.add_argument("--delete-db", help="删除指定数据库文件")
     ap.add_argument("--features", action="store_true",
-                    help="打印 40 个特征定义（5 个第零类 + 17 个第一类 + 17 个第二类 + 1 个第三类）")
+                    help="打印 42 个特征定义（7 个第零类 + 17 个第一类 + 17 个第二类 + 1 个第三类）")
     ap.add_argument("--values", help="打印某个特征在库里的取值分布（配合 --db/--db-name）")
     ap.add_argument("--query", action="store_true", help="从 stdin 读检索条件（每行「特征名=条件」），执行检索")
     ap.add_argument("--ai", choices=ai_models.MODE_KEYS,

@@ -9,8 +9,10 @@
  * 这些值由 Python 端算好后入库（js 侧没有实现；--tool node 时由 cli.py 用 Python 补列）。
  * 三个向听数的内部取值 3 表示「>=3」，界面上一律显示成 >=3（用户 m04115②）。
  * 第 52 轮（用户 m04556 ②）把原来的第一类特征「NAGA决策」改名「NAGA-平衡 分析」并移到
- * 「第零类特征」；第 59 轮（用户 m05937 ②）补齐 Mortal 的避四 / 争一，共 5 项：NAGA-平衡 分析 /
- * NAGA-超副露 分析 / Mortal-4.1-避四 分析 / Mortal-4.1-平衡 分析 / Mortal-4.1-争一 分析：
+ * 「第零类特征」；第 59 轮（用户 m05937 ②）补齐 Mortal 的避四 / 争一；第 74 轮（用户 m09507）
+ * 再补新版 NAGA 的避四（アナンタ）/ 争一（ウロボロス），共 7 项：NAGA-平衡 分析 /
+ * NAGA-超副露 分析 / NAGA-避四 分析 / NAGA-争一 分析 / Mortal-4.1-避四 分析 /
+ * Mortal-4.1-平衡 分析 / Mortal-4.1-争一 分析：
  * 值由 cli.fill_ai 按牌谱来源补（js 侧没有报告解析器），这里只登记定义。
  * 第 36 轮（用户 m02227 ②、m02356）新增第一类特征「立直家（他家）一发巡」（是/否，
  * = 另外三家的「一发」状态逻辑或）：
@@ -40,13 +42,15 @@
   var AI_FEATURES = [
     { key: 'ai_balance', name: 'NAGA-平衡 分析', kind: 'enum', values: [YES, NO] },
     { key: 'ai_superhuro', name: 'NAGA-超副露 分析', kind: 'enum', values: [YES, NO] },
+    { key: 'ai_naga_avoid4', name: 'NAGA-避四 分析', kind: 'enum', values: [YES, NO] },
+    { key: 'ai_naga_aggressive', name: 'NAGA-争一 分析', kind: 'enum', values: [YES, NO] },
     { key: 'ai_mortal41a', name: 'Mortal-4.1-避四 分析', kind: 'enum', values: [YES, NO] },
     { key: 'ai_mortal41b', name: 'Mortal-4.1-平衡 分析', kind: 'enum', values: [YES, NO] },
     { key: 'ai_mortal41c', name: 'Mortal-4.1-争一 分析', kind: 'enum', values: [YES, NO] }
   ];
 
   /* 特征注册表：与 mjscore/feats.py 的 FEATURES 一致（key / 中文名 / 值域）。
-     顺序 = 第零类 5 项（AI_FEATURES）→ 第一类 17 项 → 第二类 17 项 → 第三类 1 项（共 40 项）。
+     顺序 = 第零类 7 项（AI_FEATURES）→ 第一类 17 项 → 第二类 17 项 → 第三类 1 项（共 42 项）。
      第一类 17 项：局况 … 顺位 → 自家立直状态 → …
      立直家（他家）数量 → 立直家（他家）一发巡 → 副露家（他家）数量 … 亲家（他家）副露数量。 */
   var FIRST_FEATURES = [
@@ -102,8 +106,8 @@
     { key: 'meld_wait', name: '等待鸣牌', kind: 'enum', values: [YES, NO] }
   ];
 
-  /* 顺序 = 第零类 5 项 + 第一类 17 项 + 第二类 17 项 + 第三类 1 项
-     （与 mjscore/feats.py 的 FEATURES 一致，共 40 项） */
+  /* 顺序 = 第零类 7 项 + 第一类 17 项 + 第二类 17 项 + 第三类 1 项
+     （与 mjscore/feats.py 的 FEATURES 一致，共 42 项） */
   var FEATURES = AI_FEATURES.concat(FIRST_FEATURES).concat(SECOND_FEATURES).concat(THIRD_FEATURES);
 
   /** 「立直家（他家）一发巡」（用户 m02227 ② / m02356）：另外三家只要有一家有「一发」状态就是 是 */

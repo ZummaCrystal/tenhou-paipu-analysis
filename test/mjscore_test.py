@@ -161,18 +161,21 @@ eq(per_file, [458, 660, 676, 699, 973], "各牌谱打点行数（升序）")
 
 # --- 2c. 第 21 轮：17 个第二类特征 -----------------------------------------
 print("=== 2c. 第二类特征（第 21 轮） ===")
-eq(len(feats.FEATURES), 40, "特征注册表 40 项（5 第零类 + 17 第一类 + 17 第二类 + 1 第三类）")
+eq(len(feats.FEATURES), 42, "特征注册表 42 项（7 第零类 + 17 第一类 + 17 第二类 + 1 第三类）")
 eq(len(feats.SECOND_KEYS), 17, "第二类特征 17 项")
-eq([f["key"] for f in feats.FEATURES][:5],
-   ["ai_balance", "ai_superhuro", "ai_mortal41a", "ai_mortal41b", "ai_mortal41c"],
-   "前 5 项 = 第零类特征（用户 m04556 ② / m05937 ②）")
+eq([f["key"] for f in feats.FEATURES][:7],
+   ["ai_balance", "ai_superhuro", "ai_naga_avoid4", "ai_naga_aggressive",
+    "ai_mortal41a", "ai_mortal41b", "ai_mortal41c"],
+   "前 7 项 = 第零类特征（用户 m04556 ② / m05937 ② / m09507：新版 NAGA 两项排 Mortal 之前）")
 eq([f["name"] for f in feats.AI_FEATURES],
-   ["NAGA-平衡 分析", "NAGA-超副露 分析", "Mortal-4.1-避四 分析", "Mortal-4.1-平衡 分析", "Mortal-4.1-争一 分析"],
-   "第零类 5 项特征名")
+   ["NAGA-平衡 分析", "NAGA-超副露 分析", "NAGA-避四 分析", "NAGA-争一 分析",
+    "Mortal-4.1-避四 分析", "Mortal-4.1-平衡 分析", "Mortal-4.1-争一 分析"],
+   "第零类 7 项特征名")
 eq([f["col"] for f in feats.AI_FEATURES],
-   ["f_ai_balance", "f_ai_superhuro", "f_ai_mortal41a", "f_ai_mortal41b", "f_ai_mortal41c"], "第零类列名 = f_ai_*")
+   ["f_ai_balance", "f_ai_superhuro", "f_ai_naga_avoid4", "f_ai_naga_aggressive",
+    "f_ai_mortal41a", "f_ai_mortal41b", "f_ai_mortal41c"], "第零类列名 = f_ai_*")
 eq(feats.AI_FEATURES[0]["values"], [feats.YES, feats.NO], "第零类取值 = 是/否")
-eq([f["key"] for f in feats.FEATURES][5], "joukyoku", "第零类之后紧跟第一类第 1 项「局况」")
+eq([f["key"] for f in feats.FEATURES][7], "joukyoku", "第零类之后紧跟第一类第 1 项「局况」")
 eq(len(feats.FIRST_KEYS), 17, "第一类特征 17 项（原「NAGA决策」已移入第零类；「等待鸣牌」已移到第三类）")
 eq(len(feats.THIRD_KEYS), 1, "第三类特征 1 项（用户 m07289：从第一类移出，不进检索下拉 / 不列进当前帧特征）")
 eq(feats.THIRD_KEYS[0], "meld_wait", "第三类第 1 项 = 等待鸣牌")
@@ -195,11 +198,13 @@ eq(feats.extract(_st_ipp, 0)["ippatsu"], "是", "另外三家有一发 ⇒ 是")
 _st_ipp["ippatsu"] = [True, False, False, False]
 eq(feats.extract(_st_ipp, 0)["ippatsu"], "否", "只有自己有一发 ⇒ 否（只看另外三家）")
 eq(feats.ai_values({"naga": {"types": {"0": "ニシキ"}}}),
-   {"ai_balance": "是", "ai_superhuro": "否", "ai_mortal41a": "否", "ai_mortal41b": "否", "ai_mortal41c": "否"},
+   {"ai_balance": "是", "ai_superhuro": "否", "ai_naga_avoid4": "否", "ai_naga_aggressive": "否",
+    "ai_mortal41a": "否", "ai_mortal41b": "否", "ai_mortal41c": "否"},
    "只含「ニシキ」的报告 → 只有 ai_balance = 是")
 eq(feats.ai_values({}),
-   {"ai_balance": "否", "ai_superhuro": "否", "ai_mortal41a": "否", "ai_mortal41b": "否", "ai_mortal41c": "否"},
-   "天凤牌谱 → 第零类五项全「否」")
+   {"ai_balance": "否", "ai_superhuro": "否", "ai_naga_avoid4": "否", "ai_naga_aggressive": "否",
+    "ai_mortal41a": "否", "ai_mortal41b": "否", "ai_mortal41c": "否"},
+   "天凤牌谱 → 第零类七项全「否」")
 eq(feats.ai_series_text({"naga": {"types": {"0": "ニシキ", "2": "4.1b"}}}), "NAGA, Mortal",
    "ai_series 辅助列 = 系列去重串")
 # 第 60 轮（用户 m06323 ①；口径按用户 m06560 更正）：第零类按帧判定 —— 「这一帧做决策的那名玩家」
@@ -465,14 +470,14 @@ conn.execute("UPDATE meta SET v = ? WHERE k = 'schema_version'", (str(store.SCHE
 conn.commit()
 eq(store.get_meta(conn).get("app_version"), store.APP_VERSION, "meta 记录生成该库的软件版本")
 eq(store.app_version_of(conn), store.APP_VERSION, "app_version_of")
-eq(store.APP_VERSION, "1.3.1", "软件版本 = 1.3.0（第 63 轮；schema ≤9 的库不再支持）")
+eq(store.APP_VERSION, "1.4.1", "软件版本 = 1.4.1（第 75 轮：新版 NAGA 联合分布展示；schema ≤10 的库不再支持）")
 sec("版本兼容（用户 m09354 ⑤：大版本 + 中版本相同即可）")
-check(store.version_compatible("1.3.0"), "v1.3.0 建的库被 v1.3.1 视为兼容")
-check(store.version_compatible("1.3.1"), "同版本兼容")
+check(store.version_compatible("1.4.0"), "v1.4.0 建的库被 v1.4.1 视为兼容（补丁版本不同不影响）")
+check(store.version_compatible("1.4.1"), "同版本兼容")
 check(store.version_compatible(""), "无版本记录（第 22 轮以前的库）按兼容处理")
-check(not store.version_compatible("1.2.9"), "1.2.x 与 1.3.x 不兼容（中版本不同）")
-check(not store.version_compatible("1.4.0"), "1.4.x 与 1.3.x 不兼容（中版本不同）")
-check(not store.version_compatible("2.0.0"), "2.x 与 1.3.x 不兼容（大版本不同）")
+check(not store.version_compatible("1.3.1"), "1.3.x 与 1.4.x 不兼容（中版本不同）")
+check(not store.version_compatible("1.2.9"), "1.2.x 与 1.4.x 不兼容（中版本不同）")
+check(not store.version_compatible("2.0.0"), "2.x 与 1.4.x 不兼容（大版本不同）")
 
 conn.execute("UPDATE meta SET v = '0.0.9' WHERE k = 'app_version'")
 conn.commit()
@@ -563,12 +568,12 @@ eq(store.query(conn, [{"key": "junme", "expr": ">=1"}], limit=5000,
 _chi = [r for r in allq["rows"] if r["kind"] == "chi"][0]
 eq(_chi["kind"], "chi", "副露帧行 kind：%s" % _chi["label"])
 one = store.query_detail(conn, allq["rows"][0]["idx"])
-eq(len(one["feats"]), 40, "query_detail 展开 40 个特征（5 + 17 + 17 + 1）")
+eq(len(one["feats"]), 42, "query_detail 展开 42 个特征（7 + 17 + 17 + 1）")
 rf = store.round_frames(conn, allq["rows"][0]["log_id"], 0)
 eq(len(rf) > 0, True, "round_frames 返回本局帧")
 check("kind" in rf[0], "round_frames 行含 kind")
 _exp = store.export_json(conn, limit=3)
-eq((len(_exp["frames"]), len(_exp["features"]), len(_exp["source"])), (3, 40, 5),
+eq((len(_exp["frames"]), len(_exp["features"]), len(_exp["source"])), (3, 42, 7),
    "export_json 结构 meta/features/source/frames")
 conn.close()
 
@@ -787,8 +792,8 @@ try:
        "features 带作者信息（m04115③）")
     eq(bool(d.get("doukou")), True, "features 带口径说明")
     _enums = [f for f in (d.get("features") or []) if f.get("kind") == "enum"]
-    eq((len(_enums), all(bool(f.get("values")) for f in _enums)), (14, True),
-       "14 个互斥取值特征都带 values（第零类 5 项 + 第一类 8 项 + 第三类 1 项；前端据此渲染下拉）")
+    eq((len(_enums), all(bool(f.get("values")) for f in _enums)), (16, True),
+       "16 个互斥取值特征都带 values（第零类 7 项 + 第一类 8 项 + 第三类 1 项；前端据此渲染下拉）")
     eq(feats.BY_KEY["oya_meld"]["name"], "亲家（他家）副露状态", "特征 15 显示名已修正")
     # --- 第 23 轮：向听数对外显示 >=3（显示口径；检索仍按内部整数匹配，见第 6 节 5 条）---
     eq(cli.feat_value_text("shanten_mentsu", 3), ">=3", "向听数内部值 3 显示为 >=3")

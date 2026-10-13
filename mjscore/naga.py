@@ -192,7 +192,8 @@ def _model_values(seq, models):
 
     * ``seq`` 为 None / 空列表 -> None；
     * ``seq`` 是 dict、或列表首个元素不是 list/tuple/dict（旧版单模型报告的扁平值）
-      -> 同一个值复制给所有模型；
+      -> 长度等于模型数的扁平标量列表按「每模型一个值」返回（如 ``reach``），
+         否则把同一个值复制给所有模型；
     * 否则 ``seq`` 就是「每模型」外层：按 ``m["index"]`` 取（越界给 None）。
     """
     if seq is None:
@@ -210,8 +211,34 @@ def _model_values(seq, models):
                 idx = 0
             values.append(seq[idx] if 0 <= idx < len(seq) else None)
         return values
+    # 扁平标量列表且长度 == 模型数 ⇒ 就是「每模型一个值」（如 reach = [9291, 888, 9291]：
+    # 前端 aiPick 的 ``v.length === models.length`` 分支正是为它准备的）；否则按单模型值复制。
+    if len(seq) == len(models or [None]) and not any(isinstance(v, (list, tuple, dict)) for v in seq):
+        return list(seq)
     flat = list(seq)
     return [flat for _ in (models or [None])]
+
+
+# 新版 NAGA（アナンタ / ウロボロス，用户 m09507）的打牌分布是 37 槽：
+# 0..33 = 34 种，34 / 35 / 36 = 赤 5m / 赤 5p / 赤 5s（3,563 帧的 argmax 与报告自带的
+# info.msg.pred_dahai 交叉验证：合并后一致率 99.8%）。
+_DAHAI_TAIL = {34: 4, 35: 13, 36: 22}
+
+
+def _collapse_dahai(*arrs):
+    """37 槽（含赤 5）-> 34 槽（赤 5 并入普通 5，与 dahai_pred 的 34 槽口径一致）。
+
+    可一次传多个 37 槽数组：官方 viewer 的 ``gt()`` 会先把两支逐槽相加再折叠
+    （``gt(a[0].map((t, e) => t + a[1][e]))``）。
+    """
+    out = [0] * 34
+    for arr in arrs:
+        for i, v in enumerate(arr or []):
+            k = _DAHAI_TAIL.get(i, i)
+            if not (0 <= k <= 33) or not isinstance(v, (int, float)):
+                continue
+            out[k] += v
+    return out
 
 
 def _model_map(obj, models):
@@ -704,12 +731,56 @@ def _frame(fr, models):
     dahai = _model_values(fr.get("dahai_pred"), models)
     if dahai is not None:
         out["dahai_pred"] = [(list(v) if isinstance(v, (list, tuple)) else []) for v in dahai]
+    # 新版 NAGA 的 dahai_detail 放到 reach 之后再处理（见下面 detail 段），
+    # 免得合并出来的取值被报告自带的 reach / dahai_pred 覆盖。
     huro = _model_map(fr.get("huro"), models)
     if huro:
         out["huro"] = huro
     reach = _model_values(fr.get("reach"), models)
     if reach is not None:
         out["reach"] = reach
+    # 新版 NAGA（用户 m09507：アナンタ / ウロボロス）不给可用的 dahai_pred，而是给
+    # dahai_detail = [每模型 [ダマ时的打牌联合分布(37 槽), 立直时的打牌联合分布(37 槽)]]。
+    # 口径与官方 viewer（/static/naga_report/1.2.2/js/index.js 的 mt() / gt()）一致：
+    #   dahaiPred[m] = gt(detail[m][0] + detail[m][1])   —— 两支逐槽相加后的边际打牌分布
+    #   reach[m]     = sum(gt(detail[m][1]))             —— 立直那一支的概率总和；
+    #                   只在该帧报告本来就标了「立直决策」（reach 列表存在）时补 None 的格子
+    # 原有模型（ニシキ 等）detail[di] 为 null ⇒ 一字不动（用户 m09507 的零变化前提）。
+    detail = fr.get("dahai_detail")
+    if isinstance(detail, (list, tuple)):
+        pred_list = out.get("dahai_pred")
+        if not isinstance(pred_list, list):
+            pred_list = out["dahai_pred"] = [[] for _ in (models or [None])]
+        reach_list = out.get("reach")
+        split_list = [None] * len(models or [{"index": 0}])
+        for mi, m in enumerate(models or [{"index": 0}]):
+            try:
+                di = int((m or {}).get("index", mi))
+            except (TypeError, ValueError, AttributeError):
+                di = mi
+            dv = detail[di] if 0 <= di < len(detail) else None
+            if not (isinstance(dv, (list, tuple)) and dv and isinstance(dv[0], (list, tuple))):
+                continue
+            riichi = dv[1] if len(dv) > 1 and isinstance(dv[1], (list, tuple)) else None
+            merged = _collapse_dahai(dv[0], riichi)
+            if any(merged) and mi < len(pred_list):
+                pred_list[mi] = merged
+            if (isinstance(reach_list, list) and mi < len(reach_list)
+                    and reach_list[mi] is None and riichi is not None):
+                reach_list[mi] = sum(v for v in riichi if isinstance(v, (int, float)))
+            # 联合分布的两支（用户 m09803）：前端要按「打 xx」/「打 xx 立直」展示，
+            # 并把一根概率条左右一分为二（左半 = 默听支、右半 = 立直支），
+            # 所以把两支各自折回 34 槽单独带出（旧报告没有 dahai_detail ⇒ 无此字段）。
+            if mi < len(split_list):
+                split_list[mi] = {
+                    "dama": _collapse_dahai(dv[0]),
+                    "riichi": (_collapse_dahai(riichi) if isinstance(riichi, (list, tuple))
+                               else [0] * 34),
+                }
+        if any(s is not None for s in split_list):
+            out["dahai_split"] = split_list
+    if isinstance(out.get("reach"), list) and any(v is not None for v in out["reach"]):
+        pass
     kan = _model_values(fr.get("kan"), models)
     if kan is not None:
         out["kan"] = [(dict(v) if isinstance(v, dict) else None) for v in kan]

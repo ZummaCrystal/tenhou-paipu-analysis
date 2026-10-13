@@ -240,6 +240,39 @@
         }
         return;
       }
+      /* 新版 NAGA（NAGA-避四 / NAGA-争一）：报告给的是「是否立直 × 打哪张牌」的联合分布
+         （用户 m09803），所以一张牌上可能出现两根半宽的条 —— 左半紫 = 默听（不立直）打此牌的
+         概率（默听支）、右半红 = 立直打此牌的概率（立直支），两根高度各自忠实表示自己的值。
+         只出现在默听支的牌仍是一根整宽紫条（与 NAGA-平衡相同）；只出现在立直支的牌是整宽红条。
+         旧模型没有 dahai_split ⇒ 走原来的单根紫条分支（展示一字不变）。 */
+      var sp = nf.dahai_split;
+      if (sp && sp.dama && sp.riichi) {
+        var dv = sp.dama[kind] || 0, rv = sp.riichi[kind] || 0;
+        if (!(dv > 0) && !(rv > 0)) { return; }
+        var lb = Tiles.tileLabel(id);
+        if (dv > 0 && rv > 0) {                    /* 默听 / 立直都能打这张牌 ⇒ 左右分色 */
+          var bl = el('span', 'tbar up dama');
+          bl.style.height = (dv / 100).toFixed(2) + '%';
+          bl.title = '打 ' + lb + '（默听） ' + nagaPctText(dv);
+          node.appendChild(bl);
+          var br = el('span', 'tbar up riichi');
+          br.style.height = (rv / 100).toFixed(2) + '%';
+          br.title = '打 ' + lb + '（立直） ' + nagaPctText(rv);
+          node.appendChild(br);
+        } else if (dv > 0) {                       /* 只能默听打：整宽紫条 */
+          var bu = el('span', 'tbar up');
+          bu.style.height = (dv / 100).toFixed(2) + '%';
+          bu.title = '打 ' + lb + ' 预测 ' + nagaPctText(dv);
+          node.appendChild(bu);
+        } else {                                   /* 只能立直打：整宽红条 */
+          var bs = el('span', 'tbar up riichi solo');
+          bs.style.height = (rv / 100).toFixed(2) + '%';
+          bs.title = '打 ' + lb + '（立直） ' + nagaPctText(rv);
+          node.appendChild(bs);
+        }
+        node.classList.add('bars');
+        return;
+      }
       var dp = nf.dahai_pred;
       var p = (dp && dp.length) ? (dp[kind] || 0) : 0;
       if (!(p > 0)) { return; }

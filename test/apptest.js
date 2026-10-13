@@ -400,21 +400,25 @@ check(countCls(byId.board, 'tbar') === 0 && byId.nagaOptions.childNodes.length =
   '「无AI决策」时概率条 / 决策表 / 右下 5 个数据全不画（= 天凤牌谱的展示方式，用户 m04556 ①）');
 byId.nagaModelBtn.fire('click');
 check(!byId.nagaModelMenu.classList.contains('hidden'), '点标题按钮展开模型菜单（向下生长）');
-check(byId.nagaModelMenu.childNodes.length === 6 && byId.nagaModelMenu.textContent.indexOf('无AI决策') >= 0,
-  '菜单 ' + byId.nagaModelMenu.childNodes.length + ' 行 = 无AI决策 + 5 个 AI 模型（第零类 5 项，用户 m05937 ②）');
+check(byId.nagaModelMenu.childNodes.length === 8 && byId.nagaModelMenu.textContent.indexOf('无AI决策') >= 0,
+  '菜单 ' + byId.nagaModelMenu.childNodes.length + ' 行 = 无AI决策 + 7 个 AI 模型（第零类 7 项，用户 m05937 ② / m09507）');
 check(byId.nagaModelMenu.childNodes[0].textContent === '无AI决策'
   && byId.nagaModelMenu.childNodes[1].textContent === 'NAGA-平衡 决策'
   && byId.nagaModelMenu.childNodes[2].textContent === 'NAGA-超副露 决策'
-  && byId.nagaModelMenu.childNodes[3].textContent === 'Mortal-4.1-避四 决策'
-  && byId.nagaModelMenu.childNodes[4].textContent === 'Mortal-4.1-平衡 决策'
-  && byId.nagaModelMenu.childNodes[5].textContent === 'Mortal-4.1-争一 决策',
-  '菜单行文本：无AI决策 / NAGA-平衡 决策 / NAGA-超副露 决策 / Mortal-4.1-避四 决策 / Mortal-4.1-平衡 决策 / Mortal-4.1-争一 决策');
+  && byId.nagaModelMenu.childNodes[3].textContent === 'NAGA-避四 决策'
+  && byId.nagaModelMenu.childNodes[4].textContent === 'NAGA-争一 决策'
+  && byId.nagaModelMenu.childNodes[5].textContent === 'Mortal-4.1-避四 决策'
+  && byId.nagaModelMenu.childNodes[6].textContent === 'Mortal-4.1-平衡 决策'
+  && byId.nagaModelMenu.childNodes[7].textContent === 'Mortal-4.1-争一 决策',
+  '菜单行文本：无AI决策 / NAGA-平衡 / NAGA-超副露 / NAGA-避四 / NAGA-争一 / Mortal-4.1-避四 / Mortal-4.1-平衡 / Mortal-4.1-争一 决策');
 check(byId.nagaModelMenu.childNodes[0].classList.contains('cur'), '当前项「无AI决策」带 .cur');
 check(byId.nagaModelMenu.childNodes[2].classList.contains('disabled')
   && byId.nagaModelMenu.childNodes[3].classList.contains('disabled')
   && byId.nagaModelMenu.childNodes[4].classList.contains('disabled')
-  && byId.nagaModelMenu.childNodes[5].classList.contains('disabled'),
-  '本报告只有ニシキ ⇒ 其余 4 个模型行灰显不可点（用户 m04556 ① / m05937 ②）');
+  && byId.nagaModelMenu.childNodes[5].classList.contains('disabled')
+  && byId.nagaModelMenu.childNodes[6].classList.contains('disabled')
+  && byId.nagaModelMenu.childNodes[7].classList.contains('disabled'),
+  '本报告只有ニシキ ⇒ 其余 6 个模型行灰显不可点（用户 m04556 ① / m05937 ② / m09507）');
 check(!byId.nagaModelMenu.childNodes[1].classList.contains('disabled'), '有数据的模型行可点');
 byId.nagaModelMenu.childNodes[1].fire('click', { target: byId.nagaModelMenu.childNodes[1] });
 check(App.aiModel === 0 && byId.nagaModelBtn.textContent === 'NAGA-平衡 决策'
@@ -533,6 +537,22 @@ check(byId.nagaOptions.childNodes.length === 3 && byId.nagaOptions.textContent.i
   && byId.nagaOptions.textContent.indexOf('其它') >= 0 && byId.nagaOptions.textContent.indexOf('5.0%') >= 0,
   '鸣牌选项（碰 75% / PASS 20% / 其它 5%）= ' + byId.nagaOptions.textContent);
 check(countCls(byId.nagaOptions, 'other') === 1, '「其它」行带 .other 标记（弱化显示）');
+/* 「其它」按显示值补足到 100.0%（用户 m09901）：真实例 —— 唯一过门槛的选项 9954 万分比显示成 99.5%，
+   原始残差 46（0.46%）不足旧的 0.5% 阈值而被省略，表内合计只剩 99.5%；现在应补出「其它 0.5%」。 */
+var savedNfOther = App.naga.rounds[0][2];
+var dp9954 = nagaZeroM();
+dp9954[1] = 9954;                                       // 打 2m 99.54%（显示 99.5%）
+App.naga.rounds[0][2] = { msg: 'tsumo', actor: 0, pai: '4s', reach: null, dahai_pred: dp9954,
+  end_type: NAGA_ET, game_rank: NAGA_GR };
+App.renderNagaPanel();
+check(byId.nagaOptions.childNodes.length === 2
+  && byId.nagaOptions.textContent.indexOf('99.5%') >= 0
+  && byId.nagaOptions.textContent.indexOf('其它') >= 0
+  && byId.nagaOptions.textContent.indexOf('0.5%') >= 0
+  && countCls(byId.nagaOptions, 'other') === 1,
+  '显示值 99.5% ⇒ 补「其它 0.5%」，表内合计 = 100.0%（用户 m09901）= ' + byId.nagaOptions.textContent);
+App.naga.rounds[0][2] = savedNfOther;
+App.renderNagaPanel();
 
 /* ④ 杠的规范名称按**牌局状态**判定（用户 m08623）：手里 4 张 = 暗杠、碰副露 + 手里第 4 张 = 加杠、
    huro 档位 5 = 大明杠。Mortal 会把加杠报成 ankan（consumed 4 张）⇒ 不能按报告档位贴标签。 */
@@ -587,7 +607,7 @@ check(byId.nagaWho.textContent.indexOf('当前决策：A') >= 0 && byId.nagaOpti
   + ' / ' + byId.nagaOptions.textContent);
 check(byId.nagaOptions.childNodes.length === 1 && byId.nagaOptions.textContent.indexOf('碰') < 0
   && byId.nagaOptions.textContent.indexOf('吃') < 0 && countCls(byId.nagaOptions, 'other') === 0,
-  '10% 门槛保留：0.0% 的吃 / 碰选项不进表格，残差不足 0.5% 也不补「其它」（用户 m09110）= '
+  '10% 门槛保留：0.0% 的吃 / 碰选项不进表格；显示值合计已到 100.0% ⇒ 不补「其它」（用户 m09110 / m09901）= '
   + byId.nagaOptions.textContent);
 check(byId.nagaHud.childNodes.length === 5,
   '关键帧照旧给出 5 项 AI 分析数据（流局率 / 横移率 / 放铳率 / 和了率 / 期待顺位）= '
@@ -601,6 +621,45 @@ check(byId.nagaOptions.childNodes.length === 0 && byId.nagaWho.textContent === '
   + ' / 玩家「' + byId.nagaWho.textContent + '」');
 App.naga.rounds[0][2] = savedNfHuro;
 App.setFrame(2);
+
+/* 用户 m09803：新版 NAGA（NAGA-避四 / NAGA-争一）给的是「是否立直 × 打哪张牌」的联合分布 ——
+   决策表分别列「打 xx」（默听支）与「打·立直 xx」（立直支），不再单独列「立直」行；
+   概率条也按两支分色：两支都有 ⇒ 左右一分为二（左紫 = 默听、右红 = 立直），
+   只有默听支 ⇒ 整宽紫条（与 NAGA-平衡 相同），只有立直支 ⇒ 整宽红条。 */
+(function () {
+  var savedNf1c = App.naga.rounds[0][1];
+  var savedAiC = App.aiModel;
+  var dm = nagaZeroM(), ri = nagaZeroM();
+  dm[0] = 6000; ri[0] = 3000;      /* 1m：两支都能打 ⇒ 左紫 60% + 右红 30% */
+  dm[1] = 2500;                    /* 2m：只能默听打 ⇒ 整宽紫 25% */
+  ri[2] = 3000;                    /* 3m：只能立直打 ⇒ 整宽红 30% */
+  App.setAiModel(0);
+  App.naga.rounds[0][1] = {
+    msg: 'tsumo', actor: 0, pai: '4s', reach: 1000, dahai_pred: [0, 0, 0],
+    dahai_split: [{ dama: dm, riichi: ri }], end_type: NAGA_ET, game_rank: NAGA_GR
+  };
+  App.setFrame(1);
+  var ot = byId.nagaOptions.textContent;
+  check(byId.nagaOptions.childNodes.length === 4 && ot.indexOf('打·立直') >= 0
+    && ot.indexOf('60.0%') >= 0 && ot.indexOf('25.0%') >= 0 && ot.indexOf('30.0%') >= 0,
+    '新模型决策表 = 「是否立直 × 打哪张牌」的联合分布（打 1m 60% / 打·立直 1m 30% / 打·立直 3m 30% / 打 2m 25%）= ' + ot);
+  var upBars = [];
+  var allUp = byId.board.querySelectorAll('.tbar.up');
+  for (var ub = 0; ub < allUp.length; ub++) {
+    upBars.push(allUp[ub].className.replace(/^tbar up[ ]*/, '') + ':' + allUp[ub].style.height);
+  }
+  upBars.sort();
+  check(upBars.join(' | ') === ':25.00% | dama:60.00% | riichi solo:30.00% | riichi:30.00%',
+    '分色概率条（用户 m09803）：1m 左紫 60% + 右红 30%、2m 整宽紫 25%、3m 整宽红 30% = ' + upBars.join(' | '));
+  check(byId.board.querySelectorAll('.tbar.up.riichi.solo').length === 1
+    && byId.board.querySelectorAll('.tbar.up.dama').length === 1,
+    '两支都能打的牌画左半紫条（.dama）、只能立直打的牌画整宽红条（.solo）各 1 条');
+  check(byId.nagaHud.childNodes.length === 5,
+    '联合分布不影响 HUD 的 5 项 AI 分析数据 = ' + byId.nagaHud.childNodes.length);
+  App.naga.rounds[0][1] = savedNf1c;
+  App.setAiModel(savedAiC);
+  App.setFrame(2);
+})();
 
 /* ② 概率条按「轮到谁决策就显示谁的」（用户 m02007 ②）：本局最后一帧是家 B（座位 1）摸牌，
    打牌预测柱应当画在座位 1 的手上；自家手牌上只有自家的危险条，没有别家的预测柱。 */
@@ -980,12 +1039,13 @@ check(App.paipuUrl() === 'https://mjai.ekyu.moe/report/abc.json',
 App.setAiModel(-1);
 App.toggleAiModelMenu(true);
 var mmenu = byId.nagaModelMenu;
-check(mmenu.childNodes.length === 6 && mmenu.childNodes[5].textContent === 'Mortal-4.1-争一 决策'
-  && !mmenu.childNodes[5].classList.contains('disabled'),
-  '③ Mortal 报告（4.1c）菜单里只有「Mortal-4.1-争一 决策」可点');
+check(mmenu.childNodes.length === 8 && mmenu.childNodes[7].textContent === 'Mortal-4.1-争一 决策'
+  && !mmenu.childNodes[7].classList.contains('disabled'),
+  '③ Mortal 报告（4.1c）菜单里只有「Mortal-4.1-争一 决策」可点（8 行 = 无AI决策 + 7 模型）');
 check(mmenu.childNodes[1].classList.contains('disabled') && mmenu.childNodes[2].classList.contains('disabled')
-  && mmenu.childNodes[3].classList.contains('disabled') && mmenu.childNodes[4].classList.contains('disabled'),
-  '③ Mortal 报告里 NAGA / 其它 Mortal 模型行全部灰显（用户 m05937 ②）');
+  && mmenu.childNodes[3].classList.contains('disabled') && mmenu.childNodes[4].classList.contains('disabled')
+  && mmenu.childNodes[5].classList.contains('disabled') && mmenu.childNodes[6].classList.contains('disabled'),
+  '③ Mortal 报告里 NAGA / 其它 Mortal 模型行全部灰显（用户 m05937 ② / m09507）');
 App.toggleAiModelMenu(false);
 App.naga.kind = savedMKind;
 if (savedMModels === undefined) { delete App.naga.models; } else { App.naga.models = savedMModels; }
@@ -1051,9 +1111,9 @@ check(byId.nagaOptions.childNodes.length === 0 && byId.nagaHud.childNodes.length
   && byId.nagaWho.textContent === '', '天凤牌谱时 NAGA 面板三块留空（仅有固定框架，共有组件不错位）');
 check(byId.nagaModelBtn.textContent === '无AI决策', '天凤牌谱默认「无AI决策」= ' + byId.nagaModelBtn.textContent);
 byId.nagaModelBtn.fire('click');
-var tfRows = byId.nagaModelMenu.childNodes, tfAllDisabled = (tfRows.length === 6);
+var tfRows = byId.nagaModelMenu.childNodes, tfAllDisabled = (tfRows.length === 8);
 for (var tfr = 1; tfr < tfRows.length; tfr++) { if (!tfRows[tfr].classList.contains('disabled')) { tfAllDisabled = false; } }
-check(tfAllDisabled, '天凤牌谱下 5 个 AI 模型选项全灰（用户 m04556 ① / m05937 ②）');
+check(tfAllDisabled, '天凤牌谱下 7 个 AI 模型选项全灰（用户 m04556 ① / m05937 ② / m09507）');
 byId.nagaModelBtn.fire('click');   /* 收起菜单，免得影响后续断言 */
 check(App.paipuUrl() === 'http://tenhou.net/0/?log=' + f.replace(/\.xml$/, '') + '&tw=0',
   '① 天凤牌谱的复制 URL 用文件名特征码 = ' + App.paipuUrl());
@@ -2256,8 +2316,8 @@ for (var ci = 0; ci < recsCur.length; ci++) {
   if (recsCur[ci].kind === 'chi' || recsCur[ci].kind === 'pon') { recCall = recsCur[ci]; break; }
 }
 var ROWCALL = recCall ? dbRow(recCall, f.replace(/\.xml$/, '')) : null;
-/* 第 21 轮 / 第 29 轮 / 第 36 轮 / 第 52 轮 / 第 59 轮 / 第 62 轮 / 第 63 轮：假数据库行的 40 个特征值
-   （第零类 5 项 + 第一类 17 项 + 第二类 17 项 + 第三类 1 项：枚举一律 '是' / 实数 0.5 / 整数 1） */
+/* 第 21 轮 / 第 29 轮 / 第 36 轮 / 第 52 轮 / 第 59 轮 / 第 62 轮 / 第 63 轮 / 第 74 轮：假数据库行的 42 个特征值
+   （第零类 7 项 + 第一类 17 项 + 第二类 17 项 + 第三类 1 项：枚举一律 '是' / 实数 0.5 / 整数 1） */
 var FAKE_FEATS = {};
 MJSFEAT.FEATURES.forEach(function (f4) {
   FAKE_FEATS[f4.key] = (f4.kind === 'enum') ? '是' : (f4.kind === 'float' ? 0.5 : 1);
@@ -2300,12 +2360,12 @@ global.fetch = function (url, opt) {
                                     app_version: '0.2.0', compatible: true }] });
   }
   if (path.indexOf('/api/features') === 0) {
-    return json({ ok: true, name: '天凤牌谱分析', version: '1.3.1', schema_version: 10,
+    return json({ ok: true, name: '天凤牌谱分析', version: '1.4.1', schema_version: 11,
                   features: MJSFEAT.FEATURES,
                   first_features: MJSFEAT.FIRST_FEATURES, second_features: MJSFEAT.SECOND_FEATURES,
                   third_features: MJSFEAT.THIRD_FEATURES, wait_modes: ['出牌', '鸣牌响应'],
                   full_note: '勾选：把每一帧的原始数据写进 frame_full 表，以后新增特征可以直接用旧牌谱重算；'
-                    + '不勾选：只写 40 个特征值，数据库更小，但新增特征时必须重新分析牌谱。' });
+                    + '不勾选：只写 42 个特征值，数据库更小，但新增特征时必须重新分析牌谱。' });
   }
   if (path.indexOf('/api/paipu-browse') === 0) {
     var bdir = decodeURIComponent((path.split('dir=')[1] || '')) || 'data/paipu';
@@ -2411,8 +2471,8 @@ check(App.aiPayload().mode === 'naga' && App.aiPayload().picks.length === 0,
       '选「NAGA决策」= ' + JSON.stringify(App.aiPayload()));
 check(byId.aiModes.childNodes[1].childNodes[0].checked === true, '单选钮状态与方案同步（第 2 项被勾上）');
 App.setAiMode('multi');
-check(!byId.aiPicks.classList.contains('hidden') && byId.aiPicks.childNodes.length === 5,
-      '「同时具有」显示 5 个第零类多选框（' + byId.aiPicks.childNodes.length + ' 个，用户 m05937 ②）');
+check(!byId.aiPicks.classList.contains('hidden') && byId.aiPicks.childNodes.length === 7,
+      '「同时具有」显示 7 个第零类多选框（' + byId.aiPicks.childNodes.length + ' 个，用户 m05937 ② / m09507）');
 App.setAiPick('ai_balance', true);
 App.setAiPick('ai_mortal41b', true);
 check(App.aiPayload().mode === 'multi' && App.aiPayload().picks.join(',') === 'ai_balance,ai_mortal41b',
@@ -2428,7 +2488,7 @@ check(aqreq.url === '/api/query' && aqreq.body.conds.length === 0 && aqreq.body.
 byId.btnAiClear.fire('click');
 check(App.aiPayload() === null && byId.aiPicks.classList.contains('hidden'), '「清除方案」回到不筛选');
 check(byId.scFeatSelect.childNodes.length === MJSFEAT.FEATURES.length - MJSFEAT.AI_FEATURES.length - 1,
-      '特征下拉 ' + byId.scFeatSelect.childNodes.length + ' 项 = 40 − 5 − 1（第零类与第三类都不进下拉，用户 m04556 ③ / m07289）');
+      '特征下拉 ' + byId.scFeatSelect.childNodes.length + ' 项 = 42 − 7 − 1（第零类与第三类都不进下拉，用户 m04556 ③ / m07289）');
 /* 第 63 轮（用户 m07289 的补充要求）：第三类特征「局面」是第零类框右端的必选单选
    「出牌」（默认，= 等待出牌的局面）/「鸣牌响应」；不选也按默认「出牌」筛选（服务端 AND）。 */
 check(aqreq.body.wait === '出牌', '检索请求默认带第三类单选 wait=出牌：' + JSON.stringify(aqreq.body.wait));
@@ -2616,34 +2676,37 @@ byId.btnClearConds.fire('click');
 /* 8.10 第二类特征接入 / 帧特征面板 / 分析进度 / 牌谱下载（第 21 轮） */
 console.log('\n=== 8.10 第二类特征 / 帧特征面板 / 分析进度 / 牌谱下载（第 21 轮） ===');
 
-/* (1) 40 个特征（5 第零类 + 17 第一类 + 17 第二类 + 1 第三类；第 36 轮新增立直家（他家）一发巡，第 52 轮新增第零类三项，
-   第 59 轮再补 Mortal 避四 / 争一，第 62 轮新增「等待鸣牌」，第 63 轮把「等待鸣牌」编为第三类特征，用户 m05937 ② / m07289） */
+/* (1) 42 个特征（7 第零类 + 17 第一类 + 17 第二类 + 1 第三类；第 36 轮新增立直家（他家）一发巡，第 52 轮新增第零类三项，
+   第 59 轮再补 Mortal 避四 / 争一，第 62 轮新增「等待鸣牌」，第 63 轮把「等待鸣牌」编为第三类特征，
+   第 74 轮补新版 NAGA 避四 / 争一，用户 m05937 ② / m07289 / m09507） */
 byId.btnClearConds.fire('click');
-check(MJSFEAT.FEATURES.length === 40, '前端特征注册表 ' + MJSFEAT.FEATURES.length + ' 项 = 40（5 第零类 + 17 第一类 + 17 第二类 + 1 第三类）');
-check(byId.scFeatSelect.childNodes.length === 34, '特征下拉 ' + byId.scFeatSelect.childNodes.length + ' 项 = 40 − 5 − 1（第零类与第三类不进下拉）');
+check(MJSFEAT.FEATURES.length === 42, '前端特征注册表 ' + MJSFEAT.FEATURES.length + ' 项 = 42（7 第零类 + 17 第一类 + 17 第二类 + 1 第三类）');
+check(byId.scFeatSelect.childNodes.length === 34, '特征下拉 ' + byId.scFeatSelect.childNodes.length + ' 项 = 42 − 7 − 1（第零类与第三类不进下拉）');
 var fkeys = MJSFEAT.FEATURES.map(function (f5) { return f5.key; });
 check(fkeys.indexOf('shanten_mentsu') >= 0 && fkeys.indexOf('damaten_tsumo_score') >= 0
       && fkeys.indexOf('riichi_others_danger_suji') >= 0 && fkeys.indexOf('riichi_others_danger_ryanmen') >= 0,
       '第二类特征已注册：面子手向听 / 默听自摸期望打点 / 危险筋组 / 危险两面组');
-check(MJSFEAT.AI_FEATURES.length === 5 && MJSFEAT.FEATURES[0].key === 'ai_balance'
+check(MJSFEAT.AI_FEATURES.length === 7 && MJSFEAT.FEATURES[0].key === 'ai_balance'
       && MJSFEAT.FEATURES[0].name === 'NAGA-平衡 分析' && MJSFEAT.FEATURES[0].values.join('/') === '是/否'
-      && MJSFEAT.FEATURES[1].key === 'ai_superhuro' && MJSFEAT.FEATURES[2].key === 'ai_mortal41a'
-      && MJSFEAT.FEATURES[2].name === 'Mortal-4.1-避四 分析'
-      && MJSFEAT.FEATURES[3].key === 'ai_mortal41b' && MJSFEAT.FEATURES[3].name === 'Mortal-4.1-平衡 分析'
-      && MJSFEAT.FEATURES[4].key === 'ai_mortal41c' && MJSFEAT.FEATURES[4].name === 'Mortal-4.1-争一 分析',
-      '前 5 项 = 第零类特征（NAGA-平衡 / NAGA-超副露 / Mortal-4.1-避四 / Mortal-4.1-平衡 / Mortal-4.1-争一，取值 是/否，用户 m05937 ②）');
+      && MJSFEAT.FEATURES[1].key === 'ai_superhuro' && MJSFEAT.FEATURES[1].name === 'NAGA-超副露 分析'
+      && MJSFEAT.FEATURES[2].key === 'ai_naga_avoid4' && MJSFEAT.FEATURES[2].name === 'NAGA-避四 分析'
+      && MJSFEAT.FEATURES[3].key === 'ai_naga_aggressive' && MJSFEAT.FEATURES[3].name === 'NAGA-争一 分析'
+      && MJSFEAT.FEATURES[4].key === 'ai_mortal41a' && MJSFEAT.FEATURES[4].name === 'Mortal-4.1-避四 分析'
+      && MJSFEAT.FEATURES[5].key === 'ai_mortal41b' && MJSFEAT.FEATURES[5].name === 'Mortal-4.1-平衡 分析'
+      && MJSFEAT.FEATURES[6].key === 'ai_mortal41c' && MJSFEAT.FEATURES[6].name === 'Mortal-4.1-争一 分析',
+      '前 7 项 = 第零类特征（NAGA-平衡 / NAGA-超副露 / NAGA-避四 / NAGA-争一 / Mortal-4.1-避四 / Mortal-4.1-平衡 / Mortal-4.1-争一，取值 是/否，用户 m05937 ② / m09507）');
 check(fkeys.indexOf('naga') < 0, '旧第一类特征「NAGA决策」（key = naga）已移入第零类（用户 m04556 ②）');
-check(fkeys.indexOf('ippatsu') >= 0 && MJSFEAT.FEATURES[14].key === 'riichi_others_n'
-      && MJSFEAT.FEATURES[15].key === 'ippatsu' && MJSFEAT.FEATURES[15].name === '立直家（他家）一发巡'
-      && MJSFEAT.FEATURES[15].values.join('/') === '是/否',
-      '立直家（他家）一发巡紧随「立直家（他家）数量」（下标 14 / 15，前 5 项是第零类）');
-check(MJSFEAT.FEATURES[10].key === 'rank' && MJSFEAT.FEATURES[11].key === 'riichi_self',
+check(fkeys.indexOf('ippatsu') >= 0 && MJSFEAT.FEATURES[16].key === 'riichi_others_n'
+      && MJSFEAT.FEATURES[17].key === 'ippatsu' && MJSFEAT.FEATURES[17].name === '立直家（他家）一发巡'
+      && MJSFEAT.FEATURES[17].values.join('/') === '是/否',
+      '立直家（他家）一发巡紧随「立直家（他家）数量」（下标 16 / 17，前 7 项是第零类）');
+check(MJSFEAT.FEATURES[12].key === 'rank' && MJSFEAT.FEATURES[13].key === 'riichi_self',
       '「顺位」之后紧跟第一类「自家立直状态」（「等待鸣牌」已移出第一类，用户 m07289）');
 check(MJSFEAT.THIRD_FEATURES.length === 1 && MJSFEAT.THIRD_FEATURES[0].key === 'meld_wait'
       && MJSFEAT.THIRD_FEATURES[0].name === '等待鸣牌' && MJSFEAT.THIRD_FEATURES[0].values.join('/') === '是/否'
       && MJSFEAT.FIRST_FEATURES.length === 17 && MJSFEAT.SECOND_FEATURES.length === 17
-      && MJSFEAT.FEATURES[39].key === 'meld_wait' && fkeys.indexOf('meld_wait') === 39,
-      '「等待鸣牌」独立成第三类（1 项，排在 40 项最后：5 + 17 + 17 + 1，用户 m07289）');
+      && MJSFEAT.FEATURES[41].key === 'meld_wait' && fkeys.indexOf('meld_wait') === 41,
+      '「等待鸣牌」独立成第三类（1 项，排在 42 项最后：7 + 17 + 17 + 1，用户 m07289）');
 check(byId.scFeatSelect.textContent.indexOf('等待鸣牌') < 0, '第三类特征不出现在检索下拉里（用户 m07289）');
 
 /* (2) 实数特征走文本框 + 小数条件提示 */
@@ -2656,7 +2719,7 @@ check(finps.length === 2, '两个文本框条件：' + finps.length + ' 行（�
 check(!!finps[1] && finps[1].placeholder.indexOf('实数') >= 0, '实数特征提示：' + (finps[1] ? finps[1].placeholder : '无'));
 check(byId.scCondList.textContent.indexOf('默听自摸期望打点') >= 0, '实数特征行名 = 默听自摸期望打点');
 
-/* (3) 帧特征面板：条目模式走 /api/detail，34 行（40 − 第零类 5 项 − 第三类 1 项）+ 检索用到的特征高亮（用户 m05937 ② / m07289） */
+/* (3) 帧特征面板：条目模式走 /api/detail，34 行（42 − 第零类 7 项 − 第三类 1 项）+ 检索用到的特征高亮（用户 m05937 ② / m07289） */
 byId.scDbPath.value = 'data/db/paipu.sqlite';
 finps[0].value = 'call';          /* 第 1 条条件走假接口的 call 分支 */
 finps[0].fire('input');
@@ -2672,7 +2735,7 @@ for (var di = reqs.length - 1; di >= 0; di--) { if (reqs[di].url.indexOf('/api/d
 check(!!dreq && dreq.body.idx === App.items[0].idx && dreq.body.db === 'data/db/paipu.sqlite',
       '条目模式走 /api/detail 且带同一个数据库（m03580 修复）：' + JSON.stringify(dreq ? dreq.body : null));
 var frows = byId.featPanelList.querySelectorAll('.feat-row');
-check(frows.length === 34, '帧特征面板 ' + frows.length + ' 行 = 34 个特征（40 − 第零类 5 项 − 第三类 1 项）');
+check(frows.length === 34, '帧特征面板 ' + frows.length + ' 行 = 34 个特征（42 − 第零类 7 项 − 第三类 1 项）');
 var firstShown = MJSFEAT.FEATURES[MJSFEAT.AI_FEATURES.length];   /* 第零类之后的第一项特征 */
 check(frows[0].querySelector('.feat-name').textContent === firstShown.name,
       '第 1 行特征名 = ' + frows[0].querySelector('.feat-name').textContent + '（第零类不列在这里）');
@@ -2711,8 +2774,8 @@ check(byId.featPanelList.querySelectorAll('.feat-row').length === 34, '手动播
 /* (4b) m03580：版本号 / 扩充现有数据库 / --full 说明 */
 check(byId.anTool === undefined, '打点工具选择已删除（m03580）');
 App.loadMeta();   /* init() 时假服务还没装好，这里显式重拉一次 /api/features */
-check(App.version === '1.3.1', 'App.version = ' + App.version);
-check(App.version === '1.3.1' && byId.appVer.textContent === 'v1.3.1',
+check(App.version === '1.4.1', 'App.version = ' + App.version);
+check(App.version === '1.4.1' && byId.appVer.textContent === 'v1.4.1',
       '标题栏显示版本号：' + byId.appVer.textContent);
 check(byId.anFullNote.textContent.indexOf('勾选') >= 0 && byId.anFullNote.textContent.length > 20,
       '--full 说明来自 /api/features：' + byId.anFullNote.textContent.slice(0, 24) + '…');
