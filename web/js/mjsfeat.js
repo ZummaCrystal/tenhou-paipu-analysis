@@ -220,7 +220,7 @@
   function meldPossible(st, discarder, kind) { return responders(st, discarder, kind).length > 0; }
 
   /** 从当前帧状态 st 提取第一类 17 项 + 第三类 1 项（视角 = seat = 当前决策者）；
-      第零类 5 项由 cli.fill_ai 按帧补（用户 m06323 ①），第二类 17 项由 Python 端算。
+      第零类 7 项由 cli.fill_ai 按帧补（用户 m06323 ①），第二类 17 项由 Python 端算。
       kind = 这一帧的打点种类（draw / chi / pon / wait，用户 m06832 / m07289） */
   function extract(st, seat, kind) {
     var oya = st.oya, me = st.players[seat], others = [], i, s, myMelds, othMelds = {}, othRiichi = 0, othCnt = 0, oth2 = 0, oth3 = 0;
@@ -262,7 +262,7 @@
     };
   }
 
-  /** 组装一个打点行（第一类 17 个 + 第三类 1 个特征 + 事实字段；第零类 5 项由 cli.fill_ai 补，
+  /** 组装一个打点行（第一类 17 个 + 第三类 1 个特征 + 事实字段；第零类 7 项由 cli.fill_ai 补，
       第二类 17 项由 Python 端补）。kind = draw / chi / pon / wait；drawn = 摸到的牌或 null。
       字段与 Python 端 mjscore/feats.py make_record() 一致 */
   function makeRecord(game, roundIndex, evIndex, st, seat, kind, drawn) {

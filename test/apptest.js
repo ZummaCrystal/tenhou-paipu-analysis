@@ -662,6 +662,54 @@ App.setFrame(2);
   App.setFrame(2);
 })();
 
+/* 用户 m10081：新模型的决策空间是完整的 —— 除「打 xx / 打·立直 xx」外，报告还给出自摸（hora）、
+   九種九牌流局（kyushu）、暗杠 / 加杠（ankan_pai / kakan_pai，直接给出杠哪张牌，可同时多张）。
+   与打牌共用 >10% 门槛（不过门槛的进「其它」）；旧模型没有这些字段 ⇒ 展示一字不变。 */
+(function () {
+  var savedNf1d = App.naga.rounds[0][1];
+  var savedAiD = App.aiModel;
+  var dmD = nagaZeroM(), riD = nagaZeroM();
+  dmD[0] = 4000; riD[0] = 1000;             /* 打 1m 40.0% / 打·立直 1m 10.0%（不过门槛） */
+  App.setAiModel(0);
+  App.naga.rounds[0][1] = {
+    msg: 'tsumo', actor: 0, pai: '4s', dahai_pred: [],
+    dahai_split: [{ dama: dmD, riichi: riD }],
+    hora: { '0': [3000] },                   /* 自摸 30.0% */
+    ankan_pai: [{ '32': 2000 }],             /* 暗杠 発 20.0% */
+    kakan_pai: [{ '28': 500 }],              /* 加杠 南 5.0% ⇒ 不过门槛、进「其它」 */
+    kyushu: [0],                             /* 九種九牌 0.0% ⇒ 不显示 */
+    end_type: NAGA_ET, game_rank: NAGA_GR
+  };
+  App.setFrame(1);
+  var otD = byId.nagaOptions.textContent;
+  check(byId.nagaOptions.childNodes.length === 4
+    && otD.indexOf('打40.0%') >= 0 && otD.indexOf('自摸30.0%') >= 0 && otD.indexOf('暗杠20.0%') >= 0
+    && otD.indexOf('其它10.0%') >= 0 && otD.indexOf('加杠') < 0 && otD.indexOf('立直') < 0,
+    '完整动作空间：打 1m 40% / 自摸 30% / 暗杠 発 20% / 其它 10%（≤10% 的加杠与打·立直不单列）= ' + otD);
+  var upD = [];
+  var allD = byId.board.querySelectorAll('.tbar.up');
+  for (var ud = 0; ud < allD.length; ud++) {
+    upD.push(allD[ud].className.replace(/^tbar up[ ]*/, '') + ':' + allD[ud].style.height);
+  }
+  upD.sort();
+  check(upD.join(' | ') === 'dama:40.00% | riichi:10.00%',
+    '1m 默听 / 立直两支都有 ⇒ 左半紫条 40% + 右半红条 10%（与新的动作空间共存）= ' + upD.join(' | '));
+  /* 鸣牌响应帧：荣和（hora[决策者]）要单列一行（用户 m10081：以前默认「能和就和」、缺这一项） */
+  App.naga.rounds[0][1] = {
+    msg: 'dahai', actor: 0, pai: '3s', huro: { '1': [{ '0': 8000, '4': 1000 }] },
+    hora: { '1': [1500] }, end_type: NAGA_ET, game_rank: NAGA_GR
+  };
+  App.setFrame(1);
+  var otR = byId.nagaOptions.textContent;
+  check(byId.nagaOptions.childNodes.length === 3
+    && otR.indexOf('PASS80.0%') >= 0 && otR.indexOf('荣和15.0%') >= 0 && otR.indexOf('其它5.0%') >= 0
+    && otR.indexOf('碰') < 0,
+    '鸣牌响应帧的完整动作空间：PASS 80% / 荣和 15% / 其它 5%（碰 10.0% 不过门槛）= ' + otR);
+  App.naga.rounds[0][1] = savedNf1d;
+  App.setAiModel(savedAiD);
+  App.setFrame(2);
+})();
+
 /* ② 概率条按「轮到谁决策就显示谁的」（用户 m02007 ②）：本局最后一帧是家 B（座位 1）摸牌，
    打牌预测柱应当画在座位 1 的手上；自家手牌上只有自家的危险条，没有别家的预测柱。 */
 clickAct('next');
@@ -2369,7 +2417,7 @@ global.fetch = function (url, opt) {
                                     app_version: '0.2.0', compatible: true }] });
   }
   if (path.indexOf('/api/features') === 0) {
-    return json({ ok: true, name: '天凤牌谱分析', version: '1.4.2', schema_version: 11,
+    return json({ ok: true, name: '天凤牌谱分析', version: '1.4.3', schema_version: 11,
                   features: MJSFEAT.FEATURES,
                   first_features: MJSFEAT.FIRST_FEATURES, second_features: MJSFEAT.SECOND_FEATURES,
                   third_features: MJSFEAT.THIRD_FEATURES, wait_modes: ['出牌', '鸣牌响应'],
@@ -2783,8 +2831,8 @@ check(byId.featPanelList.querySelectorAll('.feat-row').length === 34, '手动播
 /* (4b) m03580：版本号 / 扩充现有数据库 / --full 说明 */
 check(byId.anTool === undefined, '打点工具选择已删除（m03580）');
 App.loadMeta();   /* init() 时假服务还没装好，这里显式重拉一次 /api/features */
-check(App.version === '1.4.2', 'App.version = ' + App.version);
-check(App.version === '1.4.2' && byId.appVer.textContent === 'v1.4.2',
+check(App.version === '1.4.3', 'App.version = ' + App.version);
+check(App.version === '1.4.3' && byId.appVer.textContent === 'v1.4.3',
       '标题栏显示版本号：' + byId.appVer.textContent);
 check(byId.anFullNote.textContent.indexOf('勾选') >= 0 && byId.anFullNote.textContent.length > 20,
       '--full 说明来自 /api/features：' + byId.anFullNote.textContent.slice(0, 24) + '…');

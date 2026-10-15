@@ -3,7 +3,7 @@ r"""mjscore 正式测试。
 
 覆盖：
   1. 解析口径（牌谱数 / 局数 / 帧数 / 逐帧牌张不变量）
-  2. 打点口径（非自摸摸牌帧 + 吃/碰副露帧 + 鸣牌响应帧、巡目按出牌计、40 个特征 = 5 第零类 + 17 第一类 + 17 第二类 + 1 第三类、条目名格式）
+  2. 打点口径（非自摸摸牌帧 + 吃/碰副露帧 + 鸣牌响应帧、巡目按出牌计、42 个特征 = 7 第零类 + 17 第一类 + 17 第二类 + 1 第三类、条目名格式）
   3. 写库 + 检索（analyze / query / 条件错误提示 / 特征值域）
   4. 双工具交叉校验（node 与 python 打点全字段逐项一致 —— readme 硬约束）
   5. 本地服务接口（server.py 的 GET/POST 路由与错误码）
@@ -17,9 +17,15 @@ r"""mjscore 正式测试。
      第 62 轮：v1.2.0 / schema 9 / 40 个特征：第一类新增「等待鸣牌」、检索新增 kind='wait' 行（用户 m06801 / m06832）；
      第 63 轮：v1.3.0 / schema 10（用户 m07289）：关键帧判据改成「这张牌可能被他家鸣牌」（含食替），
      kind='wait' 行改为「鸣牌响应帧」（可能鸣牌的那一家各一行）、「等待鸣牌」编为第三类特征 1 项（不进检索下拉 /
-     不列进当前帧特征），检索新增必选单选「出牌 / 鸣牌响应」（默认「出牌」= 只检索出牌帧）
+      不列进当前帧特征），检索新增必选单选「出牌 / 鸣牌响应」（默认「出牌」= 只检索出牌帧）；
+      第 74 轮：v1.4.0 / schema 11：新版 NAGA 报告（アナンタ → NAGA-避四、ウロボロス → NAGA-争一）
+      ⇒ 第零类 7 项、共 42 个特征（用户 m09507）；
+      第 75 轮：v1.4.1：新版 NAGA 按「默听支 / 立直支」联合分布展示（决策表 + 概率条左右分色，用户 m09803）；
+      第 76 轮：仍 v1.4.1：AI 决策表「其它」行按表内显示值补足到 100.0%（用户 m09901）；
+      第 77 轮：v1.4.2：概率条统一配色（默听条统一紫、立直条统一红，取消 argmax 高亮，用户 m10014）；
+      第 78 轮：v1.4.3：AI 决策面板展示完整动作空间（自摸 / 九種九牌 / 暗杠 / 加杠 / 荣和，用户 m10081）
 
-运行：
+ 运行：
   & 'D:\coding\anaconda3\envs\py314_null\python.exe' test\mjscore_test.py
 """
 import glob
@@ -183,7 +189,7 @@ eq(feats.FIRST_KEYS[6], "riichi_self", "第一类第 7 项 = 自家立直状态�
 eq(feats.BY_KEY["meld_wait"]["name"], "等待鸣牌", "等待鸣牌特征名")
 eq(feats.BY_KEY["meld_wait"]["col"], "f_meld_wait", "等待鸣牌列名 = f_meld_wait")
 eq(feats.BY_KEY["meld_wait"]["values"], [feats.YES, feats.NO], "等待鸣牌取值 = 是/否")
-eq([f["key"] for f in feats.FEATURES][-1], "meld_wait", "注册表末项 = 第三类（列顺序 5 + 17 + 17 + 1）")
+eq([f["key"] for f in feats.FEATURES][-1], "meld_wait", "注册表末项 = 第三类（列顺序 7 + 17 + 17 + 1）")
 _st_wait = replay.initial_state(GAMES[0], 0)
 eq(feats.extract(_st_wait, 0, "wait")["meld_wait"], "是", "等待鸣牌帧（kind='wait'）⇒ 是")
 eq(feats.extract(_st_wait, 0)["meld_wait"], "否", "不传 kind 的普通帧 ⇒ 否")
@@ -233,10 +239,10 @@ eq([k for k, v in feats.ai_frame_values(_fg, 0, 0, 1)[0].items() if v == "是"],
    "不是决策者的行 ⇒ 五项全「否」（与牌谱里有没有该模型无关）")
 _eq_am = feats.ai_frame_values(_fg, 0, 0, 0)
 eq((_eq_am[1], _eq_am[2]), ("NAGA-平衡", "NAGA"), "辅助列 ai_models / ai_series 也按帧给")
-eq([f["key"] for f in feats.FEATURES][22:39], list(feats.SECOND_KEYS), "第 23 项起 17 项就是第二类特征（顺序一致；末项是第三类）")
+eq([f["key"] for f in feats.FEATURES][24:41], list(feats.SECOND_KEYS), "第 25 项起 17 项就是第二类特征（顺序一致；末项是第三类）")
 eq(sorted(f["col"] for f in feats.FEATURES if f["col"].startswith("s_")),
    sorted("s_" + k for k in feats.SECOND_KEYS), "第二类列名 = s_<key>")
-eq(sorted(set(f["kind"] for f in feats.FEATURES[22:39])), ["float", "int"], "第二类特征只有 int / float")
+eq(sorted(set(f["kind"] for f in feats.FEATURES[24:41])), ["float", "int"], "第二类特征只有 int / float")
 miss_keys = [(feats.row_label(r), k) for r in ALL for k in feats.SECOND_KEYS if k not in r["feats"]]
 eq(len(miss_keys), 0, "每行都带 17 个第二类特征（首例 %s）" % (miss_keys[0] if miss_keys else "-"))
 nulls = [(feats.row_label(r), k) for r in ALL for k in feats.SECOND_KEYS if r["feats"][k] is None]
@@ -457,7 +463,7 @@ conn = store.connect(py_db, create=False)
 _m = store.get_meta(conn)
 check(len(_m) >= 5, "meta 可读（%d 项）" % len(_m))
 eq(store.get_meta(conn).get("schema_version"), str(store.SCHEMA_VERSION), "meta schema_version")
-eq(store.SCHEMA_VERSION, 10, "结构版本 = 10（第 63 轮：wait 行改判据 + 拆出第三类，用户 m07289）")
+eq(store.SCHEMA_VERSION, 11, "结构版本 = 11（第 74 轮：新增 f_ai_naga_avoid4 / f_ai_naga_aggressive，用户 m09507）")
 conn.execute("UPDATE meta SET v = '1' WHERE k = 'schema_version'")
 conn.commit()
 try:
@@ -470,8 +476,8 @@ conn.execute("UPDATE meta SET v = ? WHERE k = 'schema_version'", (str(store.SCHE
 conn.commit()
 eq(store.get_meta(conn).get("app_version"), store.APP_VERSION, "meta 记录生成该库的软件版本")
 eq(store.app_version_of(conn), store.APP_VERSION, "app_version_of")
-eq(store.APP_VERSION, "1.4.2", "软件版本 = 1.4.2（第 77 轮：概率条统一配色；schema ≤10 的库不再支持）")
-sec("版本兼容（用户 m09354 ⑤：大版本 + 中版本相同即可）")
+eq(store.APP_VERSION, "1.4.3", "软件版本 = 1.4.3（第 78 轮：AI 决策面板展示完整动作空间；schema ≤10 的库不再支持）")
+print("=== 版本兼容（用户 m09354 ⑤：大版本 + 中版本相同即可）===")
 check(store.version_compatible("1.4.0"), "v1.4.0 建的库被 v1.4.1 视为兼容（补丁版本不同不影响）")
 check(store.version_compatible("1.4.1"), "同版本兼容")
 check(store.version_compatible(""), "无版本记录（第 22 轮以前的库）按兼容处理")
@@ -558,7 +564,7 @@ if q["rows"]:
     eq(row["frame_index"], 23, "命中行帧下标 = ev_index+1")
     eq(row["label"], feats.row_label(row), "命中行条目名")
     eq(row["log_path"].endswith("d0810acf.tenhou"), True, "命中行 log_path")
-eq(q["used"], ["巡目", "供托", "自家立直状态"], "compile_query 用到的特征名")
+eq(q["used"], ["巡目", "供托", "自家立直状态", "出牌"], "compile_query 用到的特征名（末尾是第三类「出牌」口径，用户 m07289 起）")
 allq = store.query(conn, [{"key": "junme", "expr": ">=1"}], limit=5000)
 eq(allq["total"], 2786, "巡目>=1 且第三类默认「出牌」= 出牌帧 2786 行（2679 摸牌 + 107 副露，不含 680 行鸣牌响应帧）")
 eq(sum(1 for r in allq["rows"] if r["label"] == feats.row_label(r)), 2786, "全部行的 label 与条目名格式一致")
@@ -573,7 +579,7 @@ rf = store.round_frames(conn, allq["rows"][0]["log_id"], 0)
 eq(len(rf) > 0, True, "round_frames 返回本局帧")
 check("kind" in rf[0], "round_frames 行含 kind")
 _exp = store.export_json(conn, limit=3)
-eq((len(_exp["frames"]), len(_exp["features"]), len(_exp["source"])), (3, 42, 7),
+eq((len(_exp["frames"]), len(_exp["features"]), len(_exp["source"])), (3, 42, 5),
    "export_json 结构 meta/features/source/frames")
 conn.close()
 
@@ -781,8 +787,8 @@ try:
     eq((d.get("author"), d.get("author_email")), ("Zumma Crystal", "z1025zzsg@sohu.com"),
        "health 带作者信息（m04115③）")
     st, d = http("/api/features")
-    eq((st, len(d.get("features") or [])), (200, 40), "GET /api/features 40 项（5 + 17 + 17 + 1）")
-    eq(len(d.get("ai_features") or []), 5, "features 带 ai_features 5 项（第零类）")
+    eq((st, len(d.get("features") or [])), (200, 42), "GET /api/features 42 项（7 + 17 + 17 + 1）")
+    eq(len(d.get("ai_features") or []), 7, "features 带 ai_features 7 项（第零类）")
     eq([m["key"] for m in (d.get("ai_modes") or [])], ["any", "naga", "mortal", "multi"],
        "features 带 4 种第零类检索方案")
     eq(d.get("schema_version"), store.SCHEMA_VERSION, "features 带 schema_version")
@@ -856,7 +862,7 @@ try:
                                       "round_index": _pick["round_index"], "frame_index": _pick["frame_index"]})
     eq((st, (d.get("row") or {}).get("frame_index")), (200, _pick["frame_index"]),
        "POST /api/frame-feats 命中帧（round %d / frame %d）" % (_pick["round_index"], _pick["frame_index"]))
-    eq(len(((d.get("row") or {}).get("feats") or {})), 40, "frame-feats 行带 40 个特征")
+    eq(len(((d.get("row") or {}).get("feats") or {})), 42, "frame-feats 行带 42 个特征")
     st, d = http("/api/frame-feats", {"db_name": "__mjtest__", "log_id": "nope",
                                       "round_index": 0, "frame_index": 1})
     eq((st, d.get("row")), (200, None), "POST /api/frame-feats 未命中返回 null")
@@ -911,7 +917,7 @@ try:
     eq((st, len(d.get("rows") or [])), (200, 100), "POST /api/browse 分页")
 
     st, d = http("/api/detail", {"db_name": "__mjtest__", "idx": 2076})
-    eq((st, len(((d.get("row") or {}).get("feats") or {}))), (200, 40), "POST /api/detail 展开 40 特征")
+    eq((st, len(((d.get("row") or {}).get("feats") or {}))), (200, 42), "POST /api/detail 展开 42 特征")
     st, d = http("/api/round-frames", {"db_name": "__mjtest__", "log_id": "2026083021gm-00a9-0000-d0810acf",
                                        "round_index": 0})
     eq((st, len(d.get("rows") or []) > 0), (200, True), "POST /api/round-frames")

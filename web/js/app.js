@@ -1906,7 +1906,7 @@ function redMarkOf(st) {
   return null;
 }
 
-/* ------------------- 帧特征面板（40 个特征里的 34 个：不含第零类 5 项与第三类 1 项） */
+/* ------------------- 帧特征面板（42 个特征里的 34 个：不含第零类 7 项与第三类 1 项） */
   /* 当前帧的「打点视角」座位（第 63 轮，用户 m07289）：
      条目模式（检索结果）直接用它那一行的 seat —— 等待鸣牌帧一张出牌对应好几行、各家一行；
      正常播放则取 decisionSeats() 里优先主视角、否则座位最小的那一家；不是决策帧 → null。 */
@@ -2022,6 +2022,18 @@ function redMarkOf(st) {
       if (one) { huro[s] = one; }
     }
     out.huro = huro;
+    /* 新版 NAGA 的完整动作空间（用户 m10081）：hora = {座位: 和了概率}（自摸 / 荣和），
+       kyushu = 九種九牌流局概率，ankan_pai / kakan_pai = 可杠的牌 -> 概率。
+       旧模型没有这些字段（保持 {} / 0 / null）⇒ 展示一字不变。 */
+    var hora = {}, hsrc = nf.hora || {};
+    for (var hs in hsrc) {
+      if (!Object.prototype.hasOwnProperty.call(hsrc, hs)) { continue; }
+      hora[hs] = aiPick(hsrc[hs], idx, models);
+    }
+    out.hora = hora;
+    out.kyushu = aiPick(nf.kyushu, idx, models) || 0;
+    out.ankan_pai = aiPick(nf.ankan_pai, idx, models) || null;
+    out.kakan_pai = aiPick(nf.kakan_pai, idx, models) || null;
     return out;
   }
 
@@ -2074,7 +2086,15 @@ function redMarkOf(st) {
       if (dp && dp.length) { return true; }
       if (Number(aiPick(nf.reach, idx, models)) > 0) { return true; }
       if (anyVal(aiPick(nf.kan, idx, models))) { return true; }
+      /* 新版 NAGA（用户 m10081）：新模型的打牌分布只放在 dahai_split 里（dahai_pred 恒为空），
+         杠的概率放在 ankan_pai / kakan_pai 里；旧模型没有这些字段 ⇒ 判定一字不变。 */
+      var spd = aiPick(nf.dahai_split, idx, models);
+      if (spd && ((spd.dama && anyVal(spd.dama)) || (spd.riichi && anyVal(spd.riichi)))) { return true; }
+      if (anyVal(aiPick(nf.ankan_pai, idx, models)) || anyVal(aiPick(nf.kakan_pai, idx, models))) { return true; }
     }
+    /* 和了概率（hora）属于这一帧的决策者：摸牌帧 = 自摸、鸣牌响应帧 = 荣和（用户 m10081） */
+    var hore = nf.hora ? aiPick(nf.hora[String(seat)], idx, models) : 0;
+    if (Number(hore) > 0) { return true; }
     var hu = nf.huro || {};    /* huro 只看决策者自己那一格 */
     return anyVal(aiPick(hu[String(seat)], idx, models));
   }
@@ -2326,6 +2346,9 @@ function redMarkOf(st) {
         else if (idx === 5) { pushHuro(dk === null ? [] : [dk], '大明杠', p); }
         else if (dk !== null) { var pr = nagaChiPair(dk, idx); if (pr) { pushHuro(pr, '吃', p); } }
       }
+      /* 新版 NAGA（用户 m10081）：报告直接给出这一帧的和了概率（hora）= 荣和选项；老模型没有。 */
+      var ronP = nf.hora ? (nf.hora[String(seat)] || 0) : 0;
+      if (ronP) { pushHuro(dk === null ? [] : [dk], '荣和', ronP); }
     } else {                                     // 打牌决策：dahai_pred / dahai_split / reach / kan
       /* 新版 NAGA（アナンタ = NAGA-避四 / ウロボロス = NAGA-争一）给的是「是否立直 × 打哪张牌」
          的联合分布（用户 m09803）：默听支 → 「打 xx」、立直支 → 「打·立直 xx」，两表共同构成这一帧
@@ -2351,6 +2374,9 @@ function redMarkOf(st) {
           pctText: nagaPctText(nf.reach || 0), reach: true };        // 不看是否 >10%，且永远排第一
       }
       var kan = nf.kan || {}, ki = nagaKanInfo(seat, st);
+      /* 新版 NAGA（用户 m10081）用 ankan_pai / kakan_pai 直接给出「杠哪张牌」的概率（可同时有多张）
+         ⇒ 有牌级数据时不再用状态推断出来的那一行；旧模型没有这两个字段 ⇒ 一字不变。 */
+      var kPai = !!(nf.ankan_pai || nf.kakan_pai);
       /* 杠的规范名称按**牌局状态**判定（用户 m08623）：手里 4 张 = 暗杠；已有碰副露 + 手里第 4 张 = 加杠。
        * 报告只给「档位」（kan['1'] = 暗杠、kan['2'] = 加杠），而 Mortal 会把加杠也报成 ankan
        * （`consumed` 4 张，实测 kyoku 2 entry 10）⇒ 状态里只有一种杠时一律按状态取名。 */
@@ -2358,7 +2384,7 @@ function redMarkOf(st) {
       for (var kni = 0; kni < ki.ankan.length; kni++) { kcands.push({ kind: ki.ankan[kni], word: '暗杠', used: false }); }
       for (var knj = 0; knj < ki.kakan.length; knj++) { kcands.push({ kind: ki.kakan[knj], word: '加杠', used: false }); }
       var krep = [kan['1'] || 0, kan['2'] || 0], kword = ['暗杠', '加杠'];
-      for (var knd = 0; knd < 2; knd++) {
+      for (var knd = 0; knd < 2 && !kPai; knd++) {
         if (!(krep[knd] > 1000)) { continue; }
         var kpick = null;
         for (var kne = 0; kne < kcands.length; kne++) {
@@ -2370,6 +2396,14 @@ function redMarkOf(st) {
         if (kpick) { kpick.used = true; }
         push(kpick ? [kpick.kind] : [], kpick ? kpick.word : kword[knd], krep[knd]);
       }
+      /* 新版 NAGA 的完整动作空间（用户 m10081）：九種九牌流局、逐个可杠牌的暗杠 / 加杠、自摸。
+         与打牌共用 >10% 门槛（push），低于门槛的进「其它」；老模型没有这些字段 ⇒ 一字不变。 */
+      if (nf.kyushu) { push([], '九種九牌', nf.kyushu); }
+      var apo = nf.ankan_pai, kpo = nf.kakan_pai, kx;
+      if (apo) { for (kx in apo) { if (Object.prototype.hasOwnProperty.call(apo, kx)) { push([Number(kx)], '暗杠', apo[kx]); } } }
+      if (kpo) { for (kx in kpo) { if (Object.prototype.hasOwnProperty.call(kpo, kx)) { push([Number(kx)], '加杠', kpo[kx]); } } }
+      var tsumoP = nf.hora ? (nf.hora[String(seat)] || 0) : 0;
+      if (tsumoP) { var tk = nagaKindOfName(nf.pai); push(tk === null ? [] : [tk], '自摸', tsumoP); }
     }
     list.sort(function (a, b) { return b.pct - a.pct; });
     if (reachItem) { list.unshift(reachItem); }

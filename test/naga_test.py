@@ -1067,6 +1067,25 @@ def section12():
     em2 = naga._frame(fr2, ai_models.model_list({"0": "ニシキ", "1": "アナンタ", "2": "ウロボロス"}))
     eq(em2["dahai_pred"][1][22], 6000, "不是立直决策帧也照样用 detail 算边际打牌分布")
     eq("reach" in em2, False, "报告没标立直决策 ⇒ 不补 reach（沿用报告原始取值）")
+    # ------------------------------------------------ 完整动作空间（用户 m10081）
+    fr3 = {"info": {"msg": {"type": "tsumo", "actor": 2, "pai": "F", "tsumo": []}},
+           "dahai_pred": [None, None, None],
+           "dahai_detail": [None, [[0] * 37, [0] * 37], [[0] * 37, [0] * 37]],
+           "hora": {"0": [None, 1200, 0], "2": [None, 9999, 10000]},
+           "ankan_pai": [None, {"F": 9944}, {"F": 9984}],
+           "kakan_pai": [None, {"9s": 7}, None],
+           "kyushu": [None, 0, 0]}
+    em3 = naga._frame(fr3, ai_models.model_list({"0": "ニシキ", "1": "アナンタ", "2": "ウロボロス"}))
+    eq(em3["hora"]["2"], [None, 9999, 10000], "hora 原样带出（{座位: [每模型和了概率]}，用户 m10081）")
+    eq(em3["ankan_pai"][1], {"32": 9944}, "ankan_pai 的牌名转成牌种索引（F = 発 = 32）")
+    eq(em3["ankan_pai"][2], {"32": 9984}, "ウロボロス 的暗杠概率按模型各自带出")
+    eq(em3["kakan_pai"][1], {"26": 7}, "kakan_pai 同理（9s = 26）")
+    eq(em3["kyushu"], [None, 0, 0], "kyushu 按每模型带出（样本里没有，格式先支持）")
+    em4 = naga._frame({"info": {"msg": {"type": "tsumo", "actor": 0, "pai": "5m", "tsumo": []}},
+                       "dahai_pred": [[100] * 34, [0] * 34, [0] * 34]},
+                      ai_models.model_list({"0": "ニシキ", "1": "アナンタ", "2": "ウロボロス"}))
+    eq([k for k in ("hora", "kyushu", "ankan_pai", "kakan_pai") if k in em4], [],
+       "报告没有这些字段 ⇒ 转换结果里也不出现（旧模型 / 旧报告零变化，用户 m09507）")
 
 
 def main():

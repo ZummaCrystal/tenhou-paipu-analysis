@@ -9,12 +9,12 @@ f_ai_balance / f_ai_superhuro / f_ai_naga_avoid4 / f_ai_naga_aggressive / f_ai_m
 f_ai_mortal41c；另有辅助列 ai_models / ai_series
 供按系列聚合），天凤 / NAGA / Mortal 报告可混编进同一个库）：
     meta          库级元信息（schema 版本、软件版本、工具、口径说明、特征注册表）
-    feature_def   40 个特征的注册表（key / 中文名 / 类型 / 值域 / 列名）
+    feature_def   42 个特征的注册表（key / 中文名 / 类型 / 值域 / 列名）
     source        每个已入库牌谱（特征码 / 原始文件路径 / 局数 / 打点数）
     round         每个已入库的局（局况 / 本场 / 供托 / 起家 / 分数）
     frame         **一行 = 一个打点帧**（kind=draw 非自摸的摸牌帧 / kind=chi|pon 吃碰后等待出牌的帧 /
                   kind=wait 鸣牌响应帧 —— 别人打出牌之后、**可能鸣牌**的那一家各一行，用户 m07289）：
-                  定位列 + 40 个特征列（打点维度）+ ai_models / ai_series 辅助列
+                  定位列 + 42 个特征列（打点维度）+ ai_models / ai_series 辅助列
     frame_full   惰性维度：后续新增特征时按 key 逐列追加，无需改表结构（--full 时写原始数据）
 检索：把用户填的特征条件编译成 WHERE 子句（枚举精确匹配 / 整数区间 / 比较），
       全部条件用 AND 组合（readme：「检索满足全部条件的帧」）；第零类特征不填取值，
@@ -477,7 +477,7 @@ def query_detail(conn, idx):
 
 
 def frame_feats(conn, log_id, round_index, frame_index, seat=None):
-    """按 (log_id, round_index, frame_index[, seat]) 取一帧的全部 40 个特征值。
+    """按 (log_id, round_index, frame_index[, seat]) 取一帧的全部 42 个特征值。
 
     前端「当前帧特征面板」用：Python 的 frame_index = ev_index + 1，
     与 web/js/replay.js buildFrames() 的帧号同口径，所以前端可直接把播放位置传进来。

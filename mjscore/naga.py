@@ -219,6 +219,27 @@ def _model_values(seq, models):
     return [flat for _ in (models or [None])]
 
 
+def _model_indexed(seq, models):
+    """``[每模型 ...]``（元素允许是 None / dict）-> 与 ``models`` 同序的列表。
+
+    与 :func:`_model_values` 的区别：首位元素是 None 时也按「每模型」处理 —— 新版 NAGA 的
+    ``ankan_pai`` / ``kakan_pai`` 形如 ``[null, {"F": 9944}, {"F": 9984}]``（模型 0 恒为 None），
+    按 ``m["index"]`` 取；不是列表时退回 :func:`_model_values`。
+    """
+    if not isinstance(seq, (list, tuple)):
+        return _model_values(seq, models)
+    if not seq:
+        return None
+    out = []
+    for i, m in enumerate(models or [{"index": 0}]):
+        try:
+            idx = int((m or {}).get("index", i))
+        except (TypeError, ValueError, AttributeError):
+            idx = i
+        out.append(seq[idx] if 0 <= idx < len(seq) else None)
+    return out
+
+
 # 新版 NAGA（アナンタ / ウロボロス，用户 m09507）的打牌分布是 37 槽：
 # 0..33 = 34 种，34 / 35 / 36 = 赤 5m / 赤 5p / 赤 5s（3,563 帧的 argmax 与报告自带的
 # info.msg.pred_dahai 交叉验证：合并后一致率 99.8%）。
@@ -784,6 +805,29 @@ def _frame(fr, models):
     kan = _model_values(fr.get("kan"), models)
     if kan is not None:
         out["kan"] = [(dict(v) if isinstance(v, dict) else None) for v in kan]
+    # 新版 NAGA 的「完整动作空间」（用户 m10081）：hora = {座位: [每模型和了概率]}（只有模型 1/2 有值），
+    # ankan_pai / kakan_pai = [每模型 {牌名: 概率}]（直接给出「杠哪张牌」，可同时有多张），
+    # kyushu = 九種九牌流局的概率。旧模型 / 旧报告没有这些字段 ⇒ 一字不动（用户 m09507 的零变化前提）。
+    # 杠的牌名在这里转成牌种索引字符串，前端不用再解析牌名。
+    if fr.get("hora") is not None:
+        out["hora"] = dict((str(k), list(v)) for k, v in (fr.get("hora") or {}).items())
+    if fr.get("kyushu") is not None:
+        out["kyushu"] = _model_indexed(fr.get("kyushu"), models)
+    for _pai_key in ("ankan_pai", "kakan_pai"):
+        _raw = fr.get(_pai_key)
+        if _raw is None:
+            continue
+        _conv = []
+        for _v in _model_indexed(_raw, models):
+            if not isinstance(_v, dict):
+                _conv.append(None)
+                continue
+            _one = {}
+            for _nm, _prob in _v.items():
+                _kind = tile_kind(_nm)
+                _one[str(_kind if _kind is not None else _nm)] = _prob
+            _conv.append(_one)
+        out[_pai_key] = _conv
     if fr.get("machi"):
         out["machi"] = dict((k, list(v)) for k, v in fr["machi"].items())
     for key in _FRAME_KEEP:
