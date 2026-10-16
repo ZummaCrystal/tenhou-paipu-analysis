@@ -1696,8 +1696,10 @@
     lockControls(on);   /* 静态帧：下面的播放控制面板整块禁用（用户 m03089 ①） */
   }
 
-  function installGame(text, logId) {
-    loadText(text, logId + '.tenhou');
+  /* 打开检索 / 一览条目时的显示名 = 该条目对应牌谱文件的**真实文件名**（用户 m10331：
+     原来固定拼 '.tenhou'，NAGA（.naga）与 Mortal（.mortal-a|b|c）的牌谱被误标）。 */
+  function installGame(text, name) {
+    loadText(text, name);
   }
 
   function jumpRow(it) {
@@ -1726,12 +1728,13 @@
     App.itemIndex = i;
     syncItemNav();
     var logId = it.log_id;
+    var nm = it.log_path ? baseName(it.log_path) : String(logId);   /* 真实文件名（用户 m10331） */
     if (App.game && gameLogId() === String(logId)) { jumpRow(it); setMsg('scMsg', ''); return; }
-    if (App.cache[logId]) { installGame(App.cache[logId], logId); jumpRow(it); setMsg('scMsg', ''); return; }
+    if (App.cache[logId]) { installGame(App.cache[logId], nm); jumpRow(it); setMsg('scMsg', ''); return; }
     setMsg('scMsg', '正在载入牌谱 ' + logId + ' …');
     api('/api/read?path=' + encodeURIComponent(it.log_path || ('data/' + logId + '.tenhou'))).then(function (d) {
       App.cache[logId] = d.text;
-      installGame(d.text, logId);
+      installGame(d.text, d.path ? baseName(d.path) : nm);
       jumpRow(it);
       setMsg('scMsg', '');
     })['catch'](function (e) { setMsg('scMsg', '载入牌谱失败：' + e.message, true); });

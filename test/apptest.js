@@ -2355,7 +2355,7 @@ function dbRow(rec, logFile) {
   return { idx: rec.ev_index, log_id: rec.log_id, url: rec.url, round_index: rec.round_index,
            ev_index: rec.ev_index, frame_index: rec.frame_index, seat: rec.seat,
            joukyoku: rec.joukyoku, honba: rec.honba, wind: rec.wind, junme: rec.junme,
-           kind: rec.kind, label: MJSFEAT.rowLabel(rec), log_path: 'data/' + logFile + '.xml' };
+           kind: rec.kind, label: MJSFEAT.rowLabel(rec), log_path: 'data/' + logFile + '.tenhou' };
 }
 /* 第 7 节可能把别的牌谱载进来了，这里先回到第 2 节的牌谱 */
 App.loadText(fs.readFileSync(xmlPath(f.replace(/\.xml$/, '')), 'utf8'), f);
@@ -2417,7 +2417,7 @@ global.fetch = function (url, opt) {
                                     app_version: '0.2.0', compatible: true }] });
   }
   if (path.indexOf('/api/features') === 0) {
-    return json({ ok: true, name: '天凤牌谱分析', version: '1.4.3', schema_version: 11,
+    return json({ ok: true, name: '天凤牌谱分析', version: '1.4.4', schema_version: 11,
                   features: MJSFEAT.FEATURES,
                   first_features: MJSFEAT.FIRST_FEATURES, second_features: MJSFEAT.SECOND_FEATURES,
                   third_features: MJSFEAT.THIRD_FEATURES, wait_modes: ['出牌', '鸣牌响应'],
@@ -2448,7 +2448,7 @@ global.fetch = function (url, opt) {
   }
   if (path.indexOf('/api/read') === 0) {
     var q = decodeURIComponent(path.split('path=')[1] || '');
-    var id = q.split('/').pop().replace(/\.xml$/, '');
+    var id = q.split('/').pop().replace(/\.(tenhou|xml|mjlog|naga|mortal(-[a-z])?|json(\.gz)?)$/i, '');
     return json({ ok: true, path: q, text: fs.readFileSync(xmlPath(id), 'utf8') });
   }
   if (path.indexOf('/api/query') === 0) {
@@ -2633,6 +2633,21 @@ byId.btnPrevItem.fire('click');
 check(App.itemIndex === 0, '「上一条目」回到第 1 条');
 check(App.fileName === f.replace(/\.xml$/, '.tenhou'), '回退时切回前一个牌谱 ' + App.fileName);
 check(App.roundIndex === ROW0.round_index, '回退后回到前一个牌谱的帧');
+
+/* 8.5b 条目左上角显示的是「这个牌谱文件的真实名字」（用户 m10331：NAGA / Mortal 的谱曾被写成 .tenhou） */
+var nagaRow = { kind: 'draw', log_id: LOG2 + 'v2_2', round_index: ROW1.round_index, frame_index: ROW1.frame_index,
+                seat: 0, label: 'NAGA 条目', log_path: 'data/paipu/naga-new/' + LOG2 + 'v2_2.naga' };
+App.cache[nagaRow.log_id] = fs.readFileSync(xmlPath(LOG2), 'utf8');
+var keepItems = App.items;
+App.items = [keepItems[0], nagaRow];
+App.itemIndex = 0;
+byId.btnNextItem.fire('click');
+check(App.itemIndex === 1 && App.fileName === LOG2 + 'v2_2.naga',
+  'NAGA 条目显示 .naga 而不是 .tenhou（用户 m10331）：' + App.fileName);
+check(byId.rpFile.textContent === App.fileName, '工具栏文件名 = ' + byId.rpFile.textContent);
+App.items = keepItems;
+App.itemIndex = 0;
+App.fileName = f.replace(/\.xml$/, '.tenhou');
 
 /* 8.6 全部浏览 */
 byId.btnBrowseAll.fire('click');
@@ -2831,8 +2846,8 @@ check(byId.featPanelList.querySelectorAll('.feat-row').length === 34, '手动播
 /* (4b) m03580：版本号 / 扩充现有数据库 / --full 说明 */
 check(byId.anTool === undefined, '打点工具选择已删除（m03580）');
 App.loadMeta();   /* init() 时假服务还没装好，这里显式重拉一次 /api/features */
-check(App.version === '1.4.3', 'App.version = ' + App.version);
-check(App.version === '1.4.3' && byId.appVer.textContent === 'v1.4.3',
+check(App.version === '1.4.4', 'App.version = ' + App.version);
+check(App.version === '1.4.4' && byId.appVer.textContent === 'v1.4.4',
       '标题栏显示版本号：' + byId.appVer.textContent);
 check(byId.anFullNote.textContent.indexOf('勾选') >= 0 && byId.anFullNote.textContent.length > 20,
       '--full 说明来自 /api/features：' + byId.anFullNote.textContent.slice(0, 24) + '…');

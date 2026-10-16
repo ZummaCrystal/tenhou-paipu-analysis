@@ -24,6 +24,7 @@ r"""mjscore 正式测试。
       第 76 轮：仍 v1.4.1：AI 决策表「其它」行按表内显示值补足到 100.0%（用户 m09901）；
       第 77 轮：v1.4.2：概率条统一配色（默听条统一紫、立直条统一红，取消 argmax 高亮，用户 m10014）；
       第 78 轮：v1.4.3：AI 决策面板展示完整动作空间（自摸 / 九種九牌 / 暗杠 / 加杠 / 荣和，用户 m10081）
+第 79 轮：v1.4.4：打开检索 / 一览条目时显示该牌谱文件的真实后缀（用户 m10331）
 
  运行：
   & 'D:\coding\anaconda3\envs\py314_null\python.exe' test\mjscore_test.py
@@ -476,7 +477,7 @@ conn.execute("UPDATE meta SET v = ? WHERE k = 'schema_version'", (str(store.SCHE
 conn.commit()
 eq(store.get_meta(conn).get("app_version"), store.APP_VERSION, "meta 记录生成该库的软件版本")
 eq(store.app_version_of(conn), store.APP_VERSION, "app_version_of")
-eq(store.APP_VERSION, "1.4.3", "软件版本 = 1.4.3（第 78 轮：AI 决策面板展示完整动作空间；schema ≤10 的库不再支持）")
+eq(store.APP_VERSION, "1.4.4", "软件版本 = 1.4.4（第 79 轮：检索 / 一览条目显示真实文件名后缀；schema ≤10 的库不再支持）")
 print("=== 版本兼容（用户 m09354 ⑤：大版本 + 中版本相同即可）===")
 check(store.version_compatible("1.4.0"), "v1.4.0 建的库被 v1.4.1 视为兼容（补丁版本不同不影响）")
 check(store.version_compatible("1.4.1"), "同版本兼容")

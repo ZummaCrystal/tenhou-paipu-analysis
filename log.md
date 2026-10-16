@@ -3048,7 +3048,7 @@ r = t % 3; t = (t // 3) * 4; h = [t, t, t]
 
 ---
 
-*最后更新：第 78 轮（**AI 决策面板展示完整动作空间**（用户 m10081，v1.4.3）：新版 NAGA 报告除「打 xx / 打·立直 xx」外，还给出一帧里其它可选动作的概率 —— 摸牌帧的**自摸**（`hora`）、**九種九牌流局**（`kyushu`）、逐个可杠牌的**暗杠 / 加杠**（`ankan_pai` / `kakan_pai`，直接给出杠哪张牌，可同时多张），鸣牌响应帧的**荣和**（`hora`）；与打牌共用 10% 门槛，低概率的进「其它」；旧模型（含天凤 / NAGA-平衡 / NAGA-超副露 / Mortal）没有这些字段 ⇒ 展示零变化）；v1.4.3 已打包（用户 m10285 本机）= `tenhou-paipu-analysis-1.4.3-setup.exe` 143,292,338 B / SHA256 `36A06F2E9B5F43BCB38C99D5E155F23FD6988F0543AFF54BC4AD64D5D48448ED`。上一轮：第 77 轮（**概率条统一配色**（用户 m10014，v1.4.2）：默听条一律 rgb(124,59,230)（= 原 argmax 亮紫）、立直条一律 #e0503a，取消 argmax 亮紫高亮。上一轮：第 76 轮（AI 决策表「其它」行按**显示值**补足到 100.0%，用户 m09901；1.4.1 尚未打包发布，修复并入同一版本）。上一轮：第 75 轮（**新版 NAGA 联合分布展示**：NAGA-避四 / NAGA-争一 的决策表直接列「打 xx」/「打 xx 立直」、概率条在既能默听打又能立直打的牌上左右一分为二（左半紫 / 右半红）；旧模型展示零变化；按用户 m09354 ④ 只提小版本号 ⇒ **v1.4.1**（库结构不变，仍 schema 11）。上一轮：第 74 轮（**新版 NAGA 报告支持**：アナンタ → `NAGA-避四`、ウロボロス → `NAGA-争一`；第零类 5 → 7 项（共 42 特征）；两款新模型的打牌概率取 `dahai_detail` 的 37 档合并回 34 档 ⇒ **v1.4.0 / schema 11**（用户 m09507）；已有模型（含天凤 / Mortal）展示零变化；立直概率按官方 viewer 1.2.2 口径从 `dahai_detail` 的立直支还原，并修掉旧报告立直概率恒 0.0% 的 bug）
+*最后更新：第 79 轮（**打开检索 / 一览条目显示该牌谱文件的真实后缀**（用户 m10331，v1.4.4）：检索结果 / 全部浏览的条目原先把左上角文件名固定拼成 `<特征码>.tenhou`，NAGA（`.naga`）与 Mortal（`.mortal-a|b|c`）的牌谱被误标 —— 现改用条目记录里的 `log_path` 与 `/api/read` 返回的 `path` 的真实文件名；无数据库结构变化（仍 schema 11）。v1.4.4 安装包 = 143,292,183 B，SHA256 `D764F5CF0BC39B0431D82B0A7976EFDDC9D250D5356F1C7B59875A3C82D3B190`（本机复核一致）。）。上一轮：第 78 轮（**AI 决策面板展示完整动作空间**（用户 m10081，v1.4.3）：新版 NAGA 报告除「打 xx / 打·立直 xx」外，还给出一帧里其它可选动作的概率 —— 摸牌帧的**自摸**（`hora`）、**九種九牌流局**（`kyushu`）、逐个可杠牌的**暗杠 / 加杠**（`ankan_pai` / `kakan_pai`，直接给出杠哪张牌，可同时多张），鸣牌响应帧的**荣和**（`hora`）；与打牌共用 10% 门槛，低概率的进「其它」；旧模型（含天凤 / NAGA-平衡 / NAGA-超副露 / Mortal）没有这些字段 ⇒ 展示零变化）；v1.4.3 已打包（用户 m10285 本机）= `tenhou-paipu-analysis-1.4.3-setup.exe` 143,292,338 B / SHA256 `36A06F2E9B5F43BCB38C99D5E155F23FD6988F0543AFF54BC4AD64D5D48448ED`。上一轮：第 77 轮（**概率条统一配色**（用户 m10014，v1.4.2）：默听条一律 rgb(124,59,230)（= 原 argmax 亮紫）、立直条一律 #e0503a，取消 argmax 亮紫高亮。上一轮：第 76 轮（AI 决策表「其它」行按**显示值**补足到 100.0%，用户 m09901；1.4.1 尚未打包发布，修复并入同一版本）。上一轮：第 75 轮（**新版 NAGA 联合分布展示**：NAGA-避四 / NAGA-争一 的决策表直接列「打 xx」/「打 xx 立直」、概率条在既能默听打又能立直打的牌上左右一分为二（左半紫 / 右半红）；旧模型展示零变化；按用户 m09354 ④ 只提小版本号 ⇒ **v1.4.1**（库结构不变，仍 schema 11）。上一轮：第 74 轮（**新版 NAGA 报告支持**：アナンタ → `NAGA-避四`、ウロボロス → `NAGA-争一`；第零类 5 → 7 项（共 42 特征）；两款新模型的打牌概率取 `dahai_detail` 的 37 档合并回 34 档 ⇒ **v1.4.0 / schema 11**（用户 m09507）；已有模型（含天凤 / Mortal）展示零变化；立直概率按官方 viewer 1.2.2 口径从 `dahai_detail` 的立直支还原，并修掉旧报告立直概率恒 0.0% 的 bug）
 
 上一轮：第 73 轮（**界面整体放大 25%** + 检索分段载入 + 静态帧禁用「局」选择 + **v1.3.1**：大版本 + 中版本相同即可读库（用户 m09339 ①②③ / m09354 ④⑤））。上一轮：第 72 轮（打包发布流程：**跨盘符 relpath 真 bug**（用户 m09228 实测 —— 打包后用户数据在 C:、程序在 D:，`os.path.relpath` 抛 `ValueError: path is on mount 'C:', start on mount 'D:'` ⇒ `/api/paipu-browse` 400，这是「牌谱目录只能拉开很窄的条」的另一半原因）：`mjscore/server.py` 新增 `_paipu_rel()`（只在牌谱根内做 relpath，返回 `data/paipu/...`）、`_rel_or_abs()` 兜住跨盘符；`test/datamgr_test.py` 第 3 节的陈旧期望（只数 `.xml`、硬编码目录名）改成全部后缀 + `scan(kind=all)` + 跨盘符断言（78 / 0）；后端已重新打包并冒烟通过（`/api/paipu-browse?dir=data/paipu` → 200），已由用户 m09307 在普通终端出包：`tenhou-paipu-analysis-1.3.0-setup.exe` = 143,284,238 B，SHA256 `7EEE64A4F11C89577840DF26976F216333DD7EC72C989BBC0699EFF6FF1CEE89`）。
 
@@ -3603,3 +3603,40 @@ r = t % 3; t = (t // 3) * 4; h = [t, t, t]
 2. ~~重新打包 v1.4.3 后更新 readme §2.1 的发布包指纹~~ **已完成**（用户 m10285 本机构建）：`tenhou-paipu-analysis-1.4.3-setup.exe` = 143,292,338 B，SHA256 `36A06F2E9B5F43BCB38C99D5E155F23FD6988F0543AFF54BC4AD64D5D48448ED`；readme §2.1 已更新。
 3. `hora` / `ankan_pai` / `kakan_pai` 是否进一步进入 HUD 或特征列，由用户决定。
 4. 主线第 74–78 轮（含本轮陈旧期望同步）的 commit / push 由用户在终端执行（沙箱内 `git push` 被拒：`ssh.exe … Win32 error 5`）。
+## 73. 第 79 轮：打开检索 / 一览条目时显示该牌谱文件的真实后缀（用户 m10331，v1.4.4 / schema 11）
+
+### 73.1 交付物
+
+| 文件 | 改动 |
+| --- | --- |
+| `web/js/app.js` | `installGame(text, logId)` 里写死的 `logId + '.tenhou'` 改成由调用方传真实文件名：`openItem()` 用 `baseName(it.log_path)`，取到 `/api/read` 的响应后优先用 `baseName(d.path)`。 |
+| `test/apptest.js` | 假行的 `log_path` 改成 `.tenhou`、假 `/api/read` 的取 id 正则支持新旧后缀；新增 8.5b 断言（`.naga` 条目 ⇒ `App.fileName` 以 `.naga` 结尾且工具栏同步）；版本号 1.4.3 → 1.4.4。 |
+| `mjscore/__init__.py` / `package.json` / `test/mjscore_test.py` | 版本 1.4.4（docstring 与兼容断言同步）。 |
+| `readme.md` | 标题 / §2.1 / §10 / 版本历史新增 v1.4.4 条目。 |
+
+### 73.2 技术要点
+
+1. 现象：从检索结果打开一份 NAGA 报告，左上角显示 `…v2_2.tenhou`（底部信息条与列表里都是 `…v2_2`，只有文件名多了 `.tenhou`）。
+2. 根因：`openItem()` → `installGame(text, logId)` → `loadText(text, logId + '.tenhou')` —— **后缀被写死**；这个函数只服务检索 / 一览条目（本地打开文件走 `loadFromPath()` 的 `baseName(p)`，本来就是对的）。
+3. 修法：条目记录里本来就有 `log_path`（数据库 `frame.log_path`，真实绝对路径）⇒ 用它的 basename；`/api/read` 的响应也带 `path`，取到后用它更稳。
+4. 影响面：只改「显示名」。`gameLogId()` 会剥掉 `.naga` / `.mortal-*` / `.tenhou` 等后缀，所以「同一个牌谱不重复载入」的判断、`复制url` 拼接、特征码都照旧。
+
+### 73.3 测试
+
+- `node --check web\js\app.js` / `node --check test\apptest.js` exit 0；`node test\apptest.js` **816 行 / 0 失败（全部通过）**，含 8.5b 新断言「NAGA 条目显示 .naga 而不是 .tenhou（用户 m10331）：2026083021gm-00a9-0000-d0810acfv2_2.naga」。
+- 其余快档同为全绿：`selftest.js` exit 0（`[OK] 全部不变量通过`）、`uitest.js` exit 0（`全部通过`）、`naga_test.py` **250 / 0**、`mortal_test.py` **106 / 0**、`datamgr_test.py` **79 / 0**。
+- 版本自检：`mjscore.__version__ = 1.4.4`、`store.SCHEMA_VERSION = 11`、`feats.FEATURES = 42`。
+- 打包核对：用户本机构建 `tenhou-paipu-analysis-1.4.4-setup.exe` = **143,292,183 B**，SHA256 `D764F5CF0BC39B0431D82B0A7976EFDDC9D250D5356F1C7B59875A3C82D3B190`（本机复核一致）；`dist\electron\win-unpacked\resources\backend\_internal\web\js\app.js` 158,020 B，含 `installGame(text, name)` 与 `m10331` 注释，写死后缀只剩 `openItem()` 里 `log_path` 缺失时的 URL 兜底（不是显示名）。
+
+### 73.4 踩坑
+
+1. 前端里凡是「拼后缀」的地方都要问一句「这份牌谱真的叫这个名字吗」：本轮同一处代码同时服务天凤 / NAGA / Mortal 三种来源。
+2. 假测试的 `log_path` 用旧后缀（`.xml`）时，修好的代码会显示 `.xml` —— 测试数据也要跟着新后缀口径走。
+3. `installGame()` 的参数名（`logId`）与语义（显示名）不一致，是 bug 的温床；改成 `name` 后调用点自然要重新想一遍。
+4. 写 8.5b 断言时连踩两次：① 新行 push 到 `App.items` 末尾后只点一次「下一条目」，只会走到原来的第 2 条 ⇒ 要把新行放到**第 2 位**、`App.itemIndex = 0` 再点；② `stepItem()` 开头有 `if (App.itemIndex < 0) { return; }` 的闸门 ⇒ 不能靠「把 itemIndex 设成 -1 再点」模拟首次打开（点击会被静默吞掉，表现为 `App.fileName` 完全没变）。
+
+### 73.5 待办
+
+1. ~~用户本机重新打包 v1.4.4 后更新 `readme.md` §2.1 的发布包指纹。~~ 已完成（安装包 143,292,183 B / SHA256 `D764F5CF0BC39B0431D82B0A7976EFDDC9D250D5356F1C7B59875A3C82D3B190`，§2.1 已更新）。
+2. 待用户目视确认：从检索结果打开 NAGA / Mortal / 天凤三种条目，左上角与下方信息条显示各自真实后缀（`.naga` / `.mortal-a|b|c` / `.tenhou`）。
+3. v1.4.4 的 commit / push 与 v1.4.3 tag 推送仍需在普通终端执行（沙箱 `git push` 被系统拒绝）。
