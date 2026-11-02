@@ -3048,7 +3048,7 @@ r = t % 3; t = (t // 3) * 4; h = [t, t, t]
 
 ---
 
-*最后更新：第 79 轮（**打开检索 / 一览条目显示该牌谱文件的真实后缀**（用户 m10331，v1.4.4）：检索结果 / 全部浏览的条目原先把左上角文件名固定拼成 `<特征码>.tenhou`，NAGA（`.naga`）与 Mortal（`.mortal-a|b|c`）的牌谱被误标 —— 现改用条目记录里的 `log_path` 与 `/api/read` 返回的 `path` 的真实文件名；无数据库结构变化（仍 schema 11）。v1.4.4 安装包 = 143,292,183 B，SHA256 `D764F5CF0BC39B0431D82B0A7976EFDDC9D250D5356F1C7B59875A3C82D3B190`（本机复核一致）；v1.4.4 定为 1.4.x 线的稳定版（维护分支 `stable/1.4.4`）。）。上一轮：第 78 轮（**AI 决策面板展示完整动作空间**（用户 m10081，v1.4.3）：新版 NAGA 报告除「打 xx / 打·立直 xx」外，还给出一帧里其它可选动作的概率 —— 摸牌帧的**自摸**（`hora`）、**九種九牌流局**（`kyushu`）、逐个可杠牌的**暗杠 / 加杠**（`ankan_pai` / `kakan_pai`，直接给出杠哪张牌，可同时多张），鸣牌响应帧的**荣和**（`hora`）；与打牌共用 10% 门槛，低概率的进「其它」；旧模型（含天凤 / NAGA-平衡 / NAGA-超副露 / Mortal）没有这些字段 ⇒ 展示零变化）；v1.4.3 已打包（用户 m10285 本机）= `tenhou-paipu-analysis-1.4.3-setup.exe` 143,292,338 B / SHA256 `36A06F2E9B5F43BCB38C99D5E155F23FD6988F0543AFF54BC4AD64D5D48448ED`。上一轮：第 77 轮（**概率条统一配色**（用户 m10014，v1.4.2）：默听条一律 rgb(124,59,230)（= 原 argmax 亮紫）、立直条一律 #e0503a，取消 argmax 亮紫高亮。上一轮：第 76 轮（AI 决策表「其它」行按**显示值**补足到 100.0%，用户 m09901；1.4.1 尚未打包发布，修复并入同一版本）。上一轮：第 75 轮（**新版 NAGA 联合分布展示**：NAGA-避四 / NAGA-争一 的决策表直接列「打 xx」/「打 xx 立直」、概率条在既能默听打又能立直打的牌上左右一分为二（左半紫 / 右半红）；旧模型展示零变化；按用户 m09354 ④ 只提小版本号 ⇒ **v1.4.1**（库结构不变，仍 schema 11）。上一轮：第 74 轮（**新版 NAGA 报告支持**：アナンタ → `NAGA-避四`、ウロボロス → `NAGA-争一`；第零类 5 → 7 项（共 42 特征）；两款新模型的打牌概率取 `dahai_detail` 的 37 档合并回 34 档 ⇒ **v1.4.0 / schema 11**（用户 m09507）；已有模型（含天凤 / Mortal）展示零变化；立直概率按官方 viewer 1.2.2 口径从 `dahai_detail` 的立直支还原，并修掉旧报告立直概率恒 0.0% 的 bug）
+*最后更新：第 82 轮（**期望打点摸进 5 区分赤 / 非赤 + v1.5.0**（用户 m00398）：赤 5 修复改变 6 个期望打点特征 ⇒ 中版本 1.5.0，1.4.x 库需重析；假想摸进 5 按公共信息加权，详见第 76 节）。上一轮：第 81 轮（期望打点补回赤 5（bug 修复），见第 75 节）。上一轮：第 79 轮（**打开检索 / 一览条目显示该牌谱文件的真实后缀**（用户 m10331，v1.4.4）：检索结果 / 全部浏览的条目原先把左上角文件名固定拼成 `<特征码>.tenhou`，NAGA（`.naga`）与 Mortal（`.mortal-a|b|c`）的牌谱被误标 —— 现改用条目记录里的 `log_path` 与 `/api/read` 返回的 `path` 的真实文件名；无数据库结构变化（仍 schema 11）。v1.4.4 安装包 = 143,292,183 B，SHA256 `D764F5CF0BC39B0431D82B0A7976EFDDC9D250D5356F1C7B59875A3C82D3B190`（本机复核一致）；v1.4.4 定为 1.4.x 线的稳定版（维护分支 `stable/1.4.4`）。）。上一轮：第 78 轮（**AI 决策面板展示完整动作空间**（用户 m10081，v1.4.3）：新版 NAGA 报告除「打 xx / 打·立直 xx」外，还给出一帧里其它可选动作的概率 —— 摸牌帧的**自摸**（`hora`）、**九種九牌流局**（`kyushu`）、逐个可杠牌的**暗杠 / 加杠**（`ankan_pai` / `kakan_pai`，直接给出杠哪张牌，可同时多张），鸣牌响应帧的**荣和**（`hora`）；与打牌共用 10% 门槛，低概率的进「其它」；旧模型（含天凤 / NAGA-平衡 / NAGA-超副露 / Mortal）没有这些字段 ⇒ 展示零变化）；v1.4.3 已打包（用户 m10285 本机）= `tenhou-paipu-analysis-1.4.3-setup.exe` 143,292,338 B / SHA256 `36A06F2E9B5F43BCB38C99D5E155F23FD6988F0543AFF54BC4AD64D5D48448ED`。上一轮：第 77 轮（**概率条统一配色**（用户 m10014，v1.4.2）：默听条一律 rgb(124,59,230)（= 原 argmax 亮紫）、立直条一律 #e0503a，取消 argmax 亮紫高亮。上一轮：第 76 轮（AI 决策表「其它」行按**显示值**补足到 100.0%，用户 m09901；1.4.1 尚未打包发布，修复并入同一版本）。上一轮：第 75 轮（**新版 NAGA 联合分布展示**：NAGA-避四 / NAGA-争一 的决策表直接列「打 xx」/「打 xx 立直」、概率条在既能默听打又能立直打的牌上左右一分为二（左半紫 / 右半红）；旧模型展示零变化；按用户 m09354 ④ 只提小版本号 ⇒ **v1.4.1**（库结构不变，仍 schema 11）。上一轮：第 74 轮（**新版 NAGA 报告支持**：アナンタ → `NAGA-避四`、ウロボロス → `NAGA-争一`；第零类 5 → 7 项（共 42 特征）；两款新模型的打牌概率取 `dahai_detail` 的 37 档合并回 34 档 ⇒ **v1.4.0 / schema 11**（用户 m09507）；已有模型（含天凤 / Mortal）展示零变化；立直概率按官方 viewer 1.2.2 口径从 `dahai_detail` 的立直支还原，并修掉旧报告立直概率恒 0.0% 的 bug）
 
 上一轮：第 73 轮（**界面整体放大 25%** + 检索分段载入 + 静态帧禁用「局」选择 + **v1.3.1**：大版本 + 中版本相同即可读库（用户 m09339 ①②③ / m09354 ④⑤））。上一轮：第 72 轮（打包发布流程：**跨盘符 relpath 真 bug**（用户 m09228 实测 —— 打包后用户数据在 C:、程序在 D:，`os.path.relpath` 抛 `ValueError: path is on mount 'C:', start on mount 'D:'` ⇒ `/api/paipu-browse` 400，这是「牌谱目录只能拉开很窄的条」的另一半原因）：`mjscore/server.py` 新增 `_paipu_rel()`（只在牌谱根内做 relpath，返回 `data/paipu/...`）、`_rel_or_abs()` 兜住跨盘符；`test/datamgr_test.py` 第 3 节的陈旧期望（只数 `.xml`、硬编码目录名）改成全部后缀 + `scan(kind=all)` + 跨盘符断言（78 / 0）；后端已重新打包并冒烟通过（`/api/paipu-browse?dir=data/paipu` → 200），已由用户 m09307 在普通终端出包：`tenhou-paipu-analysis-1.3.0-setup.exe` = 143,284,238 B，SHA256 `7EEE64A4F11C89577840DF26976F216333DD7EC72C989BBC0699EFF6FF1CEE89`）。
 
@@ -3642,3 +3642,125 @@ r = t % 3; t = (t // 3) * 4; h = [t, t, t]
 2. 待用户目视确认：从检索结果打开 NAGA / Mortal / 天凤三种条目，左上角与下方信息条显示各自真实后缀（`.naga` / `.mortal-a|b|c` / `.tenhou`）。
 3. **用户 m10454**：v1.4.4 定为 1.4.x 线的**稳定版** ⇒ 新建维护分支 `stable/1.4.4`，源码备份 `build\_scratch\backup\tenhou-paipu-analysis-v1.4.4-source.zip`，`readme.md` §2.1 与 `docs/release-v1.4.4.md` 同步（1.3.x 线仍由 `stable/1.3.1` 维护）。
 4. v1.4.4 的 commit / push 与 v1.4.3 tag 推送仍需在普通终端执行（沙箱 `git push` 被系统拒绝）；GitHub Release 正文已就绪 = `docs/release-v1.4.4.md`（tag `v1.4.4`，附件用 143,292,183 B 的安装包）。
+
+## 74. 第 80 轮：牌谱跨来源判重与 AI 分析合并（mix，用户 m00001）
+
+### 74.1 交付物
+
+| 文件 | 改动 |
+| --- | --- |
+| `mjscore/mix.py` | 新增：牌局进程规范化 SHA-256、`[mix]` JSON 容器、模型 union/逐帧 AI 合并、原子写入、扫描与手动合并入口。 |
+| `mjscore/download.py` | 新文件落盘后调用 `_auto_mix`；源文件被合并后回填 `entry`/`seen`/`results` 路径；`find_naga_files`/`find_mortal_files`/天凤分支支持从 `[mix]` 的 `sources` 命中报告号。 |
+| `mjscore/cli.py` | `report_kind`/`file_log_id`/`game_from_file` 识别 mix；新增 `--mix` / `--mix-out` / `--mix-keep`；补 `__main__` 入口。 |
+| `mjscore/server.py` | `/api/read` 统一走 `cli.game_from_file`；`/api/naga-convert` 先嗅探 mix；`MAX_TEXT` 提到 32MB。 |
+| `web/js/app.js` | `parseGameText` 拆 `{mjscore_mix:1, game:…}`，本地拖入 `.tenhou` mix 也能播放。 |
+| `test/mix_test.py` | 新增 81 项断言：真实重复对、四模型 union、四家同模型座位、**顺序合并（2a）**、**NAGA 来源判重**、跨源事件归一化、防覆盖、mix 感知下载判重。 |
+| `test/apptest.js` | 新增本地 `[mix]abc.tenhou` 容器载入断言。 |
+
+### 74.2 技术要点
+
+1. **判重只看牌局进程**：每局 init（局数/本场/供托/宝牌/点数/庄家/排序配牌）+ 规范化事件（摸打、鸣牌、立直、宝牌、和了/流局）做 SHA-256。对局者名字、`player_id`、`viewer_seat`、报告号、文件名都不进入 hash；用户 m00606 特别强调分析软件可能隐去对局者 ID。
+2. 跨来源归一化：红 5 统一为 `0m/0p/0s`；加杠只取加进去的一张；立直只记第一次；和了只记 `winner/fromWho`；流局只记发生；连续终局事件排序。
+3. 合并：base 优先已有 mix，其次 mtime 最早；模型按规范名 union，`types`/`model_index` 重映射；逐帧只从各 AI 源按 union 索引填模型槽，非模型字段取 base。四家 Mortal 同名模型合成一个槽位，`huro`/`dahai_pred` 等按座位/决策者补齐；座位 0 是合法视角，`viewer_seat` 不能用 `or` 兜底。容器 `sources` 保留最初文件名，已有 mix 再合并时不会把 `[mix]` 容器名写进来源列表。
+4. 输出 `[mix]` + 最早文件名（已有前缀不重复），临时文件 + `os.replace` 原子写入；删除被合并源；目标已存在且不在输入中时 `MixError`，不静默覆盖。
+5. 下载判重同时认普通文件和 mix 容器里的 `sources[].report_id`/name，避免删除源后重复下载。
+6. mix 容器只存元数据不嵌原始字节，控制 32MB 文本上限。
+
+### 74.3 测试
+
+- `python test\mix_test.py`：**81 OK / 0 FAIL**（含 `run_download` 全流程自动合并、已有 mix 顺序并入第三份、NAGA `v2_2` 来源判重）。
+- 真实重复对 `data/paipu/mortal/718521d3073f9ee3.mortal-b` + `bbffcce78e5db531.mortal-c` 合并为 `[mix]718521d3073f9ee3.mortal-b`，2 个模型、13 局、每模型 168 帧。
+- 服务端手测：`GET /api/read?path=<mix>` 与 `POST /api/naga-convert?name=<mix>` 均 200、`kind="mix"`、2 模型。
+- `node test\apptest.js` **全部通过**（含 mix 容器本地载入；为恢复原测试帧位补 `App.setFrame(1)`）、`node test\selftest.js` / `node test\uitest.js` 全部通过。
+- `naga_test.py` **250 / 0**、`mortal_test.py` **106 / 0**、`agari_test.py` **189 / 0**、`datamgr_test.py` **79 / 0**。
+- mix 入库抽查：`cli.build_records` 对真实 mix 返回 913 条打点、`fill_ai` 得到 212 条 AI 打点，两个 Mortal 模型都进 `ai_models`；耗时约 115s（纯 Python）。
+- `danger_test.py` / `expect_test.py` / `shanten_test.py` 的语料扫描只找 `data/**/*.xml` 与 `data_extra/*.xml`，当前工作区只有 `.tenhou`，因此分别出现空语料 / `IndexError` / `ZeroDivisionError`；这是测试夹具缺失，不是 mix 改动。
+- `mjscore_test.py` 全部通过：**281 OK / 0 FAIL**（后台 PID 25712；含 `/api/analyze` 长测试）。
+
+### 74.4 踩坑
+
+1. `_canon_round` 的 call 先对牌 id 做 `set`：天凤加杠 4 张是四个不同 id、同一牌种，和 NAGA/Mortal 的 1 张不相等。改为 `_tile_set`（先映射牌名再去重）。
+2. `_merge_entries` 从 base 帧深拷贝再合并 base，若 base 模型列表顺序与 union 位置不一致会残留旧槽；改为先只复制非模型字段，再由所有源按 union 映射填。
+3. `[mix]` 前缀使文件名无法被 `find_*_files` 的 report_id 正则命中；新增 `_mix_source_files` 扫描容器 `sources`。
+4. PowerShell `Set-Content -Encoding UTF8` 写 BOM 会让 Python 报 `SyntaxError: invalid non-printable character U+FEFF`；Python 文件统一用 `encoding='utf-8', newline='\n'` 写。
+5. `mjscore/cli.py` 原先没有 `__main__`，`python -m mjscore.cli` 静默无输出；已补。
+6. `viewer_seat=0` 被 `or` 当成假值覆盖，NAGA 报告 `player_id=None` 时还会丢视角；改为显式 `is None` 兜底。
+7. 已合并的 mix 再次合并时，来源名一度取当前 entries（含 `[mix]` 容器名）；改为从容器 `sources` 继承最初来源名。
+
+### 74.5 待办
+
+1. 其余测试已完成；mix 入库/`fill_ai` 已抽查（913 条打点、212 条 AI 打点、两个 Mortal 模型均入 `ai_models`），完整 DB 断言仍待补。
+2. 真实四家 Mortal / 跨来源同局样例由用户后续提供；目前四家场景用合成容器验证。
+3. 评估每次下载全量扫描 `data/paipu` 的性能（首次约 5.6s/158 文件，进程内缓存按 mtime/size）。
+4. 是否把 mix 入库后的 `source_ids`/URL 口径进一步固化，待实测。
+
+
+## 75. 第 81 轮：期望打点补回赤 5（bug 修复）
+
+### 75.1 现象与根因
+
+- `Expect.__init__` 把 `pl["hand"]` 压成 34 项计数；`tiles_of(counts)` 用 `tid_of(kind)` 重建牌 id，5 的牌种固定取 `kind*4+1`（非赤），所以门清手牌 / 和了张里的赤 5 永远不会进入 `agari.score` 的 `all_tiles`。
+- `agari.dora_yaku()` 的 `aka = sum(1 for t in all_tiles if is_red(t))` 因此对门清手牌恒为 0；副露里的赤 5 仍保留真实 id，造成「副露赤 5 算、手牌赤 5 不算」的不一致。
+- 影响 6 个期望打点特征；赤 5 本身在 `GATE_IGNORED` 内，不会改变「能否和牌」，只少 1 番/张。旧 13.6 ④ 与踩坑 44 的「赤 5 按非赤算」是修复前口径。
+
+### 75.2 改法
+
+- `Expect.__init__` 记录 `self.red[k]`（真实手牌中该种是否有赤 5）。
+- `tiles_of(counts, red=None)` 支持赤 5 掩码；`_red_of(counts)` 在该种仍有牌时保留赤 5（同种打牌 argmax 会保留赤牌）。
+- `_eval(..., win_tile=None)` 用 red-aware 手牌，缓存键加入 `win_tile`；`_score_now` 取出的若是手里唯一赤 5，则用 `k*4` 作为和了张 id。
+- 假想摸进的牌仍按非赤处理（不知道身份；第 76 轮已改为按公共信息加权）。
+
+### 75.3 验证
+
+- `test/expect_test.py` 新增 2b：赤 5 手牌四项打点 3900 / 5200 / 2000 / 2700；和了张为赤 5 时 2600（非赤旧行为 1300）；`tiles_of` 掩码用例。
+- 84 OK / 1 FAIL；唯一失败仍是 `section1` 的 `n >= 100`（`corpus()` 只找 `data/**/*.xml`，当前工作区只有 `.tenhou`），与本次修复无关。`agari_test.py` 189/0。
+- `test/expect_test.py` 的 `ids()` 原先声称避开赤 5，实际 `k*4+n` 会让 5 的第一张变成赤 5；已改为普通牌优先 `kind*4+1..3`，避免旧手算断言因赤 5 误伤。
+
+## 76. 第 82 轮：期望打点摸进 5 区分赤 / 非赤 + v1.5.0（用户 m00398）
+
+### 76.1 需求与现状
+
+- 用户 m00398：赤 5 修复会改变 6 个期望打点特征，按版本规则应升**中版本**并废弃旧库；同时要确认进张枚举是否区分赤 5 / 普通 5，以及能否按牌桌公共信息决定「赤 5 未出现才枚举、已出现不再枚举」。
+- 改前 `waits_of` / `node` 只枚举 34 个牌种；`_eval` 默认 `win_tile=tid_of(kind)`，即永远按普通 5；`self.red` 只记录自己门清手牌；`shanten.visible_counts` 用 `tid // 4` 把赤 / 普通 5 合并。因此假想摸进 / 和了张永远不会是赤 5，也不会因为公共信息里已有赤 5 而停止枚举。
+
+### 76.2 改法
+
+- `Expect.__init__` 新增 `red_mode[3]`：`0 = 赤 5 尚未出现`、`1 = 赤 5 在自己门清手牌`、`2 = 已公开 / 已不可能再摸`。`_red_public(state, kind)` 扫描四家副露、四家牌河（含被鸣走）与宝牌指示牌；不看别家暗手。
+- 赤 / 非赤的牌型、向听、听牌种类完全相同，只影响得点，因此不复制整棵牌型树：新增 `_leaf_gain`，对每个 5 牌种按 `p_hand = used / avail`、`p_win = 1 / avail`、剩余概率枚举「赤在手 / 赤为和了张 / 普通」三种状态，再用 `_eval(..., win_tile, red)` 加权。
+- `_eval` 增加可选 `red`（34 项赤 5 掩码）并纳入缓存键；`node` 的 `got` / `sc` 全部走 `_leaf_gain`；`_score_now` 的已和牌赤 5 逻辑保留。
+- 口径：假想摸进的 5 在赤 5 未出现时可能是赤 5；赤 5 已在自己手牌 / 副露 / 牌河 / 宝牌指示牌时，不再枚举为和了张。手牌 / 副露里的真实赤 5 仍按真实 id 计入。
+
+### 76.3 版本
+
+- `mjscore/__init__.py` / `package.json` → **1.5.0**；数据库结构仍 schema 11（结构未变），靠大 / 中版本兼容判据拒绝 1.4.x 库。1.4.x 建的库需要 `--delete-db` 后重新分析。
+- 同步 `test/mjscore_test.py` 的版本 / 兼容断言、`test/apptest.js` 的假 `/api/health` 与标题断言、`readme.md` 标题 / §2.1 / §13、本节。
+- `test/mjscore_test.py` 全量约 10 分钟，本轮仍未跑；只做了版本探针与前端测试。
+
+### 76.4 验证
+
+- `test/expect_test.py` 新增 2b-2：赤 5 未出现时，听 5m 的立直荣和 1625、立直自摸 2500、默听自摸 1325（普通 / 赤 1300 / 2600、2000 / 4000，按 1/4 加权）；赤 5 在牌河时 1300 / 2000 / 1100；自己手牌赤 5 的 3900 / 5200 / 2000 / 2700 不变。
+- `ref_leaf` / `ref_frame` 改为与 `_leaf_gain` 同口径的独立参考（枚举赤 5 状态 + 只统计有役听牌），section3c 重新通过。
+- 2b-2 还覆盖副露里的赤 5 公开状态、`red_mode` 1/2，以及独立参考 `ref_leaf` 在未出现 / 已公开赤 5 时的 1625 / 1300 对拍。
+- 结果：**106 OK / 1 FAIL**；唯一失败仍是 section1 的 `语料听牌手牌样本数 >= 100（实际 0）`——`corpus()` 只 glob `.xml`，当前工作区是 `.tenhou`，与本轮无关。
+- `node test/apptest.js` 全部通过；`py_compile` 通过；版本探针 `1.5.0 / schema 11 / 1.5.1 兼容 / 1.4.4 不兼容`。
+- 旧库拒绝探针：临时 SQLite 写入 `schema_version=11 / app_version=1.4.4`，`store.check_version()` 抛「数据库版本不匹配（库由软件版本 1.4.4 生成，当前软件版本 1.5.0…）」；改成 `1.5.0` 后通过。
+- 宝牌指示牌用例只断言 `red_mode[0] == 2`：该手含 6m，指示牌 5m 会让 6m 成为普通宝牌，故打点 2600 是正常宝牌，不是赤 5 重复计入。
+
+### 76.5 打包
+
+- 后端 PyInstaller onedir + 内嵌 node 构建成功：
+  `powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./build.ps1 -SkipTests -SkipElectron -Smoke -Port 8788`
+  - `dist/pyi/tenhou-paipu-analysis-server/tenhou-paipu-analysis-server.exe` = 2,454,671 B；内嵌 node = 91,694,408 B。
+  - 8788 端口 smoke 通过，`/api/health` 返回 `version 1.5.0`。
+- NSIS 安装包构建成功：
+  `powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./build.ps1 -SkipTests -SkipPyi`
+  - `dist/electron/tenhou-paipu-analysis-1.5.0-setup.exe` = 143,338,298 B。
+  - SHA256 = `02FC1BEEA464F3294C636046F05E15A14A40472B1F4CBBE6C4CD96F31879CBD6`。
+- `readme.md` §2.1 的发布包指纹已更新为 v1.5.0，v1.4.4 降为上一稳定版；新增 `docs/release-v1.5.0.md`。
+- `dist/`、`build/` 均在 `.gitignore` 内，构建产物不进入仓库。
+
+### 76.6 待办
+
+1. 历史 1.4.x 库必须重新分析；本轮没有自动迁移 / 回填。
+2. 完整 `test/mjscore_test.py` 的 DB + `/api` 链路未重跑；本轮验证到 `feats.second_class` 特征层与前端。
+

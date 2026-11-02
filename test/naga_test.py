@@ -723,6 +723,50 @@ def section7():
     eq((hin["ippatsu"], hin["haitei"]), (True, True), "7.9 役种提示（一発 / 海底）也能置真")
 
 
+    # 7.11 赤 5 在门清手牌：NAGA 结算必须用真实牌 id（不能压成 34 计数）
+    tehais = [list(h) for h in TEHAIS_TANYAO]
+    tehais[0][3] = "5mr"                       # 5m -> 赤 5m
+    game = naga.to_game(_report(tehais, [{"type": "tsumo", "actor": 0, "pai": "8s"}],
+                                [dict(HORA_TANYAO)]))
+    end = game["rounds"][0]["events"][-1]
+    ids = [int(y[0]) for y in (end.get("yaku") or [])]
+    check(54 in ids, "7.11 赤 5 在门清手牌：引擎判出赤宝牌 54")
+    eq([y for y in (end.get("yaku") or []) if y[0] == 54], [[54, 1]], "7.11 赤宝牌 1 番")
+    game0 = naga.to_game(_report(TEHAIS_TANYAO, [{"type": "tsumo", "actor": 0, "pai": "8s"}],
+                                 [dict(HORA_TANYAO)]))
+    end0 = game0["rounds"][0]["events"][-1]
+    check(54 not in [int(y[0]) for y in (end0.get("yaku") or [])], "7.11 无赤对照：没有 54")
+    eq(len(replay.check_invariants(game, 0)[0]), 0, "7.11 replay 不变量 0 错误")
+
+    # 7.12 赤 5 作为荣和的和了张：win_tile 也必须保留赤 id
+    def _ron_tehais(red):
+        return [
+            ["5mr" if red else "5m", "1p", "2p", "3p", "4p", "6p", "7p", "8p", "9p",
+             "1s", "2s", "3s", "4s"],
+            ["1m", "2m", "3m", "4m", "5m", "6m", "7m", "8m", "9m", "3m", "4m", "5s", "5s"],
+            ["1s", "1s", "1s", "9s", "9s", "9s", "E", "E", "E", "P", "P", "2s", "2s"],
+            ["9p", "9p", "9p", "S", "S", "S", "N", "N", "N", "W", "W", "3s", "3s"],
+        ]
+
+    for red in (False, True):
+        discard = "5mr" if red else "5m"
+        hora = {"type": "hora", "actor": 1, "target": 0, "pai": discard,
+                "deltas": [-3900 if red else -2000, 3900 if red else 2000, 0, 0],
+                "scores": [21100, 28900, 25000, 25000], "ba": [0, 0],
+                "hu": 30, "fan": 3 if red else 2, "raw_delta": 3900 if red else 2000,
+                "yakus": [], "yakus_detail": [], "yakuman": []}
+        game = naga.to_game(_report(_ron_tehais(red),
+                                    [{"type": "tsumo", "actor": 0, "pai": "9m"},
+                                     {"type": "dahai", "actor": 0, "pai": discard}],
+                                    [hora]))
+        end = game["rounds"][0]["events"][-1]
+        eq((end["winner"], end["fromWho"]), (1, 0), "7.12 荣和：和了家 / 放铳家")
+        eq([y for y in (end.get("yaku") or []) if y[0] == 54], [[54, 1]] if red else [],
+           "7.12 赤 5 是放铳牌时只有红例有 54")
+        eq(end["ten"], [30, 3900 if red else 2000], "7.12 荣和点数（赤 5 多 1 番）")
+        eq(len(replay.check_invariants(game, 0)[0]), 0, "7.12 replay 不变量 0 错误")
+
+
 # ------------------------------------------- 8. naga 下载判重（第 56 轮，用户 m05392）
 def section8():
     """两种来源撞到同一个 report_id：官方跳过同名文件、ricochet 覆盖它。"""

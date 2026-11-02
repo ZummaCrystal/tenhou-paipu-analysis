@@ -60,13 +60,13 @@ import sys
 import urllib.parse
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
-from . import ai_models, cli, datamgr, download, feats, mortal, naga, paths, store
+from . import ai_models, cli, datamgr, download, feats, mix, mortal, naga, paths, store
 from . import APP_NAME, AUTHOR, AUTHOR_EMAIL, __version__ as APP_VERSION
 
 ROOT = cli.ROOT
 DEFAULT_PORT = 8770
 DEFAULT_HOST = "127.0.0.1"
-MAX_TEXT = 16 * 1024 * 1024
+MAX_TEXT = 32 * 1024 * 1024      # 多来源合并后的 [mix] 可能比单份报告大
 MAX_UPLOAD = 32 * 1024 * 1024      # POST /api/naga-convert 的上传上限（.json.gz 实测 < 1.5 MB）
 
 
@@ -490,17 +490,18 @@ class Handler(SimpleHTTPRequestHandler):
                 if not os.path.isfile(p):
                     raise ApiError("文件不存在：%s" % p)
                 if os.path.getsize(p) > MAX_TEXT:
-                    raise ApiError("文件过大（>16MB）：%s" % p)
+                    raise ApiError("文件过大（>%dMB）：%s" % (MAX_TEXT // (1024 * 1024), p))
                 # NAGA / Mortal 报告都是报告 JSON（NAGA 是 gzip 压的 <report_id>.naga，旧后缀
                 # .json.gz；Mortal 是 <report_id>.mortal-a/b/c），前端不能直接解析；这里先转成与
                 # 天凤 xml 同构的结构（mjscore/naga.py / mjscore/mortal.py），前端于是能复用同一套
-                # 解析 / 回放 / 打点链路（用户 m00080 目标 2 / m05937 ③）。
+                # 解析 / 回放 / 打点链路（用户 m00080 目标 2 / m05937 ③）。mix 容器也走同一条路。
                 kind = cli.report_kind(p)      # 裸 .json / .gz 的 Mortal 报告由内容嗅探消歧（用户 m05937 ③）
                 if kind:
                     try:
-                        game = mortal.game_from_file(p) if kind == "mortal" else naga.game_from_file(p)
+                        game = cli.game_from_file(p)
                     except Exception as exc:   # noqa: BLE001 - 报告损坏 / 根本不是该种报告
-                        raise ApiError("%s 报告解析失败：%s" % ("Mortal" if kind == "mortal" else "NAGA", exc))
+                        label = {"mortal": "Mortal", "naga": "NAGA", "mix": "mix"}.get(kind, "AI")
+                        raise ApiError("%s 报告解析失败：%s" % (label, exc))
                     return self._send_json({"path": p, "naga": True, "kind": kind,
                                             "text": json.dumps(game, ensure_ascii=False, separators=(",", ":"))})
                 with open(p, "r", encoding="utf-8", errors="replace") as fh:
@@ -570,6 +571,12 @@ class Handler(SimpleHTTPRequestHandler):
                 raise ApiError("上传的牌谱过大（>%d MB）" % (MAX_UPLOAD // (1024 * 1024)))
             raw = self.rfile.read(size)
             name = (q.get("name") or [""])[0]
+            # 同一对局合并出来的 [mix] 容器：后缀可能仍是 .tenhou / .naga / .mortal-a|b|c，
+            # 必须先按内容识别，否则会被当成原生报告解析（用户 m00001）。
+            if mix.looks_like_mix(raw):
+                game = mix.game_from_bytes(raw, name=name)
+                return self._send_json({"path": name, "naga": True, "kind": "mix",
+                                        "text": json.dumps(game, ensure_ascii=False, separators=(",", ":"))})
             # 上传的文件名是 .json 时两种报告会撞车 ⇒ 内容嗅探消歧（用户 m05937 ③）
             sniff = mortal.is_mortal_file(name) or (naga.is_naga_file(name)
                                                    and mortal.looks_like_mortal(raw))

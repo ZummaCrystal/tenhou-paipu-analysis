@@ -391,6 +391,12 @@ clickAct('next');
 check(App.frameIndex === 1 && curFrame().ev.type === 'draw', 'NAGA 报告也能步进：帧 ' + App.frameIndex + ' 事件 ' + curFrame().ev.type);
 check(byId.frameKey.textContent === 'abc 東一局 0本場 1巡目 東家',
   '特征串把 .json.gz 剥成特征码：' + byId.frameKey.textContent);
+/* [mix] 容器沿用 .tenhou 后缀时，本地 loadText 也要拆出内层 game（不能把容器当牌谱）。 */
+var mixLocalOk = App.loadText(JSON.stringify({ mjscore_mix: 1, game: NAGA_GAME }), '[mix]abc.tenhou');
+check(mixLocalOk === true && !!App.naga && App.naga.report_id === 'abc' && App.rounds.length === 1,
+  '[mix] 容器本地 .tenhou 能拆包载入');
+App.loadText(JSON.stringify(NAGA_GAME), 'abc.json.gz');
+App.setFrame(1);   /* loadText 会重置到配牌帧；恢复原测试的第 1 帧 */
 /* --- AI 决策模型切换（用户 m04556 ①）：标题按钮 + 向下生长的菜单，默认「无AI决策」 --- */
 check(App.aiModel === -1 && byId.nagaModelBtn.textContent === '无AI决策',
   '默认「无AI决策」（天凤式展示）= ' + byId.nagaModelBtn.textContent + '（aiModel=' + App.aiModel + '）');
@@ -2417,7 +2423,7 @@ global.fetch = function (url, opt) {
                                     app_version: '0.2.0', compatible: true }] });
   }
   if (path.indexOf('/api/features') === 0) {
-    return json({ ok: true, name: '天凤牌谱分析', version: '1.4.4', schema_version: 11,
+    return json({ ok: true, name: '天凤牌谱分析', version: '1.5.0', schema_version: 11,
                   features: MJSFEAT.FEATURES,
                   first_features: MJSFEAT.FIRST_FEATURES, second_features: MJSFEAT.SECOND_FEATURES,
                   third_features: MJSFEAT.THIRD_FEATURES, wait_modes: ['出牌', '鸣牌响应'],
@@ -2846,8 +2852,8 @@ check(byId.featPanelList.querySelectorAll('.feat-row').length === 34, '手动播
 /* (4b) m03580：版本号 / 扩充现有数据库 / --full 说明 */
 check(byId.anTool === undefined, '打点工具选择已删除（m03580）');
 App.loadMeta();   /* init() 时假服务还没装好，这里显式重拉一次 /api/features */
-check(App.version === '1.4.4', 'App.version = ' + App.version);
-check(App.version === '1.4.4' && byId.appVer.textContent === 'v1.4.4',
+check(App.version === '1.5.0', 'App.version = ' + App.version);
+check(App.version === '1.5.0' && byId.appVer.textContent === 'v1.5.0',
       '标题栏显示版本号：' + byId.appVer.textContent);
 check(byId.anFullNote.textContent.indexOf('勾选') >= 0 && byId.anFullNote.textContent.length > 20,
       '--full 说明来自 /api/features：' + byId.anFullNote.textContent.slice(0, 24) + '…');

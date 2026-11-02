@@ -12,6 +12,12 @@ data/
 __pycache__/
 *.py[cod]
 
+# 稳定版备份（含源码 zip / data 副本）
+_backup/
+
+# 临时探针 / 手工测试脚本
+temp/
+
 # 测试临时产物
 test/out/
 test/_tmp/

@@ -257,10 +257,28 @@ def section3():
           "报告没给符 / 番 ⇒ 符由 mjscore/agari.py 现算：%r" % (ag["ten"],))
     eq(ag["ten"][1], 1200, "点数 = deltas[0] 扣本场 300 / 供托 1000（本局都 0）")
     check(len(ag["yaku"]) >= 1, "报告没给役种 ⇒ 引擎判定：%r" % (ag["yaku"],))
+    check(54 not in [int(y[0]) for y in (ag.get("yaku") or [])], "无赤 5 对照：没有赤宝牌 54")
     check(all(isinstance(x, int) for x in (ag.get("ura") or [])),
           "里宝牌指示牌从牌名（3s）换算成牌 id：%r" % (ag.get("ura"),))
     probs, n = replay.check_invariants(game, 1)
     eq((probs, n > 0), ([], True), "第 2 局 replay 不变量 0 错误（%d 帧）" % n)
+
+
+def section3b():
+    print("---- 3b. 赤 5 在门清手牌（Mortal -> naga._hora_settle）")
+    rep = _report()
+    for ev in rep["mjai_log"]:
+        if ev.get("type") == "start_kyoku" and ev.get("kyoku") == 2:
+            ev["tehais"][0][6] = "5mr"          # 第 2 局自家手牌的 5m -> 赤 5m
+    game = mortal.to_game(rep)
+    ag = [e for e in game["rounds"][1]["events"] if e["type"] == "agari"][0]
+    ids = [int(y[0]) for y in (ag.get("yaku") or [])]
+    check(54 in ids, "3b 赤 5 在门清手牌：引擎判出赤宝牌 54")
+    eq([y for y in (ag.get("yaku") or []) if y[0] == 54], [[54, 1]], "3b 赤宝牌 1 番")
+    check(bool(ag["ten"]) and ag["ten"][0] > 0, "3b 符仍由引擎算出：%r" % (ag.get("ten"),))
+    eq(ag["ten"][1], 1200, "3b 点数仍按报告 deltas 扣本场 / 供托")
+    probs, n = replay.check_invariants(game, 1)
+    eq((probs, n > 0), ([], True), "3b replay 不变量 0 错误（%d 帧）" % n)
 
 
 # ------------------------------------------------------------------ 4. 嗅探与分派
@@ -389,6 +407,7 @@ def main():
     section1()
     section2()
     section3()
+    section3b()
     section4()
     section5()
     section6()

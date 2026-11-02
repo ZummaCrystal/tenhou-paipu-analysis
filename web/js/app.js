@@ -223,7 +223,13 @@
   /* 牌谱文本有两种：天凤 xml（MJLOG.parse）与 naga 报告（服务端 /api/read 已转成
      同构 JSON，直接 JSON.parse）。用户 m00080 目标 2。 */
   function parseGameText(text) {
-    if (/^\s*\{/.test(String(text || ''))) { return JSON.parse(text); }
+    if (/^\s*\{/.test(String(text || ''))) {
+      var obj = JSON.parse(text);
+      /* [mix] 容器可能沿用最早的 .tenhou 后缀；本地直接打开时拆出内层 game
+         （服务端 /api/read 与 /api/naga-convert 已拆过，这里再兜一层）。 */
+      if (obj && obj.mjscore_mix && obj.game) { return obj.game; }
+      return obj;
+    }
     return MJLOG.parse(text);
   }
 

@@ -30,7 +30,9 @@
    （= 未归一化的 ``Σ p·得点``，与归一化后的 argmax 等价）：每个打牌层都只走这条 argmax 分支，同一
    分支上的和牌概率 p 一起带走、作为归一化的分母（6 个枚数项同理，见第 4 条：只是把「和牌概率 x
    得点」换成「听牌概率 x 枚数」）。得点 = ``agari.score(...)["gain"]``（含本场 / 供托 / **表宝牌**——宝牌指示牌是场上公开信息，
-   按 ``state["dora"]`` 计入 ``ctx``；不含里宝牌 / 一发 / 嶺上 / 海底等偶发役与未知信息，赤 5 按非赤牌算）。
+   按 ``state["dora"]`` 计入 ``ctx``；不含里宝牌 / 一发 / 嶺上 / 海底等偶发役与未知信息。手牌 / 副露里的
+   赤 5 按真实牌 id 计入赤宝牌；假想摸进的 5 按剩余未见张数区分赤 / 非赤，未出现的赤 5 可能被摸进或
+   成为和了张，已在手牌 / 副露 / 牌河 / 宝牌指示牌出现的赤 5 不再重复计入）。
 6. 副露 / 门清两套假设（m02075、m02512）：带「副露」字样的 6 项（4 个枚数 + 2 个打点）**不管这一
    帧是不是门清**，都按「有副露」（门清役不存在）判定起和役与算番；门清帧再额外交出 2 个枚数项
    与 4 个打点项 —— 打点按两种假想各算一遍：**立直** = 保持门清直到听牌、在听牌时宣布立直
@@ -93,13 +95,41 @@ def tid_of(kind):
     return kind * 4
 
 
-def tiles_of(counts):
-    """34 项计数 -> 牌 id 列表（同种重复用同一个 id，``counts_of`` 只看张数）。"""
+def tiles_of(counts, red=None):
+    """34 项计数 -> 牌 id 列表。
+
+    ``red`` 为可选的 34 项掩码：某张 5 的掩码为 1 且该种计数 > 0 时，先用赤 5 的 id
+    （``kind * 4``），其余同种牌仍用 :func:`tid_of` 的非赤 id。默认 ``None`` 保持旧行为
+    （全部按非赤），供只关心牌型的调用方使用。
+    """
     out = []
     for k in range(34):
-        for _ in range(counts[k]):
-            out.append(tid_of(k))
+        n = counts[k]
+        if n <= 0:
+            continue
+        if red is not None and red[k] and k < 27 and k % 9 == 4:
+            out.append(k * 4)
+            out.extend([tid_of(k)] * (n - 1))
+        else:
+            out.extend([tid_of(k)] * n)
     return out
+
+
+def _red_public(state, kind):
+    """公共信息（副露 / 牌河 / 宝牌指示牌）里是否已经出现该牌种的赤 5。"""
+    for pl in state["players"]:
+        for m in pl["melds"]:
+            for tid in (m.get("tiles") or ()):
+                if agari.is_red(tid) and agari.kind_of(tid) == kind:
+                    return True
+        for r in pl["river"]:
+            tid = r.get("tile")
+            if tid is not None and agari.is_red(tid) and agari.kind_of(tid) == kind:
+                return True
+    for tid in (state.get("dora") or ()):
+        if agari.is_red(tid) and agari.kind_of(tid) == kind:
+            return True
+    return False
 
 
 def _mentsu_waits(counts, slots):
@@ -234,6 +264,21 @@ class Expect(object):
         pl = state["players"][seat]
         self.melds = tuple(pl["melds"])
         self.counts = agari.counts_of(pl["hand"])
+        # 真实手牌里的赤 5 掩码。``counts`` 只有张数，重建牌 id 时靠它把赤 5 留下来；
+        # 同种还有牌时假设玩家保留赤 5（赤宝牌只赚不亏，打牌 argmax 也会这样选）。
+        self.red = [0] * 34
+        for tid in pl["hand"]:
+            if agari.is_red(tid):
+                self.red[agari.kind_of(tid)] = 1
+        # 赤 5 的公开状态：0 = 尚未出现，1 = 在自己门清手牌，2 = 已公开 / 已不可能再摸。
+        # 别家的暗手不看；牌河里的牌即使被鸣走，也已经在公共信息里出现过。
+        self.red_mode = [0] * 3
+        for s in range(3):
+            k = 4 + 9 * s
+            if self.red[k]:
+                self.red_mode[s] = 1
+            elif _red_public(state, k):
+                self.red_mode[s] = 2
         self.size = sum(self.counts)
         self.n13 = agari.concealed_size(self.melds)          # 13 - 3 * 副露组数
         self.avail = shanten.avail_counts(state, seat)
@@ -256,6 +301,7 @@ class Expect(object):
         self._dists = {}
         self._waits = {}
         self._evals = {}
+        self._leafs = {}
         self._nodes = {}
 
     # ------------------------------------------------------------ 缓存的基本量
@@ -288,13 +334,25 @@ class Expect(object):
             self._waits[key] = v
         return v
 
-    def _eval(self, counts, kind, tsumo, assume):
+    def _red_of(self, counts):
+        """按当前手牌计数还原赤 5 掩码：该种还有牌就认为赤 5 还在手里。"""
+        return tuple(1 if self.red[k] and counts[k] > 0 else 0 for k in range(34))
+
+    def _eval(self, counts, kind, tsumo, assume, win_tile=None, red=None):
         """这张和了张在某种假设下的自家得点；不能和（牌型 / 起和役不成立）时返回 None。
 
         一次 ``agari.evaluate()`` 同时回答「有没有役」与「打点多少」（m02073：别把候选拆解
         枚举跑两遍）。结果与「已假想摸进的牌」无关，所以缓存键里不含 used。
+
+        ``win_tile`` 默认用该种的非赤代表 id；已和牌帧若取出的正是手里唯一的赤 5，调用方
+        要显式传赤 5 的 id，否则 ``all_tiles`` 里会丢掉这张赤宝牌。``red`` 为可选的 34 项
+        赤 5 掩码；默认按真实门清手牌还原，假想摸进 / 和了张的赤 5 身份由
+        :meth:`_leaf_gain` 显式传入。
         """
-        key = (tuple(counts), kind, bool(tsumo), assume)
+        if win_tile is None:
+            win_tile = tid_of(kind)
+        red = self._red_of(counts) if red is None else tuple(red)
+        key = (tuple(counts), kind, win_tile, bool(tsumo), assume, red)
         if key in self._evals:
             return self._evals[key]
         if assume == FURO_ASSUME:
@@ -304,7 +362,8 @@ class Expect(object):
             st, riichi, menzen = RIICHI, (self.riichi or 1), True
         else:
             st, riichi, menzen = DAMATEN, 0, True
-        r = agari.evaluate(tiles_of(counts), self.melds, win_tile=tid_of(kind), tsumo=bool(tsumo),
+        r = agari.evaluate(tiles_of(counts, red), self.melds, win_tile=win_tile,
+                           tsumo=bool(tsumo),
                            ctx={"dora": self.dora},
                            oya=self.oya, honba=self.honba, kyotaku=self.kyotaku,
                            seat_wind=self.sw, round_wind=self.rw, riichi=riichi,
@@ -312,6 +371,59 @@ class Expect(object):
         v = float(r["gain"]) if r else None
         self._evals[key] = v
         return v
+
+    def _leaf_gain(self, counts, kind, tsumo, assume, used):
+        """叶子得点：对尚未出现的赤 5 按剩余未见张数加权。
+
+        赤 5 与普通 5 的牌型完全相同，只有得点不同；这里不复制整棵牌型树，而是在算点时
+        枚举「赤 5 在手里 / 赤 5 是和了张」的少量状态。``used`` 是这条路径上已经假想摸进
+        的张数，用来算赤 5 已经被摸进手里的概率。
+        """
+        key = (tuple(counts), kind, bool(tsumo), assume, tuple(used))
+        if key in self._leafs:
+            return self._leafs[key]
+        base = self._red_of(counts)
+        g0 = self._eval(counts, kind, tsumo, assume, red=base)
+        if g0 is None:
+            self._leafs[key] = None
+            return None
+        choices = []
+        for s in range(3):
+            k5 = 4 + 9 * s
+            p_hand = 0.0
+            if self.red_mode[s] == 0 and counts[k5] > 0 and self.avail[k5] > 0:
+                p_hand = used[k5] / float(self.avail[k5])
+            p_win = 0.0
+            if kind == k5 and self.red_mode[s] == 0 and self.avail[k5] > 0:
+                p_win = 1.0 / float(self.avail[k5])
+            p_hand = max(0.0, min(1.0, p_hand))
+            p_win = max(0.0, min(1.0 - p_hand, p_win))
+            opts = []
+            if p_hand > 0.0:
+                opts.append((1, p_hand))
+            if p_win > 0.0:
+                opts.append((2, p_win))
+            opts.append((0, 1.0 - p_hand - p_win))
+            choices.append(opts)
+        total = 0.0
+        for a in choices[0]:
+            for b in choices[1]:
+                for c in choices[2]:
+                    prob = a[1] * b[1] * c[1]
+                    if prob <= 0.0:
+                        continue
+                    red = list(base)
+                    win = None
+                    for s, state in enumerate((a[0], b[0], c[0])):
+                        if state == 1:
+                            red[4 + 9 * s] = 1
+                        elif state == 2:
+                            win = kind * 4
+                    g = self._eval(counts, kind, tsumo, assume, win_tile=win, red=red)
+                    if g is not None:
+                        total += prob * g
+        self._leafs[key] = total
+        return total
 
     def _tiles(self, counts, kinds, measure, used):
         """和牌张数：剩余未见张数（期望枚数）/ 4 - 自己握着（手牌 + 副露）（绝对枚数）。"""
@@ -338,7 +450,8 @@ class Expect(object):
             waits = self.waits(counts)
             for mode in (TSUMO, RON):
                 tsumo = (mode == TSUMO)
-                got = [k for k in waits if self._eval(counts, k, tsumo, FURO_ASSUME) is not None]
+                got = [k for k in waits
+                       if self._leaf_gain(counts, k, tsumo, FURO_ASSUME, used) is not None]
                 for measure in ("avail", "abs"):
                     n = self._tiles(counts, got, measure, used)
                     for agg in AGGS:
@@ -352,7 +465,7 @@ class Expect(object):
                 if ul > 0:
                     for k in got:
                         p = al[k] / float(ul)
-                        sc += p * self._eval(counts, k, tsumo, FURO_ASSUME)
+                        sc += p * self._leaf_gain(counts, k, tsumo, FURO_ASSUME, used)
                         ms += p
                 out[("sc", FURO_ASSUME, mode)] = sc
                 out[("ms", FURO_ASSUME, mode)] = ms
@@ -369,7 +482,7 @@ class Expect(object):
                         ms = 0.0
                         if ul > 0:
                             for k in waits:
-                                g = self._eval(counts, k, tsumo, assume)
+                                g = self._leaf_gain(counts, k, tsumo, assume, used)
                                 if g is not None:
                                     p = al[k] / float(ul)
                                     sc += p * g
@@ -444,7 +557,9 @@ class Expect(object):
                 continue
             h = list(self.counts)
             h[k] -= 1
-            g = self._eval(h, k, tsumo, assume)
+            # 该种只剩这一张且原本是赤 5：被取出的和了张就是赤 5，必须用赤 id 计入 all_tiles。
+            win_tile = k * 4 if (self.red[k] and h[k] == 0) else None
+            g = self._eval(h, k, tsumo, assume, win_tile=win_tile)
             if g and g > best:
                 best = g
         return best

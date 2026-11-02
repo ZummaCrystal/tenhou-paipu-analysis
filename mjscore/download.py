@@ -57,7 +57,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from . import paths
+from . import mix, paths
 
 ROOT = paths.resource_root()
 
@@ -373,6 +373,41 @@ def save_naga_report(report_id, data, output_dir, overwrite=True):
     return path, True
 
 
+def _mix_source_files(output_dir, key, kind=None):
+    """在 ``[mix]`` 容器里按来源 report_id / 文件名 stem 找判重命中（用户 m00001）。
+
+    合并后源文件已被删除，文件名也变成 ``[mix]先下载的名字``；如果只按目录里的
+    原文件名判重，同一份报告会被重新下载。这里把 mix 的 ``sources`` 元数据也纳入
+    判重，命中时返回 mix 文件路径，让下载流程直接标记 duplicate。
+    """
+    out = []
+    if not os.path.isdir(output_dir):
+        return out
+    want = str(key or "").lower()
+    if not want:
+        return out
+    output_dir = os.path.abspath(output_dir)
+    prefix = paths.MIX_PREFIX.lower()
+    for name in sorted(os.listdir(output_dir)):
+        if not name.lower().startswith(prefix):
+            continue
+        path = os.path.join(output_dir, name)
+        if not os.path.isfile(path):
+            continue
+        for src in mix.sources_of_file(path):
+            if not isinstance(src, dict):
+                continue
+            skind = str(src.get("kind") or "").lower()
+            if kind and skind and skind != kind:
+                continue
+            rid = str(src.get("report_id") or "").lower()
+            sname = os.path.splitext(os.path.basename(str(src.get("name") or "")))[0].lower()
+            if rid == want or sname == want:
+                out.append(path)
+                break
+    return out
+
+
 def find_naga_files(output_dir, key):
     """列出 output_dir 里判重键（report_id 主体）相同的 naga 报告文件（含旧后缀 .json.gz / .json）。"""
     out = []
@@ -388,6 +423,9 @@ def find_naga_files(output_dir, key):
                 out.append(os.path.join(output_dir, name))
         except ValueError:
             continue
+    for path in _mix_source_files(output_dir, want, kind="naga"):
+        if path not in out:
+            out.append(path)
     return out
 
 
@@ -580,10 +618,47 @@ def find_mortal_files(output_dir, key):
                 out.append(os.path.join(output_dir, name))
         except ValueError:
             continue
+    for path in _mix_source_files(output_dir, want, kind="mortal"):
+        if path not in out:
+            out.append(path)
     return out
 # ---------------------------------------------------------------------------
 # 下载
 # ---------------------------------------------------------------------------
+def _auto_mix(entry, seen=None, results=None):
+    """新牌谱落盘后按牌局进程 hash 扫描已下载牌谱；命中同一场就合并为 [mix]。
+
+    失败不破坏原文件，只把错误记在 entry["mix_error"]；成功则把 entry / seen / 之前的
+    results 里指向被删源文件的 path 全部改到 mix 文件，界面于是不会展示已删除的路径。
+    """
+    path = entry.get("path")
+    if not path or not entry.get("written"):
+        return
+    try:
+        res = mix.scan_and_merge(path)
+    except Exception as exc:  # noqa: BLE001 - 判重失败不能影响已经完成的下载
+        entry["mix_error"] = "%s: %s" % (type(exc).__name__, exc)
+        return
+    if res.get("merged"):
+        mix_path = res.get("path")
+        entry["path"] = mix_path
+        entry["mixed"] = True
+        entry["mix_models"] = list(res.get("models") or [])
+        removed = {os.path.abspath(p) for p in (res.get("removed") or [])}
+        if seen:
+            for key, value in list(seen.items()):
+                if value and os.path.abspath(value) in removed:
+                    seen[key] = mix_path
+        if results:
+            for other in results:
+                other_path = other.get("path")
+                if other_path and os.path.abspath(other_path) in removed:
+                    other["path"] = mix_path
+                    other["mixed"] = True
+    elif not res.get("ok"):
+        entry["mix_error"] = res.get("error") or "判重失败"
+
+
 def run_download(urls, out_dir, overwrite=True, on_item=None, progress=None):
     """同步下载（天凤 mjlog、naga / ricochet 报告、mortal 报告可以混在同一个列表里）。
     返回 {dir,total,saved,failed,skipped,duplicate,results}。
@@ -638,6 +713,7 @@ def run_download(urls, out_dir, overwrite=True, on_item=None, progress=None):
                                   "model_tag": minfo.get("model_tag"), "style": minfo.get("style")})
                     if written:
                         saved += 1
+                        _auto_mix(entry, seen, results)
                     else:
                         skipped += 1
             elif looks_like_naga_url(item):
@@ -668,6 +744,7 @@ def run_download(urls, out_dir, overwrite=True, on_item=None, progress=None):
                     entry.update({"ok": True, "path": path, "bytes": len(data), "written": written})
                     if written:
                         saved += 1
+                        _auto_mix(entry, seen, results)
                     else:
                         skipped += 1
             else:
@@ -685,6 +762,10 @@ def run_download(urls, out_dir, overwrite=True, on_item=None, progress=None):
                         if os.path.exists(_p):
                             kept = _p
                             break
+                    if kept is None:
+                        _found = _mix_source_files(out, log_id, kind="tenhou")
+                        if _found:
+                            kept = _found[0]
                 if kept is not None:
                     entry.update({"ok": True, "duplicate": True, "path": kept})
                     duplicate += 1
@@ -698,6 +779,7 @@ def run_download(urls, out_dir, overwrite=True, on_item=None, progress=None):
                     entry.update({"ok": True, "path": path, "bytes": len(data), "written": written})
                     if written:
                         saved += 1
+                        _auto_mix(entry, seen, results)
                     else:
                         skipped += 1
         except Exception as exc:

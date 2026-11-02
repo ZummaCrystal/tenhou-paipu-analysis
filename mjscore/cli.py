@@ -11,7 +11,7 @@ import sys
 import threading
 import time
 
-from . import ai_models, feats, mjlog, mortal, naga, nodeharness, paths, store
+from . import ai_models, feats, mix, mjlog, mortal, naga, nodeharness, paths, store
 from . import APP_NAME, __version__ as APP_VERSION
 
 # 资源根（web/、media/、mjscore/）：源码运行 = 项目根；打包后 = PyInstaller 解包目录。
@@ -123,6 +123,8 @@ def report_kind(path):
     显式后缀为主；``.json`` / ``.gz`` 这类两种报告都可能用的后缀（mjai.ekyu.moe 的报告地址就是
     ``<report_id>.json``、浏览器另存出来也是 ``.json``）用内容嗅探消歧，见 mortal.looks_like_mortal()。
     """
+    if mix.is_mix_file(path):
+        return "mix"
     if mortal.is_mortal_file(path):
         return "mortal"
     if not naga.is_naga_file(path):
@@ -135,6 +137,8 @@ def report_kind(path):
 def file_log_id(path):
     """牌谱文件 -> 特征码：NAGA / Mortal 报告用完整报告 id（用户 m00418 / m05937 ③），天凤用 log_id。"""
     kind = report_kind(path)
+    if kind == "mix":
+        return mix.game_from_file(path).get("log_id") or mjlog.log_id_of(path)
     if kind == "mortal":
         rid = mortal.report_id_of_path(path)
         if rid:
@@ -150,6 +154,8 @@ def game_from_file(path):
     """按 AI 报告种类分派解析：Mortal 报告走 mjscore/mortal.py、NAGA 报告走 mjscore/naga.py
     （用户 m05937 ③），天凤牌谱走 mjscore/mjlog.py。"""
     kind = report_kind(path)
+    if kind == "mix":
+        return mix.game_from_file(path)
     if kind == "mortal":
         return mortal.game_from_file(path)
     if kind == "naga":
@@ -262,8 +268,9 @@ def build_records(files, games, tool="auto", node=None, warnings=None, on_progre
     批次里有 NAGA / Mortal 报告时整批走 python：node 侧解析器（mjscore/node_harness.js）只认天凤 xml。
     """
     warnings = warnings if warnings is not None else []
-    if tool != "python" and any(naga.is_naga_file(f) or mortal.is_mortal_file(f) for f in files):
-        warnings.append("批次里有 NAGA / Mortal 报告，Node 侧解析器只认天凤 xml，本次整批改用 python 打点")
+    ai_like = [f for f in files if report_kind(f) in ("naga", "mortal", "mix")]
+    if tool != "python" and ai_like:
+        warnings.append("批次里有 NAGA / Mortal / mix 报告，Node 侧解析器只认天凤 xml，本次整批改用 python 打点")
         tool = "python"
     if tool == "python":
         return "python", python_records(games, on_progress, progress=progress)
@@ -613,6 +620,10 @@ def main(argv=None):
     ap.add_argument("--offset", type=int, default=0)
     ap.add_argument("--export", help="导出数据库为 JSON 文件（- = 标准输出）")
     ap.add_argument("--json", dest="json_out", help="把结果 JSON 写到文件（- = 标准输出）")
+    ap.add_argument("--mix", action="store_true",
+                    help="把给定的同一对局牌谱合并成 [mix] 文件（按牌局进程 hash 判重；默认删除原文件）")
+    ap.add_argument("--mix-out", help="--mix 的输出路径（默认 [mix]+最早文件名，放在最早文件所在目录）")
+    ap.add_argument("--mix-keep", action="store_true", help="--mix 时保留原文件（默认删除）")
     ap.add_argument("--serve", action="store_true", help="启动本地服务（前端 + /api）")
     ap.add_argument("--port", type=int, default=8770)
     ap.add_argument("--quiet", action="store_true")
@@ -709,6 +720,19 @@ def main(argv=None):
             res["tool"] = "fixture"
             emit(res, "已用 fixture 入库：%s（%d 行）" % (res["db"], res["db_total"]))
             return 0
+        if args.mix:
+            if not args.paths:
+                ap.error("--mix 需要至少一个牌谱文件或目录")
+            files = resolve_inputs(args.paths)
+            res = mix.merge_paths(files, out_path=args.mix_out, delete=not args.mix_keep)
+            if res.get("merged"):
+                human = "已合并 %d 份牌谱 -> %s\n  模型：%s" % (
+                    len(res.get("sources") or []), res.get("path"),
+                    " / ".join(res.get("models") or []) or "（无 AI 模型）")
+            else:
+                human = "未合并（%s）：%s" % (res.get("reason") or "未知原因", res.get("path") or "")
+            emit(res, human)
+            return 0 if res.get("ok") else 1
         if not args.paths:
             ap.print_help()
             return 2
@@ -734,3 +758,6 @@ def main(argv=None):
             emit(obj, None)
         sys.stderr.write("[错误] %s\n" % exc)
         return 1
+
+if __name__ == "__main__":
+    sys.exit(main())

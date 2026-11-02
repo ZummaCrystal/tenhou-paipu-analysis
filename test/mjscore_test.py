@@ -25,6 +25,7 @@ r"""mjscore 正式测试。
       第 77 轮：v1.4.2：概率条统一配色（默听条统一紫、立直条统一红，取消 argmax 高亮，用户 m10014）；
       第 78 轮：v1.4.3：AI 决策面板展示完整动作空间（自摸 / 九種九牌 / 暗杠 / 加杠 / 荣和，用户 m10081）
 第 79 轮：v1.4.4：打开检索 / 一览条目时显示该牌谱文件的真实后缀（用户 m10331）
+第 82 轮：v1.5.0：期望打点补回赤 5 且摸进 5 区分赤 / 非赤；1.4.x 库需重新分析（用户 m00398）
 
  运行：
   & 'D:\coding\anaconda3\envs\py314_null\python.exe' test\mjscore_test.py
@@ -477,14 +478,14 @@ conn.execute("UPDATE meta SET v = ? WHERE k = 'schema_version'", (str(store.SCHE
 conn.commit()
 eq(store.get_meta(conn).get("app_version"), store.APP_VERSION, "meta 记录生成该库的软件版本")
 eq(store.app_version_of(conn), store.APP_VERSION, "app_version_of")
-eq(store.APP_VERSION, "1.4.4", "软件版本 = 1.4.4（第 79 轮：检索 / 一览条目显示真实文件名后缀；schema ≤10 的库不再支持）")
+eq(store.APP_VERSION, "1.5.0", "软件版本 = 1.5.0（第 82 轮：期望打点补回赤 5；1.4.x 库需重新分析）")
 print("=== 版本兼容（用户 m09354 ⑤：大版本 + 中版本相同即可）===")
-check(store.version_compatible("1.4.0"), "v1.4.0 建的库被 v1.4.1 视为兼容（补丁版本不同不影响）")
-check(store.version_compatible("1.4.1"), "同版本兼容")
+check(store.version_compatible("1.5.0"), "v1.5.0 与当前版本兼容（同版本）")
+check(store.version_compatible("1.5.1"), "v1.5.1 与 v1.5.0 兼容（补丁版本不同不影响）")
 check(store.version_compatible(""), "无版本记录（第 22 轮以前的库）按兼容处理")
-check(not store.version_compatible("1.3.1"), "1.3.x 与 1.4.x 不兼容（中版本不同）")
-check(not store.version_compatible("1.2.9"), "1.2.x 与 1.4.x 不兼容（中版本不同）")
-check(not store.version_compatible("2.0.0"), "2.x 与 1.4.x 不兼容（大版本不同）")
+check(not store.version_compatible("1.4.4"), "1.4.x 与 1.5.x 不兼容（赤 5 口径变化，旧库需重析）")
+check(not store.version_compatible("1.3.1"), "1.3.x 与 1.5.x 不兼容（中版本不同）")
+check(not store.version_compatible("2.0.0"), "2.x 与 1.5.x 不兼容（大版本不同）")
 
 conn.execute("UPDATE meta SET v = '0.0.9' WHERE k = 'app_version'")
 conn.commit()

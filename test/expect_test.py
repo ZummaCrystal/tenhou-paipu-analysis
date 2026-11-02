@@ -7,6 +7,8 @@ r"""第 19 轮：12 个期望特征（`mjscore/expect.py`）的测试。
      立直/默听两套假想（m02512：未立直的门清帧也按立直假设算，副露帧两项记 0）、14 张根节点、
      已和牌帧、范畴外、期望打点的归一化（m02389）、听牌枚数的归一化（m02647：分子 Σp·枚数 / 分母
      Σp；分母按 m02766 只数「有役听牌」，叶子值 1.0 / 0.0）
+  2b) 赤 5：门清手牌 / 和了张的赤宝牌按真实 id 计入（tiles_of 掩码 + 6 个打点特征）；
+      假想摸进的 5 按公共信息区分赤 / 非赤（未出现才按剩余未见张数加权，已出现不再枚举）
   3) 独立参考实现：叶子（2 种假设 x 2 种模式 x 枚数分子 / 枚数分母 / 打点分子 / 打点分母）与模块节点
      字典逐键对拍
   3b) 14 张「打一张即听」的帧：独立一层聚合（sum/best x 副露/门清，枚数按 m02647 + m02766 归一化）
@@ -16,6 +18,7 @@ r"""第 19 轮：12 个期望特征（`mjscore/expect.py`）的测试。
 运行：& 'D:\coding\anaconda3\envs\py314_null\python.exe' test\expect_test.py
 """
 import glob
+import itertools
 import os
 import sys
 import time
@@ -27,7 +30,7 @@ try:
 except Exception:
     pass
 
-from mjscore import agari, expect, mjlog, replay, shanten
+from mjscore import agari, expect, feats, mjlog, replay, shanten
 
 OK = [0]
 BAD = [0]
@@ -55,13 +58,20 @@ def near(got, want, label, tol=1e-6):
 
 
 def ids(kinds):
-    """牌种列表 -> 互不相同的牌 id（同种第 n 张 = kind*4+n，天然避开赤 5 的 16/52/88）。"""
+    """牌种列表 -> 互不相同的牌 id。
+
+    5 的牌种优先用非赤的 ``kind*4+1..3``，第 4 张才用赤 5 的 ``kind*4``（16/52/88）；
+    这样测试手牌默认不含赤 5，需要赤 5 的用例显式替换 id。
+    """
     used = {}
     out = []
     for k in kinds:
         n = used.get(k, 0)
         used[k] = n + 1
-        out.append(k * 4 + n)
+        if k < 27 and k % 9 == 4:
+            out.append(k * 4 + (n + 1 if n < 3 else 0))
+        else:
+            out.append(k * 4 + n)
     return out
 
 
@@ -166,6 +176,57 @@ def tenpai_hands(files):
                     yield st, seat, c
 
 
+def ref_gain(e, counts, kind, tsumo, state, riichi, menzen, used):
+    """独立参考：赤 5 的可能位置按 ``e.red_mode`` / ``e.avail`` 加权后的得点。
+
+    与 ``Expect._leaf_gain`` 同口径，但单独用 ``agari.score`` 枚举，不复用模块的叶子缓存。
+    ``used`` 是这条路径上已经假想摸进的张数。
+    """
+    base = list(e._red_of(counts))
+    used = (0,) * 34 if used is None else used
+    opts_by_suit = []
+    for s in range(3):
+        k5 = 4 + 9 * s
+        ph = pw = 0.0
+        if e.red_mode[s] == 0 and e.avail[k5] > 0:
+            if counts[k5] > 0:
+                ph = used[k5] / float(e.avail[k5])
+            if kind == k5:
+                pw = 1.0 / float(e.avail[k5])
+        ph = min(1.0, max(0.0, ph))
+        pw = min(1.0 - ph, max(0.0, pw))
+        opts = [(0, 1.0 - ph - pw)]
+        if ph > 0.0:
+            opts.append((1, ph))
+        if pw > 0.0:
+            opts.append((2, pw))
+        opts_by_suit.append(opts)
+    total = 0.0
+    seen = False
+    for combo in itertools.product(*opts_by_suit):
+        prob = combo[0][1] * combo[1][1] * combo[2][1]
+        if prob <= 0.0:
+            continue
+        red = list(base)
+        win = None
+        for s, (st, _) in enumerate(combo):
+            if st == 1:
+                red[4 + 9 * s] = 1
+            elif st == 2:
+                win = kind * 4
+        try:
+            r = agari.score(expect.tiles_of(counts, red), e.melds,
+                            win_tile=(win if win is not None else expect.tid_of(kind)),
+                            tsumo=tsumo, oya=e.oya, honba=e.honba, kyotaku=e.kyotaku,
+                            seat_wind=e.sw, round_wind=e.rw, riichi=riichi, state=state,
+                            menzen=menzen, ctx={"dora": e.dora})
+        except ValueError:
+            continue
+        seen = True
+        total += prob * r["gain"]
+    return total if seen else None
+
+
 def ref_leaf(e, counts, tsumo, assume=None, used=None, all_waits=False):
     """独立参考：叶子（13-3n 张听牌手牌）的 (期望枚数, 绝对枚数, Σp·得点, Σp)。
 
@@ -196,19 +257,14 @@ def ref_leaf(e, counts, tsumo, assume=None, used=None, all_waits=False):
     for k in sorted(e.waits(counts)):
         r = None
         if not all_waits:
-            try:
-                r = agari.score(expect.tiles_of(counts), e.melds, win_tile=expect.tid_of(k),
-                                tsumo=tsumo, oya=e.oya, honba=e.honba, kyotaku=e.kyotaku,
-                                seat_wind=e.sw, round_wind=e.rw, riichi=riichi, state=state,
-                                menzen=(e.menzen if menzen else False),
-                                ctx={"dora": e.dora})
-            except ValueError:
-                continue
-        avail += al[k]
-        absn += 4 - counts[k] - e.meldc[k]
+            r = ref_gain(e, counts, k, tsumo, state, riichi,
+                         (e.menzen if menzen else False), used)
+        if all_waits or r is not None:
+            avail += al[k]
+            absn += 4 - counts[k] - e.meldc[k]
         if r is not None and ul > 0:
             p = al[k] / float(ul)
-            sc += p * r["gain"]
+            sc += p * r
             ms += p
     return avail, absn, sc, ms
 
@@ -230,7 +286,8 @@ def ref_yaku_ok(e, counts, tsumo, assume=None):
         menzen, state, riichi = True, DAMATEN, 0
     for k in sorted(e.waits(counts)):
         try:
-            agari.score(expect.tiles_of(counts), e.melds, win_tile=expect.tid_of(k), tsumo=tsumo,
+            agari.score(expect.tiles_of(counts, e._red_of(counts)), e.melds,
+                        win_tile=expect.tid_of(k), tsumo=tsumo,
                         oya=e.oya, honba=e.honba, kyotaku=e.kyotaku, seat_wind=e.sw,
                         round_wind=e.rw, riichi=riichi, state=state,
                         menzen=(e.menzen if menzen else False), ctx={"dora": e.dora})
@@ -478,6 +535,83 @@ def section2():
     eq(sum(ffar.values()), 0.0, "超范围（max_shanten=0）：12 项全 0")
 
 
+def section2b():
+    print("=== 2b. 赤 5：手牌 / 和了张的赤宝牌 ===")
+    counts = [0] * 34
+    counts[4] = 2
+    eq(expect.tiles_of(counts), [17, 17], "默认 tiles_of 仍按非赤重建")
+    red = [0] * 34
+    red[4] = 1
+    eq(expect.tiles_of(counts, red), [16, 17], "赤 5 掩码：先放赤 id，再放非赤 id")
+    red[4] = 0
+    eq(expect.tiles_of(counts, red), [17, 17], "赤 5 掩码为 0 时不变")
+
+    h = ids([0, 1, 2, 3, 4, 5, 10, 11, 12, 14, 14, 21, 22])  # 123m456m234p66p45s
+    h[h.index(17)] = 16                                      # 5m -> 赤 5m
+    f = expect.values(state_for(h), 0)
+    near(f["riichi_ron_score"], 3900.0, "赤 5 手牌：立直荣和 3 番 30 符 3900")
+    near(f["riichi_tsumo_score"], 5200.0, "赤 5 手牌：立直自摸 4 番 20 符 5200")
+    near(f["damaten_ron_score"], 2000.0, "赤 5 手牌：默听荣和 2 番 30 符 2000")
+    near(f["damaten_tsumo_score"], 2700.0, "赤 5 手牌：默听自摸 3 番 20 符 2700")
+    eq(sum(v for k, v in f.items() if k.startswith("furo")), 0.0,
+       "赤 5 不是役：副露假设仍无役")
+    eq(f["menzen_tenpai_expect"], 8.0, "赤 5 不影响听牌枚数")
+
+    h14 = h + [ids([23])[0]]                                 # 和 6s
+    f14 = expect.values(state_for(h14), 0)
+    near(f14["riichi_ron_score"], 3900.0, "已和牌：赤 5 在门清手牌里仍算赤宝牌")
+    e14 = expect.Expect(state_for(h14), 0)
+    c = list(e14.counts)
+    c[4] -= 1                                                # 取出赤 5 作和了张
+    near(e14._eval(c, 4, False, expect.RIICHI_ASSUME, win_tile=16), 2600.0,
+         "已和牌：和了张是赤 5 时按赤 id 计 2 番 40 符 2600")
+    near(e14._eval(c, 4, False, expect.RIICHI_ASSUME), 1300.0,
+         "同一手若和了张按非赤（旧行为）只有 1300")
+
+    # 特征层（feats.second_class）是期望打点进 DB 的入口：这里不能再次把真实牌 id 压掉。
+    sf = feats.second_class(state_for(h), 0)
+    for key in ("furo_ron_score", "furo_tsumo_score", "riichi_ron_score",
+                "riichi_tsumo_score", "damaten_ron_score", "damaten_tsumo_score"):
+        near(sf[key], f[key], "特征层保留赤 5：%s 与 expect.values 一致" % key)
+
+    print("=== 2b-2. 假想摸进 5：赤 5 按公共信息加权 ===")
+    hw = ids([0, 1, 2, 3, 5, 10, 11, 12, 14, 14, 21, 22, 23])  # 123m 46m 234p 66p 456s，听 5m
+    st_w = state_for(hw)
+    ew = expect.Expect(st_w, 0)
+    eq(ew.red_mode, [0, 0, 0], "赤 5 未出现：三种 5 都是状态 0")
+    eq(ew.avail[4], 4, "赤 5 未出现：5m 剩余 4 张")
+    fw = expect.values(st_w, 0)
+    near(fw["riichi_ron_score"], 1625.0, "赤 5 未出现：立直荣和按 1/4 赤 5 加权")
+    near(fw["riichi_tsumo_score"], 2500.0, "赤 5 未出现：立直自摸按 1/4 赤 5 加权")
+    near(fw["damaten_ron_score"], 0.0, "赤 5 未出现：默听荣和无役仍为 0")
+    near(fw["damaten_tsumo_score"], 1325.0, "赤 5 未出现：默听自摸按 1/4 赤 5 加权")
+
+    st_r = state_for(hw, seen=[{"tile": 16, "called": False}])
+    er = expect.Expect(st_r, 0)
+    eq(er.red_mode, [2, 0, 0], "赤 5 在牌河：5m 视为已公开")
+    eq(er.avail[4], 3, "赤 5 在牌河：5m 剩余 3 张")
+    fr = expect.values(st_r, 0)
+    near(fr["riichi_ron_score"], 1300.0, "赤 5 已公开：立直荣和不再按赤 5 加权")
+    near(fr["riichi_tsumo_score"], 2000.0, "赤 5 已公开：立直自摸不再按赤 5 加权")
+    near(fr["damaten_tsumo_score"], 1100.0, "赤 5 已公开：默听自摸不再按赤 5 加权")
+
+    ed = expect.Expect(state_for(hw, dora=[16]), 0)
+    eq(ed.red_mode, [2, 0, 0], "赤 5 作宝牌指示牌：也视为已公开（不枚举为和了张）")
+    # 这手含 6m，指示牌 5m 会让 6m 成为普通宝牌，故这里只断言公开状态，不断言打点。
+
+    # 副露里的赤 5 也是公共信息。
+    hm = ids([0, 1, 2, 10, 11, 12, 14, 14, 21, 22])
+    em = expect.Expect(state_for(hm, melds=[{"callType": "pon", "tiles": [16, 17, 18], "fromWho": 1}]), 0)
+    eq(em.red_mode, [2, 0, 0], "赤 5 在副露：视为已公开")
+
+    # 独立参考也按同一套赤 5 概率积分。
+    rw = ref_leaf(ew, ew.counts, False, assume=expect.RIICHI_ASSUME)
+    eq(rw[3] > 0, True, "独立参考：未出现赤 5 时有和牌概率")
+    near(rw[2] / rw[3], 1625.0, "独立参考：未出现赤 5 的立直荣和 = 1625")
+    rr = ref_leaf(er, er.counts, False, assume=expect.RIICHI_ASSUME)
+    near(rr[2] / rr[3], 1300.0, "独立参考：赤 5 已公开的立直荣和 = 1300")
+
+
 def section3():
     print("=== 3. 独立参考实现（叶子：副露 / 立直 / 默听三种打点假设 + 门清枚数）===")
     files = corpus()[:3]
@@ -710,6 +844,7 @@ def main():
     t0 = time.perf_counter()
     n1 = section1()
     section2()
+    section2b()
     section3()
     section3b()
     section3c()
