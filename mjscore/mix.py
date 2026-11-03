@@ -9,9 +9,13 @@
 本模块用「牌局进程」的规范化 sha256 判重：只看每局的配牌、宝牌、座次、分数与
 draw / discard / call / reach / dora / agari / ryuukyoku 事件，忽略来源相关的
 dices / m / yaku / ten / before / 手牌摊牌口径 / 立直 step2 等。命中后把各份报告
-的模型维度按规范模型名合并，写成 ``[mix]`` 前缀的 JSON 容器，并删除原来的文件。
+的模型维度按规范模型名合并，写成 ``[mix]`` 前缀的 JSON 容器。默认按来源优先级
+``naga-new > naga > mortal > tenhou`` 统一命名和格式，并为每个原先有同局文件的目录
+各保留一份同名 ``[mix]``，再删除原来的文件。``naga-new`` 只看报告内容（新模型的
+``dahai_split`` / ``hora`` / 杠候选等），不看目录名；无 AI 的纯天凤同局只在同一
+目录内按特征码去重，不生成 ``[mix]``。
 
-容器格式（紧凑 JSON，后缀沿用最早文件的源后缀）::
+容器格式（紧凑 JSON，文件名和后缀取最高优先级来源）::
 
     {"mjscore_mix": 1, "created": 175..., "game": {meta, rounds, naga}, "sources": [...]}
 
@@ -25,6 +29,7 @@ import copy
 import hashlib
 import json
 import os
+import shutil
 import threading
 import time
 
@@ -102,7 +107,7 @@ def is_mix_name(name):
 
 
 def mix_name_for(name):
-    """给最早的文件名加上 ``[mix]`` 前缀（已有则不重复加）。"""
+    """给文件名加上 ``[mix]`` 前缀（已有则不重复加）。"""
     base = os.path.basename(str(name or ""))
     return base if is_mix_name(base) else MIX_PREFIX + base
 
@@ -302,6 +307,33 @@ def _model_index(model, pos):
         return pos
 
 
+_NAGA_NEW_MODEL_NAMES = ("NAGA-避四", "NAGA-争一")
+
+
+def _is_naga_new_game(game):
+    """按报告内容判断 naga-new。
+
+    naga-new 至少包含「NAGA-避四」/「NAGA-争一」之一，并在决策帧给出完整动作空间
+    的联合分布（解析后为 ``dahai_split``），还可能带 ``hora`` / 副露事件。旧 naga
+    只有边缘 ``dahai_pred``，不能靠目录名或 ``naga_version`` 区分。
+    """
+    naga = (game or {}).get("naga") or {}
+    for model in _models_of(naga):
+        if _model_name(model) in _NAGA_NEW_MODEL_NAMES:
+            return True
+    for rnd in naga.get("rounds") or ():
+        if not isinstance(rnd, (list, tuple)):
+            continue
+        for frame in rnd:
+            if not isinstance(frame, dict):
+                continue
+            if frame.get("dahai_split") is not None:
+                return True
+            if any(frame.get(k) is not None for k in ("hora", "ankan_pai", "kakan_pai")):
+                return True
+    return False
+
+
 def _info_from_game(path, game, st=None):
     p = os.path.abspath(path)
     st = st or os.stat(p)
@@ -317,6 +349,7 @@ def _info_from_game(path, game, st=None):
         "has_ai": bool(naga.get("rounds")),
         "models": [_model_name(m) for m in models],
         "kind": (naga.get("kind") or ("tenhou" if not naga else "ai")),
+        "naga_new": _is_naga_new_game(game),
         "report_id": naga.get("report_id") or game.get("log_id"),
         "player_id": naga.get("player_id"),
         "viewer_seat": (game.get("meta") or {}).get("viewer_seat"),
@@ -362,6 +395,40 @@ def _file_info(path):
     return info
 
 
+def _priority_of(path, info=None, game=None):
+    """牌谱来源优先级：naga-new 4 > naga 3 > mortal 2 > tenhou 1。
+
+    naga-new 与 naga 的格式不同，必须按报告内容识别；不能按所在目录判断。
+    """
+    info = info or {}
+    if game and _is_naga_new_game(game):
+        return 4
+    if info.get("naga_new"):
+        return 4
+    name = os.path.basename(str(path or "")).lower()
+    kind = str(info.get("kind") or "").lower()
+    if any(name.endswith(sfx) for sfx in paths.MORTAL_SUFFIXES):
+        return 2
+    if any(name.endswith(sfx) for sfx in paths.TENHOU_SUFFIXES):
+        return 1
+    if any(name.endswith(sfx) for sfx in paths.NAGA_SUFFIXES):
+        if kind == "mortal":
+            return 2
+        return 3
+    if kind == "mortal":
+        return 2
+    if kind == "tenhou":
+        return 1
+    if kind in ("ai", "naga"):
+        return 3
+    return 1
+
+
+def _entry_priority(entry):
+    # 优先级只看内容与后缀；mix 容器也不能靠旧的 mix.priority / 目录名猜测。
+    return _priority_of(entry.get("path"), entry.get("info"), entry.get("game"))
+
+
 def _source_meta(path, info=None):
     p = os.path.abspath(path)
     info = info or _file_info(p)
@@ -376,6 +443,7 @@ def _source_meta(path, info=None):
         "size": int(st.st_size),
         "fingerprint": info.get("fingerprint"),
         "models": list(info.get("models") or []),
+        "priority": _priority_of(p, info),
     }
 
 
@@ -430,14 +498,16 @@ def _entries(paths):
             sources = _load_container(p).get("sources") or []
         else:
             sources = []
-        out.append({"path": p, "game": game, "info": info, "sources": sources,
-                    "is_mix": is_mix_file(p)})
+        entry = {"path": p, "game": game, "info": info, "sources": sources,
+                 "is_mix": is_mix_file(p)}
+        entry["priority"] = _entry_priority(entry)
+        out.append(entry)
     return out
 
 
 def _base_key(entry):
-    # 已有 mix 优先作为 base（保留它的 [mix] 名字与已合并模型），否则 mtime 最早者。
-    return (0 if entry["is_mix"] else 1, entry["info"]["mtime"], entry["path"])
+    # 高优先级来源优先作为 base；同优先级保留已有 mix / 最早文件。
+    return (-int(entry.get("priority") or 1), entry["info"]["mtime"], entry["path"])
 
 
 def _add_source(sources, seen, src):
@@ -519,6 +589,43 @@ def _merge_frame(out, src, mapping, count):
             out[key] = copy.deepcopy(val)
 
 
+def _dedupe_no_ai(entries, seed, delete=True):
+    """无 AI 的同局文件只按目录级特征码去重，不生成 [mix]。
+
+    同一目录内保留一个（优先级最高、其次最早），删除多余文件；不同目录各自保留
+    自己的文件，不跨目录复制。没有 AI 时同局文件等价于相同特征码，生成 mix 没有意义。
+    """
+    by_dir = {}
+    for entry in entries:
+        by_dir.setdefault(os.path.dirname(entry["path"]), []).append(entry)
+    removed = []
+    mapping = {}
+    if delete:
+        for group in by_dir.values():
+            if len(group) < 2:
+                continue
+            group.sort(key=_base_key)
+            keep = group[0]
+            for entry in group[1:]:
+                old = entry["path"]
+                try:
+                    os.remove(old)
+                    removed.append(old)
+                    mapping[old] = keep["path"]
+                except FileNotFoundError:
+                    mapping[old] = keep["path"]
+                except OSError:
+                    pass
+    if not removed:
+        return {"ok": True, "merged": False, "reason": "no_ai", "path": seed,
+                "fingerprint": entries[0]["info"]["fingerprint"],
+                "removed": [], "map": {}}
+    return {"ok": True, "merged": False, "reason": "deduped",
+            "path": mapping.get(os.path.abspath(seed), os.path.abspath(seed)),
+            "fingerprint": entries[0]["info"]["fingerprint"],
+            "removed": removed, "map": mapping}
+
+
 def _merge_entries(entries, out_path=None, delete=True):
     entries = [e for e in entries if e and e.get("game")]
     if not entries:
@@ -545,6 +652,7 @@ def _merge_entries(entries, out_path=None, delete=True):
 
     entries.sort(key=_base_key)
     base = entries[0]
+    priority = max(int(e.get("priority") or 1) for e in entries)
     ai_entries = [e for e in entries if e["info"]["has_ai"] and (e["game"].get("naga") or {}).get("rounds")]
     if not ai_entries:
         return {"ok": True, "merged": False, "reason": "no_ai", "path": base["path"],
@@ -600,6 +708,7 @@ def _merge_entries(entries, out_path=None, delete=True):
     out_naga["model_index"] = by_name.get(sel_name, 0)
     out_naga["mix"] = True
     out_naga["mix_fingerprint"] = fp
+    out_naga["mix_priority"] = priority
 
     count = len(union)
     out_rounds = []
@@ -637,7 +746,8 @@ def _merge_entries(entries, out_path=None, delete=True):
         meta["viewer_seat"] = seat
     if not meta.get("names"):
         meta["names"] = (base_ai["game"].get("meta") or {}).get("names")
-    out_game["mix"] = {"fingerprint": fp, "sources": []}
+    out_game["mix"] = {"fingerprint": fp, "sources": [], "priority": priority}
+    meta["mix_priority"] = priority
     out_game.pop("path", None)
 
     # 目标名 / 目录
@@ -703,6 +813,133 @@ def _merge_entries(entries, out_path=None, delete=True):
     }
 
 
+def _path_key(path):
+    return os.path.normcase(os.path.abspath(path))
+
+
+def _canonical_name(entries):
+    """所有目录共用的 canonical 文件名：最高优先级来源的名字 + [mix]。"""
+    base = min(entries, key=_base_key)
+    return mix_name_for(os.path.basename(base["path"]))
+
+
+def _target_dirs(entries):
+    out = []
+    seen = set()
+    for entry in entries:
+        d = os.path.dirname(entry["path"])
+        key = _path_key(d)
+        if key not in seen:
+            seen.add(key)
+            out.append(d)
+    return out
+
+
+def _merge_signature(entry):
+    game = entry.get("game") or {}
+    naga = game.get("naga") or {}
+    models = tuple(_model_name(m) for m in _models_of(naga))
+    sources = tuple(sorted(str(src.get("name") or "") for src in (entry.get("sources") or [])
+                            if isinstance(src, dict)))
+    mix = game.get("mix") or {}
+    return (entry.get("info", {}).get("fingerprint"), models, sources,
+            naga.get("model_index"), mix.get("priority"))
+
+
+def _already_copies(entries, canonical):
+    """所有命中是否已经是一组同名、同来源/模型的 canonical mix 副本。"""
+    if len(entries) < 2:
+        return False
+    if not all(e.get("is_mix") and os.path.basename(e["path"]) == canonical for e in entries):
+        return False
+    sigs = {_merge_signature(e) for e in entries}
+    return len(sigs) == 1
+
+
+def _merge_copies(entries, canonical=None, targets=None, delete=True, seed=None):
+    """把同一局合并一次，然后复制到每个曾有匹配文件的目录。
+
+    每个目录各留一份同名 canonical mix；不删除目录，也不碰没有匹配文件的目录。
+    """
+    entries = [e for e in entries if e and e.get("game")]
+    if not entries:
+        raise MixError("没有可合并的牌谱")
+    fps = {e["info"]["fingerprint"] for e in entries}
+    if len(fps) != 1:
+        raise MixError("这些牌谱不是同一场对局（牌局进程 hash 不同）")
+    fp = next(iter(fps))
+    canonical = canonical or _canonical_name(entries)
+    if targets is None:
+        targets = [os.path.join(d, canonical) for d in _target_dirs(entries)]
+    targets = [os.path.abspath(t) for t in targets]
+    target_keys = {_path_key(t) for t in targets}
+
+    # 目标位置若已有同局文件但不在输入里，并进来；不同局则拒绝覆盖。
+    input_paths = {_path_key(e["path"]) for e in entries}
+    for target in list(targets):
+        if not os.path.exists(target) or _path_key(target) in input_paths:
+            continue
+        try:
+            extra = _entries([target])
+        except Exception as exc:
+            raise MixError("目标文件已存在且无法读取：%s（%s）" % (target, exc))
+        if extra and extra[0]["info"]["fingerprint"] == fp:
+            entries.extend(extra)
+            input_paths.add(_path_key(target))
+        else:
+            raise MixError("目标文件已存在且不是同一场对局：%s" % target)
+
+    entries.sort(key=_base_key)
+    base = entries[0]
+    base_target = os.path.join(os.path.dirname(base["path"]), canonical)
+    if _path_key(base_target) not in target_keys:
+        targets.append(base_target)
+        target_keys.add(_path_key(base_target))
+
+    # 只写一次容器；delete=False 让下面统一删除/保留。
+    res = _merge_entries(entries, out_path=base_target, delete=False)
+    if not res.get("merged"):
+        return res
+
+    for target in targets:
+        if _path_key(target) == _path_key(base_target):
+            continue
+        out_dir = os.path.dirname(target)
+        if out_dir and not os.path.isdir(out_dir):
+            os.makedirs(out_dir, exist_ok=True)
+        shutil.copy2(base_target, target)
+
+    removed = []
+    if delete:
+        for entry in entries:
+            p = entry["path"]
+            if _path_key(p) in target_keys:
+                continue
+            try:
+                os.remove(p)
+                removed.append(p)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                # 删除失败不破坏已写好的 canonical；调用方可从 removed 看到不完整。
+                pass
+
+    mapping = {}
+    for entry in entries:
+        d = os.path.dirname(entry["path"])
+        target = os.path.join(d, canonical)
+        mapping[entry["path"]] = target if _path_key(target) in target_keys else base_target
+    seed_target = mapping.get(os.path.abspath(seed), base_target) if seed else base_target
+    res.update({
+        "path": seed_target,
+        "paths": targets,
+        "map": mapping,
+        "removed": removed,
+        "canonical": canonical,
+    })
+    return res
+
+
 def _write_container(out_path, container):
     out_dir = os.path.dirname(out_path)
     if out_dir and not os.path.isdir(out_dir):
@@ -738,7 +975,14 @@ def merge_paths(paths, out_path=None, delete=True):
         if len(entries) < 2:
             return {"ok": True, "merged": False, "reason": "single", "path": entries[0]["path"],
                     "fingerprint": entries[0]["info"]["fingerprint"]}
-        return _merge_entries(entries, out_path=out_path, delete=delete)
+        if out_path is not None:
+            return _merge_entries(entries, out_path=out_path, delete=delete)
+        if not any(e["info"]["has_ai"] for e in entries):
+            return _dedupe_no_ai(entries, uniq[0], delete=delete)
+        canonical = _canonical_name(entries)
+        targets = [os.path.join(d, canonical) for d in _target_dirs(entries)]
+        return _merge_copies(entries, canonical=canonical, targets=targets,
+                             delete=delete, seed=uniq[0])
 
 
 def scan_and_merge(path, root=None, delete=True):
@@ -777,12 +1021,21 @@ def scan_and_merge(path, root=None, delete=True):
         except Exception as exc:
             return {"ok": False, "merged": False, "error": "%s: %s" % (type(exc).__name__, exc),
                     "path": p, "warnings": warnings}
-        if not any(i.get("has_ai") for i in infos):
-            return {"ok": True, "merged": False, "reason": "no_ai", "path": p,
-                    "fingerprint": target["fingerprint"], "matches": matches, "warnings": warnings}
         try:
             entries = _entries(matches)
-            res = _merge_entries(entries, out_path=None, delete=delete)
+            if not any(e["info"]["has_ai"] for e in entries):
+                res = _dedupe_no_ai(entries, p, delete=delete)
+                res["warnings"] = warnings
+                res["matches"] = matches
+                return res
+            canonical = _canonical_name(entries)
+            if _already_copies(entries, canonical):
+                return {"ok": True, "merged": False, "reason": "unique", "path": p,
+                        "fingerprint": target["fingerprint"], "matches": matches,
+                        "warnings": warnings}
+            targets = [os.path.join(d, canonical) for d in _target_dirs(entries)]
+            res = _merge_copies(entries, canonical=canonical, targets=targets,
+                                delete=delete, seed=p)
             res["warnings"] = warnings
             return res
         except Exception as exc:

@@ -621,8 +621,8 @@ def main(argv=None):
     ap.add_argument("--export", help="导出数据库为 JSON 文件（- = 标准输出）")
     ap.add_argument("--json", dest="json_out", help="把结果 JSON 写到文件（- = 标准输出）")
     ap.add_argument("--mix", action="store_true",
-                    help="把给定的同一对局牌谱合并成 [mix] 文件（按牌局进程 hash 判重；默认删除原文件）")
-    ap.add_argument("--mix-out", help="--mix 的输出路径（默认 [mix]+最早文件名，放在最早文件所在目录）")
+                    help="把给定的同一对局牌谱合并成 [mix] 文件（按牌局进程 hash 判重；默认删除原文件，每个来源目录各留一份）")
+    ap.add_argument("--mix-out", help="--mix 的单文件输出路径（默认按优先级为每个来源目录保留一份 [mix]）")
     ap.add_argument("--mix-keep", action="store_true", help="--mix 时保留原文件（默认删除）")
     ap.add_argument("--serve", action="store_true", help="启动本地服务（前端 + /api）")
     ap.add_argument("--port", type=int, default=8770)

@@ -68,6 +68,7 @@ DEFAULT_PORT = 8770
 DEFAULT_HOST = "127.0.0.1"
 MAX_TEXT = 32 * 1024 * 1024      # 多来源合并后的 [mix] 可能比单份报告大
 MAX_UPLOAD = 32 * 1024 * 1024      # POST /api/naga-convert 的上传上限（.json.gz 实测 < 1.5 MB）
+MAX_LOCAL_IMPORT = 128 * 1024 * 1024  # POST /api/import-file 单个牌谱上限
 
 
 class ApiError(Exception):
@@ -595,10 +596,50 @@ class Handler(SimpleHTTPRequestHandler):
         except Exception as exc:   # noqa: BLE001 - 报告损坏 / 根本不是该种报告
             return self._send_json({"ok": False, "error": "%s 报告解析失败：%s" % (label, exc)}, 400)
 
+    def _import_file(self, q):
+        """本地导入：请求体是单个牌谱的原始字节，?name= 原文件名，?subdir= 目标子目录。
+
+        和下载走同一条落盘 / 自动合并链路：先按原文件名写入，再调用 ``_auto_mix`` 做
+        牌局判重；同名同内容直接视为重复，同名不同内容自动改名，绝不覆盖已有文件。
+        """
+        try:
+            size = int(self.headers.get("Content-Length") or 0)
+            if size <= 0:
+                raise ApiError("导入的牌谱是空的")
+            if size > MAX_LOCAL_IMPORT:
+                raise ApiError("牌谱过大（>%d MB）" % (MAX_LOCAL_IMPORT // (1024 * 1024)))
+            name = (q.get("name") or [""])[0]
+            subdir = (q.get("subdir") or [""])[0]
+            out = download.resolve_out_dir(subdir)
+            raw = self.rfile.read(size)
+            dest, written = download.save_local_import(name, raw, out)
+            if not written:
+                return self._send_json({"ok": True, "saved": 0, "duplicate": True,
+                                        "path": dest, "bytes": len(raw)})
+            entry = {"path": dest, "written": True}
+            download._auto_mix(entry, {}, [])
+            deduped = bool(entry.get("deduped"))
+            return self._send_json({"ok": True,
+                                    "saved": 0 if deduped else 1,
+                                    "duplicate": deduped,
+                                    "deduped": deduped,
+                                    "path": entry.get("path") or dest,
+                                    "merged": bool(entry.get("mixed")),
+                                    "mix_error": entry.get("mix_error"),
+                                    "bytes": len(raw)})
+        except ApiError as exc:
+            return self._send_json({"ok": False, "error": str(exc)}, exc.code)
+        except (ValueError, OSError) as exc:
+            return self._send_json({"ok": False, "error": str(exc)}, 400)
+        except Exception as exc:  # noqa: BLE001
+            return self._send_json({"ok": False, "error": "%s: %s" % (type(exc).__name__, exc)}, 500)
+
     def do_POST(self):
         q, path = self._query()
         if path in ("/api/naga-convert", "/api/mortal-convert"):
             return self._naga_convert(q)
+        if path == "/api/import-file":
+            return self._import_file(q)
         fn = POST_ROUTES.get(path)
         if fn is None:
             return self._send_json({"ok": False, "error": "未知接口：%s" % path}, 404)

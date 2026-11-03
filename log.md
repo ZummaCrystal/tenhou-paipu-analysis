@@ -3048,7 +3048,7 @@ r = t % 3; t = (t // 3) * 4; h = [t, t, t]
 
 ---
 
-*最后更新：第 82 轮（**期望打点摸进 5 区分赤 / 非赤 + v1.5.0**（用户 m00398）：赤 5 修复改变 6 个期望打点特征 ⇒ 中版本 1.5.0，1.4.x 库需重析；假想摸进 5 按公共信息加权，详见第 76 节）。上一轮：第 81 轮（期望打点补回赤 5（bug 修复），见第 75 节）。上一轮：第 79 轮（**打开检索 / 一览条目显示该牌谱文件的真实后缀**（用户 m10331，v1.4.4）：检索结果 / 全部浏览的条目原先把左上角文件名固定拼成 `<特征码>.tenhou`，NAGA（`.naga`）与 Mortal（`.mortal-a|b|c`）的牌谱被误标 —— 现改用条目记录里的 `log_path` 与 `/api/read` 返回的 `path` 的真实文件名；无数据库结构变化（仍 schema 11）。v1.4.4 安装包 = 143,292,183 B，SHA256 `D764F5CF0BC39B0431D82B0A7976EFDDC9D250D5356F1C7B59875A3C82D3B190`（本机复核一致）；v1.4.4 定为 1.4.x 线的稳定版（维护分支 `stable/1.4.4`）。）。上一轮：第 78 轮（**AI 决策面板展示完整动作空间**（用户 m10081，v1.4.3）：新版 NAGA 报告除「打 xx / 打·立直 xx」外，还给出一帧里其它可选动作的概率 —— 摸牌帧的**自摸**（`hora`）、**九種九牌流局**（`kyushu`）、逐个可杠牌的**暗杠 / 加杠**（`ankan_pai` / `kakan_pai`，直接给出杠哪张牌，可同时多张），鸣牌响应帧的**荣和**（`hora`）；与打牌共用 10% 门槛，低概率的进「其它」；旧模型（含天凤 / NAGA-平衡 / NAGA-超副露 / Mortal）没有这些字段 ⇒ 展示零变化）；v1.4.3 已打包（用户 m10285 本机）= `tenhou-paipu-analysis-1.4.3-setup.exe` 143,292,338 B / SHA256 `36A06F2E9B5F43BCB38C99D5E155F23FD6988F0543AFF54BC4AD64D5D48448ED`。上一轮：第 77 轮（**概率条统一配色**（用户 m10014，v1.4.2）：默听条一律 rgb(124,59,230)（= 原 argmax 亮紫）、立直条一律 #e0503a，取消 argmax 亮紫高亮。上一轮：第 76 轮（AI 决策表「其它」行按**显示值**补足到 100.0%，用户 m09901；1.4.1 尚未打包发布，修复并入同一版本）。上一轮：第 75 轮（**新版 NAGA 联合分布展示**：NAGA-避四 / NAGA-争一 的决策表直接列「打 xx」/「打 xx 立直」、概率条在既能默听打又能立直打的牌上左右一分为二（左半紫 / 右半红）；旧模型展示零变化；按用户 m09354 ④ 只提小版本号 ⇒ **v1.4.1**（库结构不变，仍 schema 11）。上一轮：第 74 轮（**新版 NAGA 报告支持**：アナンタ → `NAGA-避四`、ウロボロス → `NAGA-争一`；第零类 5 → 7 项（共 42 特征）；两款新模型的打牌概率取 `dahai_detail` 的 37 档合并回 34 档 ⇒ **v1.4.0 / schema 11**（用户 m09507）；已有模型（含天凤 / Mortal）展示零变化；立直概率按官方 viewer 1.2.2 口径从 `dahai_detail` 的立直支还原，并修掉旧报告立直概率恒 0.0% 的 bug）
+*最后更新：第 84 轮（**v1.5.1 版本推进 / 发布准备**（第 83-84 轮）：牌谱本地导入 + 全目录同局优先级合并；AI 决策面板在只有立直 100% 时不再补「其它」；schema 11 与特征口径未变，1.5.x 库可直接沿用。本机已构建安装包并记录指纹，详见第 78 节）。上一轮：第 83 轮（**期望打点摸进 5 区分赤 / 非赤 + v1.5.0**（用户 m00398）：赤 5 修复改变 6 个期望打点特征 ⇒ 中版本 1.5.0，1.4.x 库需重析；假想摸进 5 按公共信息加权，详见第 76 节）。上一轮：第 81 轮（期望打点补回赤 5（bug 修复），见第 75 节）。上一轮：第 79 轮（**打开检索 / 一览条目显示该牌谱文件的真实后缀**（用户 m10331，v1.4.4）：检索结果 / 全部浏览的条目原先把左上角文件名固定拼成 `<特征码>.tenhou`，NAGA（`.naga`）与 Mortal（`.mortal-a|b|c`）的牌谱被误标 —— 现改用条目记录里的 `log_path` 与 `/api/read` 返回的 `path` 的真实文件名；无数据库结构变化（仍 schema 11）。v1.4.4 安装包 = 143,292,183 B，SHA256 `D764F5CF0BC39B0431D82B0A7976EFDDC9D250D5356F1C7B59875A3C82D3B190`（本机复核一致）；v1.4.4 定为 1.4.x 线的稳定版（维护分支 `stable/1.4.4`）。）。上一轮：第 78 轮（**AI 决策面板展示完整动作空间**（用户 m10081，v1.4.3）：新版 NAGA 报告除「打 xx / 打·立直 xx」外，还给出一帧里其它可选动作的概率 —— 摸牌帧的**自摸**（`hora`）、**九種九牌流局**（`kyushu`）、逐个可杠牌的**暗杠 / 加杠**（`ankan_pai` / `kakan_pai`，直接给出杠哪张牌，可同时多张），鸣牌响应帧的**荣和**（`hora`）；与打牌共用 10% 门槛，低概率的进「其它」；旧模型（含天凤 / NAGA-平衡 / NAGA-超副露 / Mortal）没有这些字段 ⇒ 展示零变化）；v1.4.3 已打包（用户 m10285 本机）= `tenhou-paipu-analysis-1.4.3-setup.exe` 143,292,338 B / SHA256 `36A06F2E9B5F43BCB38C99D5E155F23FD6988F0543AFF54BC4AD64D5D48448ED`。上一轮：第 77 轮（**概率条统一配色**（用户 m10014，v1.4.2）：默听条一律 rgb(124,59,230)（= 原 argmax 亮紫）、立直条一律 #e0503a，取消 argmax 亮紫高亮。上一轮：第 76 轮（AI 决策表「其它」行按**显示值**补足到 100.0%，用户 m09901；1.4.1 尚未打包发布，修复并入同一版本）。上一轮：第 75 轮（**新版 NAGA 联合分布展示**：NAGA-避四 / NAGA-争一 的决策表直接列「打 xx」/「打 xx 立直」、概率条在既能默听打又能立直打的牌上左右一分为二（左半紫 / 右半红）；旧模型展示零变化；按用户 m09354 ④ 只提小版本号 ⇒ **v1.4.1**（库结构不变，仍 schema 11）。上一轮：第 74 轮（**新版 NAGA 报告支持**：アナンタ → `NAGA-避四`、ウロボロス → `NAGA-争一`；第零类 5 → 7 项（共 42 特征）；两款新模型的打牌概率取 `dahai_detail` 的 37 档合并回 34 档 ⇒ **v1.4.0 / schema 11**（用户 m09507）；已有模型（含天凤 / Mortal）展示零变化；立直概率按官方 viewer 1.2.2 口径从 `dahai_detail` 的立直支还原，并修掉旧报告立直概率恒 0.0% 的 bug）
 
 上一轮：第 73 轮（**界面整体放大 25%** + 检索分段载入 + 静态帧禁用「局」选择 + **v1.3.1**：大版本 + 中版本相同即可读库（用户 m09339 ①②③ / m09354 ④⑤））。上一轮：第 72 轮（打包发布流程：**跨盘符 relpath 真 bug**（用户 m09228 实测 —— 打包后用户数据在 C:、程序在 D:，`os.path.relpath` 抛 `ValueError: path is on mount 'C:', start on mount 'D:'` ⇒ `/api/paipu-browse` 400，这是「牌谱目录只能拉开很窄的条」的另一半原因）：`mjscore/server.py` 新增 `_paipu_rel()`（只在牌谱根内做 relpath，返回 `data/paipu/...`）、`_rel_or_abs()` 兜住跨盘符；`test/datamgr_test.py` 第 3 节的陈旧期望（只数 `.xml`、硬编码目录名）改成全部后缀 + `scan(kind=all)` + 跨盘符断言（78 / 0）；后端已重新打包并冒烟通过（`/api/paipu-browse?dir=data/paipu` → 200），已由用户 m09307 在普通终端出包：`tenhou-paipu-analysis-1.3.0-setup.exe` = 143,284,238 B，SHA256 `7EEE64A4F11C89577840DF26976F216333DD7EC72C989BBC0699EFF6FF1CEE89`）。
 
@@ -3764,3 +3764,91 @@ r = t % 3; t = (t // 3) * 4; h = [t, t, t]
 1. 历史 1.4.x 库必须重新分析；本轮没有自动迁移 / 回填。
 2. 完整 `test/mjscore_test.py` 的 DB + `/api` 链路未重跑；本轮验证到 `feats.second_class` 特征层与前端。
 
+## 77. 第 83 轮：牌谱本地导入 + 跨目录优先级合并（用户 m01069 / m01324 / m01849）
+
+### 77.1 背景
+
+- 用户 m01069 报告 Mortal 下载目录为空。复现后确认：`mortal-url.txt` 中的 `https://mjai.ekyu.moe/killerducky/?data=/report/<id>.json` 页面本身仍可打开，但报告 JSON 端点 `https://mjai.ekyu.moe/report/<id>.json` 对多个历史报告均返回 HTTP 404；站点前端同样直接 XHR 该地址。用户随后确认这些 URL 已过期，因此不是本地 URL 解析或下载目录问题。下载层保留 404 失败提示，不伪造报告。
+- 用户同时要求调整同局合并：扫描整个 `data/paipu/`，所有重复局都参与合并；每个曾有同局文件的同级目录各保留一份同名 `[mix]` 文件；不同目录之间不互相删除；格式与文件名统一到最高优先级来源；优先级 `naga-new > naga > mortal > tenhou`。
+- 用户 m01324 追加：下载页新增「从本地导入」，支持选择单个 / 多个牌谱文件或目录，复制到指定子目录；与下载一样做特征码判重和牌局判重。断线前对下载相关代码的改动按用户要求回滚到 v1.5.0 后重新实现。
+
+### 77.2 合并规则与实现
+
+- `mjscore/mix.py` 新增 `_is_naga_new_game()`：按报告内容识别 `naga-new`（模型名含 `NAGA-避四` / `NAGA-争一`，或帧含 `dahai_split` / `hora` / `ankan_pai` / `kakan_pai`），不再看目录名。来源优先级：`naga-new` 4、`naga` 3、Mortal 2、天凤 1；`.json` 先按内容 kind 消歧；mix 容器也优先看自身内容，不用目录名猜测。
+- `_canonical_name()` 选最高优先级来源的文件名并加 `[mix]` 前缀（已有前缀不重复加）；`_merge_copies()` 写一次混流容器，再复制到每个原先有同局文件的目录，最后删除非目标源文件。每个目录各留一份同名 canonical，目录本身不删。
+- `_merge_entries()` 的 base 改为最高优先级来源；无 AI 的纯天凤重复局**不生成 `[mix]`**：同目录内按特征码去重为一份，跨目录各自保留（用户 m01849 纠正）。
+- `scan_and_merge()` 命中 >= 2 时扫描整个 `data/paipu/`，按目录生成 targets；若所有命中已经是同名、同来源/模型的 canonical 副本则直接返回 `reason="unique"`，避免每次下载重写。
+- `download._auto_mix()` 改用合并结果里的 `map`，把 entry.path、`seen`、`results[].path` 分别映射到各自目录的 canonical；不再把所有路径都指向 base 目录。
+
+### 77.3 本地导入
+
+- `download.save_local_import(name, data, output_dir, overwrite=False)`：只取 basename；校验牌谱后缀；空内容拒绝；同名同内容返回 duplicate；同名不同内容在完整后缀前加 `-1` / `-2`（`.mortal-b`、`.json.gz` 保持完整），原子替换，不覆盖已有文件。
+- `server.py` 新增 `/api/import-file`（原始字节 POST，`?name=` / `?subdir=`，单文件上限 128 MB）：先落盘，再走与下载相同的 `_auto_mix()` 全局判重 / 合并链路；返回 `saved` / `duplicate` / `merged` / `mix_error`。
+- `web/index.html` / `web/js/app.js`：下载页新增第三个模式「从本地导入牌谱」，支持多选文件与 `webkitdirectory` 目录选择，逐个上传并统计新增 / 已存在 / 失败；完成后刷新结果列表。
+
+### 77.4 验证
+
+- `python test/mix_test.py`：**135 OK / 0 FAIL**（旧 81 + 新增 54）。新增覆盖四目录优先级升级（`[mix]b.mortal-b` → `[mix]c.naga` → `[mix]d.naga` → 内容 naga-new 的 `[mix]e.naga`）、旧 naga 放进 `naga-new` 目录不提升优先级、每目录一份同名文件、`map` / `removed`、幂等、无 AI 纯天凤同目录去重且不生成 mix、`_auto_mix` 无 AI 去重回填、本地导入重名 / 复合后缀、`/api/import-file` 首次保存 / 二次 duplicate / 非法后缀 400。
+- `node test/apptest.js`：全部通过；新增 local 模式三单选、文件 / 目录选择器、空选择拦截断言。
+- `python test/naga_test.py`：**262 OK / 0 FAIL**；新合并逻辑启用后，下载测试的 fake 牌谱必须使用不同牌局的真实样本，否则空牌谱会因同一个牌局 hash 被合并。
+- `python test/agari_test.py`：189 OK / 0 FAIL；`test/expect_test.py`：106 OK / 1 FAIL（唯一失败仍是既有 section1 语料 glob 只找 `.xml`）。
+- `python test/datamgr_test.py`：79 OK / 0 FAIL；`node test/uitest.js`：全部通过。
+- `git diff --check` 对 `test/apptest.js` / `web/js/app.js` 报 CRLF 行尾 trailing whitespace；仓库无 `.gitattributes`，是既有 CRLF 口径，不是实际空格。`web/js/app.js` / `test/apptest.js` 保持 CRLF，其余本轮文件 LF。
+
+### 77.5 待办
+
+1. 完整 `test/mjscore_test.py`（约 10 分钟）仍未重跑；本轮改动集中在 mix / download / server / 前端，入库与 API 主链路未变化。
+2. 真实浏览器 / Electron 下的多选目录导入尚未做人工点击验证；接口与 DOM 已有自动测试。
+3. 历史 Mortal 报告 URL 已过期，无法补下；如站点未来更换端点，再更新 `MORTAL_ENDPOINT` / `parse_mortal_url`。
+4. 本次功能未改版本号，仍是 v1.5.0 发布后的工作区改动；是否发 v1.5.1 / v1.6.0 待定。
+5. `naga-new` 识别已改为内容判定（m01849）；`naga-new` 目录名不再参与优先级，纯天凤重复局也不再生成 `[mix]`。
+
+
+## 78. 第 84 轮：v1.5.1 版本推进、打包与 git 维护
+
+### 78.1 版本决策
+
+- 第 83 轮的牌谱本地导入、全目录同局合并与来源优先级调整，改变了文件管理行为但没有改变数据库结构（仍 `schema 11`）或任何特征口径；另修正 AI 决策面板在「只有立直 100%、没有打牌分布」时误补「其它 100%」的显示问题。
+- 按版本规则只升补丁号：**v1.5.0 → v1.5.1**。v1.5.0 建的库可继续扩充 / 检索，不需要重新分析；1.4.x 库仍因大 / 中版本不同需要重析。
+- 同步 `mjscore/__init__.py`、`package.json`、`test/mjscore_test.py`、`test/apptest.js`、`readme.md`；新增 `docs/release-v1.5.1.md`。
+
+### 78.2 发布说明要点
+
+- 牌谱下载页新增「从本地导入牌谱」：单个 / 多个文件或整个目录，复制到指定子目录；同名同内容跳过，同名不同内容加 `-1` / `-2`，单文件上限 128 MB。
+- 同局判重扫描整个 `data/paipu/`；按 `naga-new > naga > mortal > tenhou` 选 canonical 文件名与格式，每个曾有同局文件的目录各保留一份同名 `[mix]`。`naga-new` 只看报告内容；纯天凤重复局只在同目录内去重，不生成 mix。
+- AI 决策面板：一帧只有 100% 立直 / 打牌且没有可分摊的打牌分布时，不再追加「其它 100%」。
+- 发布包：`tenhou-paipu-analysis-1.5.1-setup.exe` = **143,348,426 B**，SHA256 `ABF8DBA0FF2AF77FC9AEE75CA6877DBA3002EF3285612D6DD338E3EA6D05DC1A`（本机构建并复核）。
+
+### 78.3 验证
+
+- `node test/apptest.js`、`node test/selftest.js`、`node test/uitest.js` 全部通过；`py_compile` 通过。
+- 版本探针：`mjscore.__version__ = 1.5.1`、`store.SCHEMA_VERSION = 11`、`feats.FEATURES = 42`；`version_compatible("1.5.0") = True`、`("1.5.1") = True`、`("1.4.4") = False`。
+- `python test/mix_test.py` **135 OK / 0 FAIL**；`python test/naga_test.py` **262 OK / 0 FAIL**；`python test/datamgr_test.py` **79 OK / 0 FAIL**。
+- `python test/agari_test.py` **186 OK / 3 FAIL**：失败项均为语料基线漂移（本地 69 个 `.tenhou` vs 测试写死的 71 个，连带和牌 / 立直计数 618/530 vs 640/545）；打点、符、役、番、得点、配分等逐例校验均 0 处不符，不是本轮代码回归。
+- 完整 `test/mjscore_test.py` 本次在 600 s 工具上限内未跑完且无缓冲输出；打包后的 `/api/health` 冒烟、NAGA 打点链路与数据管理接口测试均通过。
+
+### 78.4 打包
+
+构建命令（干净构建 + 后端冒烟）：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./build.ps1 -Clean -SkipTests -Smoke -Port 8788
+```
+
+- PyInstaller 后端 exe = 2,464,007 B；内嵌 node = 91,694,408 B。
+- 8788 端口冒烟通过，`/api/health` 返回 `version 1.5.1`。
+- NSIS 安装包 `dist/electron/tenhou-paipu-analysis-1.5.1-setup.exe` = 143,348,426 B；SHA256 `ABF8DBA0FF2AF77FC9AEE75CA6877DBA3002EF3285612D6DD338E3EA6D05DC1A`。
+- `readme.md` §2.1 与 `docs/release-v1.5.1.md` 的下载表已写入上述体积与指纹；`dist/`、`build/` 仍在 `.gitignore` 内。
+
+### 78.5 git 维护
+
+- `.gitignore` 增加 `majsoul_capture/`：这是独立于主程序的本地雀魂 WebSocket 抓包实验工具，未进入产品功能，不随 v1.5.1 提交。
+- 主线工作区改动统一收口为一个 v1.5.1 发布提交，并打 tag `v1.5.1`。
+- 远端推送如受本机 SSH / 受限终端影响失败，需在普通终端执行 `git push origin main --tags`。
+
+### 78.6 待办
+
+1. 真实浏览器 / Electron 下人工点一次「选择目录」导入，确认多选与大目录体验。
+2. 历史 Mortal 报告 URL 已过期，无法补下；站点若更换端点再更新下载层。
+3. `agari_test.py` 的语料总数 / 事件数写死值可考虑改成随语料动态计算，避免数据目录变化后误报。
+4. 完整 `mjscore_test.py` 建议在无工具时限的普通终端补跑一次。

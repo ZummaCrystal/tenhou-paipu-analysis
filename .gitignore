@@ -18,6 +18,9 @@ _backup/
 # 临时探针 / 手工测试脚本
 temp/
 
+# 本地雀魂 WebSocket 抓包实验（独立小工具，不随主程序发布）
+majsoul_capture/
+
 # 测试临时产物
 test/out/
 test/_tmp/

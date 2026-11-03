@@ -537,6 +537,17 @@ check(byId.nagaOptions.childNodes.length === 4
 App.naga.rounds[0][1] = savedNf1;
 App.renderNagaPanel();
 check(byId.nagaOptions.childNodes.length === 3, '还原合成帧后选项表恢复 = ' + byId.nagaOptions.childNodes.length + ' 项');
+/* 用户反馈：立直 100% 且没有打牌分布时，不应再补一条「其它 100%」。 */
+App.naga.rounds[0][1] = { msg: 'tsumo', actor: 0, pai: '4s', reach: 10000,
+  end_type: NAGA_ET, game_rank: NAGA_GR };
+App.renderNagaPanel();
+check(byId.nagaOptions.childNodes.length === 1
+  && byId.nagaOptions.textContent.indexOf('立直') === 0
+  && byId.nagaOptions.textContent.indexOf('100.0%') >= 0
+  && byId.nagaOptions.textContent.indexOf('其它') < 0,
+  '只有立直 100% 时不补「其它」= ' + byId.nagaOptions.textContent);
+App.naga.rounds[0][1] = savedNf1;
+App.renderNagaPanel();
 clickAct('next');
 check(App.frameIndex === 2, '步进到鸣牌决策帧 ' + App.frameIndex);
 check(byId.nagaOptions.childNodes.length === 3 && byId.nagaOptions.textContent.indexOf('碰') >= 0
@@ -2423,7 +2434,7 @@ global.fetch = function (url, opt) {
                                     app_version: '0.2.0', compatible: true }] });
   }
   if (path.indexOf('/api/features') === 0) {
-    return json({ ok: true, name: '天凤牌谱分析', version: '1.5.0', schema_version: 11,
+    return json({ ok: true, name: '天凤牌谱分析', version: '1.5.1', schema_version: 11,
                   features: MJSFEAT.FEATURES,
                   first_features: MJSFEAT.FIRST_FEATURES, second_features: MJSFEAT.SECOND_FEATURES,
                   third_features: MJSFEAT.THIRD_FEATURES, wait_modes: ['出牌', '鸣牌响应'],
@@ -2852,8 +2863,8 @@ check(byId.featPanelList.querySelectorAll('.feat-row').length === 34, '手动播
 /* (4b) m03580：版本号 / 扩充现有数据库 / --full 说明 */
 check(byId.anTool === undefined, '打点工具选择已删除（m03580）');
 App.loadMeta();   /* init() 时假服务还没装好，这里显式重拉一次 /api/features */
-check(App.version === '1.5.0', 'App.version = ' + App.version);
-check(App.version === '1.5.0' && byId.appVer.textContent === 'v1.5.0',
+check(App.version === '1.5.1', 'App.version = ' + App.version);
+check(App.version === '1.5.1' && byId.appVer.textContent === 'v1.5.1',
       '标题栏显示版本号：' + byId.appVer.textContent);
 check(byId.anFullNote.textContent.indexOf('勾选') >= 0 && byId.anFullNote.textContent.length > 20,
       '--full 说明来自 /api/features：' + byId.anFullNote.textContent.slice(0, 24) + '…');
@@ -2902,6 +2913,15 @@ byId.btnGoDownload.fire('click');
 check(App.view === 'download' && !byId['view-download'].classList.contains('hidden'), '进入牌谱下载视图');
 App.dlFillDefaultDir();
 check(/^\d{8}-\d{6}$/.test(byId.dlSubdir.value), '默认存储目录 = ' + byId.dlSubdir.value + '（data/paipu/<时间戳>）');
+App.dlSetMode('local');
+check(byId.dlUrlRow.classList.contains('hidden') && byId.dlFileRow.classList.contains('hidden')
+      && !byId.dlLocalRow.classList.contains('hidden'), '切到「从本地导入」模式');
+check((html.match(/name="dlMode"/g) || []).length === 3
+      && !!byId.dlLocalFiles && !!byId.dlLocalDir,
+      '本地导入模式有三个模式单选、文件/目录选择器');
+byId.btnDownload.fire('click');
+check(byId.dlMsg.textContent.indexOf('请先选择本地牌谱文件或目录') >= 0,
+      '未选择本地文件时被拦下：' + byId.dlMsg.textContent);
 App.dlSetMode('file');
 check(byId.dlUrlRow.classList.contains('hidden') && !byId.dlFileRow.classList.contains('hidden'), '切到「文本文件」模式');
 App.dlSetMode('url');

@@ -12,7 +12,7 @@
     mix           同一对局的跨来源判重 / [mix] 牌谱与 AI 分析合并
     server        本地静态服务 + /api 接口（server.py 调用）
 
-软件版本见 __version__（当前 v1.5.0）。每次写库都会把该版本记进数据库（meta.app_version）。
+软件版本见 __version__（当前 v1.5.1）。每次写库都会把该版本记进数据库（meta.app_version）。
 **大版本 + 中版本相同**的库可以直接继续扩充 / 加载（补丁版本不同不影响，用户 m09354 ⑤）。
 
 作者：Zumma Crystal <z1025zzsg@sohu.com>。
@@ -21,7 +21,7 @@
 import re
 
 APP_NAME = "天凤牌谱分析"
-__version__ = "1.5.0"
+__version__ = "1.5.1"
 AUTHOR = "Zumma Crystal"
 AUTHOR_EMAIL = "z1025zzsg@sohu.com"
 __author__ = AUTHOR

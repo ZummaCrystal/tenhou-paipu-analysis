@@ -314,7 +314,8 @@
         按风格落盘 <code>.mortal-a</code> / <code>.mortal-b</code> / <code>.mortal-c</code>）。
         文件固定下载到 <code>data/paipu/</code> 下的子目录里，子目录名可以自定义（默认是带时间戳的
         目录名）；本地已有同名文件时，天凤 / NAGA 官方 / Mortal 来源直接跳过（想重下先删本地文件），
-        ricochet 代理来源会重新下载覆盖。下载完可以在「牌谱分析」里把该目录作为来源扫描并入库。</p>
+        ricochet 代理来源会重新下载覆盖。也可以选「从本地导入」，把已有牌谱文件 / 整个目录复制到
+        同一个子目录；导入同样会做特征码判重和牌局合并。下载完可以在「牌谱分析」里把该目录作为来源扫描并入库。</p>
 
       <div class="row">
         <label for="dlSubdir">存储子目录</label>
@@ -326,6 +327,7 @@
       <div class="row">
         <label class="chk"><input type="radio" name="dlMode" value="url" checked /> 单个牌谱 URL</label>
         <label class="chk"><input type="radio" name="dlMode" value="file" /> 本地文本文件（每行一个 URL）</label>
+        <label class="chk"><input type="radio" name="dlMode" value="local" /> 从本地导入牌谱</label>
       </div>
 
       <div id="dlUrlRow" class="row">
@@ -337,6 +339,15 @@
         <button id="btnDlPickFile">选择文本文件…</button>
         <input id="dlUrlFile" type="file" accept=".txt,text/plain" hidden />
         <span id="dlFileName" class="muted">未选择文件</span>
+      </div>
+
+      <div id="dlLocalRow" class="row hidden">
+        <button id="btnDlPickLocalFiles">选择牌谱文件…</button>
+        <input id="dlLocalFiles" type="file" multiple hidden
+          accept=".tenhou,.naga,.mortal,.mortal-a,.mortal-b,.mortal-c,.xml,.mjlog,.json,.gz" />
+        <button id="btnDlPickLocalDir">选择目录…</button>
+        <input id="dlLocalDir" type="file" webkitdirectory multiple hidden />
+        <span id="dlLocalName" class="muted">未选择文件</span>
       </div>
 
       <div class="row">

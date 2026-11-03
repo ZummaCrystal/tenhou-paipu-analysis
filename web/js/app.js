@@ -2497,7 +2497,7 @@ function redMarkOf(st) {
         if (!list[j].reach) { shownTxt += Math.round(list[j].pct / 10) / 10; }
       }
       var restTxt = Math.round((100 - shownTxt) * 10) / 10;
-      if (restTxt >= 0.1) {
+      if (shownTxt > 0 && restTxt >= 0.1) {
         list.push({ tiles: [], word: '其它', pct: 10000 - shown, pctText: restTxt.toFixed(1) + '%', other: true });
       }
     }
@@ -2721,7 +2721,7 @@ function redMarkOf(st) {
   }
 
   /* ------------------------------------------------------------ 牌谱下载 */
-  var Dl = { mode: 'url', fileName: '', fileText: '', running: false, total: 0, dir: '' };
+  var Dl = { mode: 'url', fileName: '', fileText: '', running: false, total: 0, dir: '', localFiles: [] };
 
   function dlFillDefaultDir() {
     var el = $('dlSubdir');
@@ -2733,10 +2733,99 @@ function redMarkOf(st) {
   }
 
   function dlSetMode(mode) {
-    Dl.mode = (mode === 'file') ? 'file' : 'url';
-    var ur = $('dlUrlRow'), fr = $('dlFileRow');
+    Dl.mode = (mode === 'file' || mode === 'local') ? mode : 'url';
+    var ur = $('dlUrlRow'), fr = $('dlFileRow'), lr = $('dlLocalRow');
     if (ur) { ur.classList.toggle('hidden', Dl.mode !== 'url'); }
     if (fr) { fr.classList.toggle('hidden', Dl.mode !== 'file'); }
+    if (lr) { lr.classList.toggle('hidden', Dl.mode !== 'local'); }
+  }
+
+  function dlIsPaipuName(name) {
+    return /[.](tenhou|xml|mjlog|naga|mortal|mortal-[abc]|json|gz)$/i.test(String(name || ''));
+  }
+
+  function dlReadLocal(inputId, source) {
+    var el = $(inputId);
+    var all = el && el.files ? Array.prototype.slice.call(el.files) : [];
+    var files = all.filter(function (f) { return dlIsPaipuName(f.name); });
+    Dl.localFiles = files;
+    var nm = $('dlLocalName');
+    if (!files.length) {
+      if (nm) { nm.textContent = '未选择支持的牌谱文件'; }
+      setMsg('dlMsg', '没有选中支持的牌谱文件。', true);
+      return;
+    }
+    var skipped = all.length - files.length;
+    if (nm) {
+      nm.textContent = '已选择 ' + files.length + ' 个牌谱文件'
+        + (skipped ? ('（忽略 ' + skipped + ' 个非牌谱文件）') : '')
+        + '，来源：' + source;
+    }
+    setMsg('dlMsg', '已选择 ' + files.length + ' 个牌谱文件，将复制到 data/paipu/'
+      + (valOf('dlSubdir', '') || '（时间戳目录）') + '。');
+  }
+
+  function dlImport() {
+    var files = (Dl.localFiles || []).slice();
+    if (!files.length) {
+      setMsg('dlMsg', '请先选择本地牌谱文件或目录。', true);
+      return;
+    }
+    if (!valOf('dlSubdir', '')) { dlFillDefaultDir(); }
+    var subdir = valOf('dlSubdir', '');
+    var box = $('dlProgressBox');
+    if (box) { box.classList.remove('hidden'); }
+    var li = $('dlList');
+    if (li) { clearNode(li); }
+    Dl.running = true;
+    Dl.total = files.length;
+    setMsg('dlMsg', '正在导入 ' + files.length + ' 个牌谱文件…');
+    var i = 0, saved = 0, duplicate = 0, failed = 0, firstError = '';
+    function step() {
+      if (i >= files.length) {
+        Dl.running = false;
+        setBar('dlProgressBar', failed ? 0 : 100);
+        var ptxt = $('dlProgressText');
+        if (ptxt) { ptxt.textContent = '已处理 ' + files.length + ' / ' + files.length; }
+        var cnt = $('dlCounts');
+        if (cnt) {
+          cnt.textContent = '导入 ' + files.length + ' 个 ｜ 新增 ' + saved
+            + ' ｜ 已存在 ' + duplicate + ' ｜ 失败 ' + failed + ' ｜ 目录 ' + subdir;
+        }
+        setMsg('dlMsg', '导入完成：新增 ' + saved + '，已存在 ' + duplicate
+          + '，失败 ' + failed + (firstError ? ('（' + firstError + '）') : '')
+          + '。文件在 data/paipu/' + subdir, !!failed);
+        dlListResults(null);
+        return;
+      }
+      var f = files[i++];
+      var url = '/api/import-file?subdir=' + encodeURIComponent(subdir)
+        + '&name=' + encodeURIComponent(f.name);
+      setBar('dlProgressBar', Math.round((i - 1) * 100 / files.length));
+      var txt = $('dlProgressText');
+      if (txt) {
+        txt.textContent = '已处理 ' + (i - 1) + ' / ' + files.length + ' ｜ 当前 ' + f.name;
+      }
+      fetch(url, { method: 'POST', body: f, headers: { 'Content-Type': 'application/octet-stream' } })
+        .then(function (r) { return r.json().then(function (d) { return { status: r.status, data: d || {} }; }); })
+        .then(function (x) {
+          var d = x.data;
+          if (x.status >= 400 || !d.ok) {
+            failed += 1;
+            if (!firstError) { firstError = f.name + ': ' + (d.error || ('HTTP ' + x.status)); }
+          } else if (d.duplicate) {
+            duplicate += 1;
+          } else {
+            saved += 1;
+          }
+          step();
+        })['catch'](function (e) {
+          failed += 1;
+          if (!firstError) { firstError = f.name + ': ' + e.message; }
+          step();
+        });
+    }
+    step();
   }
 
   function dlReadFile() {
@@ -2760,7 +2849,8 @@ function redMarkOf(st) {
   }
 
   function dlStart() {
-    if (Dl.running) { setMsg('dlMsg', '正在下载，请稍候…', true); return; }
+    if (Dl.running) { setMsg('dlMsg', '正在处理，请稍候…', true); return; }
+    if (Dl.mode === 'local') { dlImport(); return; }
     if (!valOf('dlSubdir', '')) { dlFillDefaultDir(); }
     var body = { subdir: valOf('dlSubdir', '') };
     if (Dl.mode === 'url') {
@@ -3200,6 +3290,12 @@ function redMarkOf(st) {
     bind('btnDlPickFile', function () { var el = $('dlUrlFile'); if (el) { el.click(); } });
     var dlFile = $('dlUrlFile');
     if (dlFile) { dlFile.addEventListener('change', dlReadFile); }
+    bind('btnDlPickLocalFiles', function () { var el = $('dlLocalFiles'); if (el) { el.click(); } });
+    bind('btnDlPickLocalDir', function () { var el = $('dlLocalDir'); if (el) { el.click(); } });
+    var dlLocalFiles = $('dlLocalFiles');
+    if (dlLocalFiles) { dlLocalFiles.addEventListener('change', function () { dlReadLocal('dlLocalFiles', '文件'); }); }
+    var dlLocalDir = $('dlLocalDir');
+    if (dlLocalDir) { dlLocalDir.addEventListener('change', function () { dlReadLocal('dlLocalDir', '目录'); }); }
     var dlModes = document.querySelectorAll('input[name="dlMode"]');
     for (var mi = 0; mi < dlModes.length; mi++) {
       dlModes[mi].addEventListener('change', function () { dlSetMode(this.value); });

@@ -866,6 +866,11 @@ def section9():
     def fake_fetch(target, **kw):
         i = download.extract_log_id(target)
         calls.append(i)
+        # 用真实天凤牌谱，避免空 XML 被牌局进程 hash 判成同一局（第 83 轮合并生效后）。
+        path = os.path.join(ROOT, "data", "paipu", "tenhou", i + ".tenhou")
+        if os.path.isfile(path):
+            with open(path, "rb") as fh:
+                return fh.read()
         return b'<mjloggm ver="2.3">%s</mjloggm>' % i.encode("utf-8")
 
     download.fetch_log = fake_fetch
@@ -976,8 +981,12 @@ def section10():
         info = target if isinstance(target, dict) else download.parse_mortal_url(target)
         calls.append(info["report_id"])
         tag = "4.1b" if info["report_id"] == rid else "4.1c"
-        body = _json.dumps({"engine": "Mortal", "mjai_log": [],
-                            "review": {"model_tag": tag, "temperature": 0.1}}).encode("utf-8")
+        # 用真实 Mortal 报告正文，避免空 mjai_log 让不同报告得到同一个牌局 hash。
+        sample = "0644b10d89444d7d" if tag == "4.1b" else "16da9b4f2f3d2b31"
+        sample_path = os.path.join(ROOT, "data", "paipu", "mortal",
+                                   sample + ".mortal-" + tag[-1])
+        with open(sample_path, "rb") as fh:
+            body = fh.read()
         info = dict(info)
         info.update(download.mortal_model_info(body))
         return body, info
@@ -1013,7 +1022,14 @@ def section10():
         eq((r3["saved"], r3["duplicate"], calls), (0, 2, []), "同名 + 重复 url 都是跳过（两条都算重复）")
         # 10.4 三种来源混在一列 -> 三种后缀各自落盘
         download.fetch_naga_report = lambda t, **kw: (b"\x1f\x8b\x08naga", b'{"ok": 1}')
-        download.fetch_log = lambda t, **kw: b'<mjloggm ver="2.3"></mjloggm>'
+        def fake_log(target, **kw):
+            i = download.extract_log_id(target)
+            path = os.path.join(ROOT, "data", "paipu", "tenhou", i + ".tenhou")
+            if os.path.isfile(path):
+                with open(path, "rb") as fh:
+                    return fh.read()
+            return b'<mjloggm ver="2.3">%s</mjloggm>' % i.encode("utf-8")
+        download.fetch_log = fake_log
         log_id = "2026082919gm-00a9-0000-4e40cd3e"
         naga_rid = "60b5c2ad3d716fab830cc2ad5ad3053fe48cde77cb02094cc2fb50cb04e4675ev2_2"
         calls[:] = []

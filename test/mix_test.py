@@ -8,6 +8,7 @@ r"""牌谱判重与 AI 分析合并（用户 m00001）回归测试。
   3. 跨来源规范化：骰子 / 天凤 m / kakan 4 张 vs 1 张 / reach step2 / 和牌细节都不影响 hash。
   4. 非同一局拒绝合并。
   5. 下载落盘后的自动合并入口（download._auto_mix）回填 entry / seen / results。
+  6. 跨目录优先级升级 / 每目录一份 canonical / 无 AI 去重 / 本地导入落盘 / 服务端接口。
 """
 import copy
 import glob
@@ -16,12 +17,15 @@ import json
 import os
 import shutil
 import sys
+import threading
+import urllib.parse
+import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from mjscore import cli, download, mix, mortal  # noqa: E402
+from mjscore import cli, download, mix, mortal, server  # noqa: E402
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -452,6 +456,239 @@ def test_download_hook():
     eq(os.listdir(out), ["[mix]718521d3073f9ee3.mortal-b"], "源文件已删除")
 
 
+
+def _plain_game():
+    init = {"round": 0, "combo": 0, "kyotaku": 0, "dora": 0,
+            "scores": [25000, 25000, 25000, 25000], "oya": 0,
+            "hands": [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+                      [13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25],
+                      [26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38],
+                      [39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51]]}
+    return {"names": ["甲", "乙", "丙", "丁"], "dices": [1, 2],
+            "rounds": [{"init": init,
+                        "events": [{"type": "discard", "player": 0, "tile": 0}]}]}
+
+
+def _put_ai_mix(root, subdir, filename, base_game, naga_kind=None, naga_new=False):
+    game = copy.deepcopy(base_game)
+    game.pop("path", None)
+    naga = game.setdefault("naga", {})
+    if naga_kind is None:
+        naga.pop("kind", None)
+    else:
+        naga["kind"] = naga_kind
+    if naga_new:
+        naga["models"] = [{"index": 0, "raw": "ウロボロス", "name": "NAGA-争一"}]
+        naga["types"] = {"0": "ウロボロス"}
+    d = os.path.join(root, subdir)
+    os.makedirs(d, exist_ok=True)
+    path = os.path.join(d, filename)
+    write_mix(path, game)
+    return path
+
+
+def test_multi_dir_priority():
+    print("=== 6. 跨目录优先级 / canonical 同步 ===")
+    out = fresh("mix_dirs")
+    base = mortal.game_from_file(SRC1)
+    base.pop("path", None)
+    p1 = _put_ai_mix(out, "tenhou", "a.tenhou", base, naga_kind="mortal")
+    p2 = _put_ai_mix(out, "mortal", "b.mortal-b", base, naga_kind="mortal")
+    res = mix.scan_and_merge(p1, root=out)
+    check(res.get("merged"), "tenhou + mortal 合并")
+    eq(res.get("canonical"), "[mix]b.mortal-b", "首轮 canonical 取 mortal")
+    for d in ("tenhou", "mortal"):
+        eq(os.listdir(os.path.join(out, d)), ["[mix]b.mortal-b"], "%s 目录各留一份 mortal mix" % d)
+
+    p3 = _put_ai_mix(out, "naga", "c.naga", base)
+    res = mix.scan_and_merge(p3, root=out)
+    check(res.get("merged"), "加入 naga 后重新合并")
+    eq(res.get("canonical"), "[mix]c.naga", "canonical 升级为 naga")
+    for d in ("tenhou", "mortal", "naga"):
+        eq(os.listdir(os.path.join(out, d)), ["[mix]c.naga"], "%s 目录同步为 naga mix" % d)
+    check("b.mortal-b" not in os.listdir(os.path.join(out, "mortal")), "旧 mortal canonical 已清理")
+
+    # 目录名不再决定优先级：把旧 naga 内容放进 naga-new 目录，仍是 naga 优先级 3。
+    p4 = _put_ai_mix(out, "naga-new", "d.naga", base)
+    res = mix.scan_and_merge(p4, root=out)
+    check(res.get("merged"), "旧 naga 内容放入 naga-new 目录后仍参与合并")
+    eq(res.get("canonical"), "[mix]c.naga", "目录名不提升优先级，canonical 仍为 c.naga")
+    for d in ("tenhou", "mortal", "naga", "naga-new"):
+        eq(os.listdir(os.path.join(out, d)), ["[mix]c.naga"], "%s 目录同步为 c.naga" % d)
+
+    # naga-new 内容本身才提升到最高优先级；文件放在任意目录都一样。
+    p5 = _put_ai_mix(out, "misc", "e.naga", base, naga_new=True)
+    res = mix.scan_and_merge(p5, root=out)
+    check(res.get("merged"), "naga-new 内容触发重新合并")
+    eq(res.get("canonical"), "[mix]e.naga", "按内容识别 naga-new 并升级 canonical")
+    for d in ("tenhou", "mortal", "naga", "naga-new", "misc"):
+        eq(os.listdir(os.path.join(out, d)), ["[mix]e.naga"], "%s 目录同步为 e.naga" % d)
+    eq(len(res.get("map") or {}), 5, "map 覆盖五个旧路径")
+    eq(sorted(os.path.relpath(v, out) for v in (res.get("map") or {}).values()),
+       sorted([os.path.join(d, "[mix]e.naga") for d in ("tenhou", "mortal", "naga", "naga-new", "misc")]),
+       "map 每个旧路径指向各自目录 canonical")
+    again = mix.scan_and_merge(os.path.join(out, "tenhou", "[mix]e.naga"), root=out)
+    eq((again.get("ok"), again.get("merged"), again.get("reason")), (True, False, "unique"),
+       "重复扫描幂等")
+
+
+def test_no_ai_duplicate():
+    print("=== 6b. 无 AI 的纯天凤重复局不生成 mix ===")
+    out = fresh("mix_no_ai")
+    game = _plain_game()
+    fp = mix.fingerprint(game)
+    paths = []
+    for sub in ("a", "b"):
+        d = os.path.join(out, "tenhou", sub)
+        os.makedirs(d, exist_ok=True)
+        path = os.path.join(d, "same.tenhou")
+        write_mix(path, game)
+        paths.append(path)
+    res = mix.scan_and_merge(paths[1], root=out)
+    eq((res.get("ok"), res.get("merged"), res.get("reason")), (True, False, "no_ai"),
+       "跨目录纯天凤同局不合并、不生成 mix")
+    eq(sorted(os.listdir(os.path.join(out, "tenhou", "a"))), ["same.tenhou"], "a 目录原文件保留")
+    eq(sorted(os.listdir(os.path.join(out, "tenhou", "b"))), ["same.tenhou"], "b 目录原文件保留")
+    eq(mix.fingerprint_file(paths[1]), fp, "原文件仍是同一牌局")
+
+    # 同一目录内同特征码只保留一份，但仍然不生成 mix。
+    d = os.path.join(out, "tenhou", "dup")
+    os.makedirs(d, exist_ok=True)
+    q1 = os.path.join(d, "one.tenhou")
+    q2 = os.path.join(d, "two.tenhou")
+    write_mix(q1, game)
+    write_mix(q2, game)
+    deduped = mix.scan_and_merge(q2, root=out)
+    eq((deduped.get("ok"), deduped.get("merged"), deduped.get("reason")),
+       (True, False, "deduped"), "同目录同特征码去重")
+    eq(sorted(os.listdir(d)), ["one.tenhou"], "同目录只保留一份，不生成 mix")
+
+
+def test_local_import():
+    print("=== 6c. 本地导入落盘 / 重名处理 ===")
+    out = fresh("mix_local")
+    p, written = download.save_local_import("a.mortal-b", b"one", out)
+    eq((os.path.basename(p), written), ("a.mortal-b", True), "首次导入写入原名")
+    p2, written2 = download.save_local_import("a.mortal-b", b"one", out)
+    eq((p2, written2), (p, False), "同内容同名判重")
+    p3, written3 = download.save_local_import("a.mortal-b", b"two", out)
+    eq((os.path.basename(p3), written3), ("a-1.mortal-b", True), "不同内容自动加 -1 且保留完整后缀")
+    p4, written4 = download.save_local_import("b.json.gz", b"g1", out)
+    p5, written5 = download.save_local_import("b.json.gz", b"g2", out)
+    eq((os.path.basename(p4), written4), ("b.json.gz", True), "复合后缀首次导入")
+    eq((os.path.basename(p5), written5), ("b-1.json.gz", True), "复合后缀 -1 加在 .gz 前")
+    for bad in ("a.txt",):
+        try:
+            download.save_local_import(bad, b"x", out)
+            check(False, "非法后缀被拒绝")
+        except ValueError:
+            check(True, "非法后缀被拒绝")
+    try:
+        download.save_local_import("empty.mortal-b", b"", out)
+        check(False, "空内容被拒绝")
+    except ValueError:
+        check(True, "空内容被拒绝")
+
+
+def test_auto_mix_multi_dir():
+    print("=== 6d. download._auto_mix 多目录回填 ===")
+    out = fresh("mix_auto_dirs")
+    base = mortal.game_from_file(SRC1)
+    base.pop("path", None)
+    p1 = _put_ai_mix(out, "tenhou", "a.tenhou", base, naga_kind="mortal")
+    p2 = _put_ai_mix(out, "naga-new", "b.naga", base)
+    entry = {"path": p1, "written": True}
+    seen = {"old1": p1, "old2": p2}
+    results = [{"path": p1}, {"path": p2}]
+    original = mix.scan_root_for
+    mix.scan_root_for = lambda _p: out
+    try:
+        download._auto_mix(entry, seen, results)
+    finally:
+        mix.scan_root_for = original
+    check(entry.get("mixed"), "entry 标记 mixed")
+    eq(os.path.basename(entry.get("path") or ""), "[mix]b.naga", "entry 指向 tenhou 目录 canonical")
+    eq({os.path.basename(v) for v in seen.values()}, {"[mix]b.naga"}, "seen 全部回填 canonical 名")
+    eq([os.path.basename(r.get("path") or "") for r in results], ["[mix]b.naga", "[mix]b.naga"],
+       "results 全部回填 canonical 名")
+    eq(sorted(os.listdir(os.path.join(out, "tenhou"))), ["[mix]b.naga"], "tenhou 目录一份")
+    eq(sorted(os.listdir(os.path.join(out, "naga-new"))), ["[mix]b.naga"], "naga-new 目录一份")
+
+
+
+def test_auto_mix_dedupe():
+    print("=== 6d-2. download._auto_mix 无 AI 同目录去重回填 ===")
+    out = fresh("mix_auto_no_ai")
+    game = _plain_game()
+    d = os.path.join(out, "tenhou", "dup")
+    os.makedirs(d, exist_ok=True)
+    q1 = os.path.join(d, "one.tenhou")
+    q2 = os.path.join(d, "two.tenhou")
+    write_mix(q1, game)
+    write_mix(q2, game)
+    entry = {"path": q2, "written": True}
+    seen = {"old": q2}
+    results = [{"path": q2}]
+    original = mix.scan_root_for
+    mix.scan_root_for = lambda _p: out
+    try:
+        download._auto_mix(entry, seen, results)
+    finally:
+        mix.scan_root_for = original
+    check(entry.get("deduped"), "entry 标记 deduped")
+    eq(entry.get("path"), q1, "entry.path 回填到保留文件")
+    eq(seen.get("old"), q1, "seen 回填到保留文件")
+    eq([r.get("path") for r in results], [q1], "results 回填到保留文件")
+    eq(sorted(os.listdir(d)), ["one.tenhou"], "同目录只留一份，不生成 mix")
+
+
+
+def test_import_endpoint():
+    print("=== 6e. /api/import-file 服务端接口 ===")
+    out = fresh("mix_endpoint")
+    old_root = os.environ.get("MJSCORE_DATA_ROOT")
+    os.environ["MJSCORE_DATA_ROOT"] = out
+    httpd = None
+    try:
+        httpd = server.make_server(0, "127.0.0.1")
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        port = httpd.server_address[1]
+        raw = io.open(SRC1, "rb").read()
+        qs = urllib.parse.urlencode({"subdir": "importprobe", "name": "a.mortal-b"})
+        req = urllib.request.Request(
+            "http://127.0.0.1:%d/api/import-file?%s" % (port, qs),
+            data=raw, method="POST",
+            headers={"Content-Type": "application/octet-stream"})
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        eq((data.get("ok"), data.get("saved"), data.get("duplicate")), (True, 1, False),
+           "首次本地导入保存")
+        target = os.path.join(out, "data", "paipu", "importprobe", "a.mortal-b")
+        check(os.path.isfile(target), "导入文件落到 data/paipu/importprobe")
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data2 = json.loads(resp.read().decode("utf-8"))
+        eq((data2.get("ok"), data2.get("saved"), data2.get("duplicate")), (True, 0, True),
+           "重复导入返回 duplicate")
+        bad = urllib.request.Request(
+            "http://127.0.0.1:%d/api/import-file?%s" % (
+                port, urllib.parse.urlencode({"subdir": "importprobe", "name": "a.txt"})),
+            data=b"x", method="POST")
+        try:
+            urllib.request.urlopen(bad, timeout=30)
+            check(False, "非法后缀返回 400")
+        except urllib.error.HTTPError as exc:
+            eq(exc.code, 400, "非法后缀返回 400")
+    finally:
+        if httpd is not None:
+            httpd.shutdown()
+            httpd.server_close()
+        if old_root is None:
+            os.environ.pop("MJSCORE_DATA_ROOT", None)
+        else:
+            os.environ["MJSCORE_DATA_ROOT"] = old_root
+
+
 def main():
     if not os.path.isfile(SRC1) or not os.path.isfile(SRC2):
         print("缺少真实重复对样例，跳过：%s / %s" % (SRC1, SRC2))
@@ -467,6 +704,12 @@ def main():
     test_reject_other_game()
     test_download_hook()
     test_run_download_auto_mix()
+    test_multi_dir_priority()
+    test_no_ai_duplicate()
+    test_local_import()
+    test_auto_mix_multi_dir()
+    test_auto_mix_dedupe()
+    test_import_endpoint()
     print("\n结果：%d OK / %d FAIL" % (OK[0], BAD[0]))
     return 0 if BAD[0] == 0 else 1
 

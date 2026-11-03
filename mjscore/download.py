@@ -586,6 +586,57 @@ def fetch_mortal_report(target, timeout=30.0, retries=3):
     raise DownloadError("下载 %s 失败：%s" % (url, last_error))
 
 
+def save_local_import(name, data, output_dir, overwrite=False):
+    """把本地导入的牌谱原样复制到 output_dir；返回 (path, written)。
+
+    文件名只取 basename；同名但内容不同时自动加 ``-1`` / ``-2``，不覆盖已有牌谱。
+    内容完全相同则视为重复，不重复落盘。
+    """
+    raw_name = str(name or "").replace("\\", "/")
+    base = os.path.basename(raw_name)
+    if not base or not mix._is_paipu_name(base):
+        raise ValueError("不是支持的牌谱后缀：%s" % (base or name))
+    if not data:
+        raise ValueError("导入的牌谱是空的：%s" % base)
+    output_dir = os.path.abspath(output_dir)
+    os.makedirs(output_dir, exist_ok=True)
+    path = os.path.join(output_dir, base)
+    if os.path.exists(path):
+        try:
+            with open(path, "rb") as fh:
+                old = fh.read()
+        except OSError:
+            old = None
+        if old == data:
+            return path, False
+        if not overwrite:
+            ext = ""
+            for sfx in sorted(mix._all_suffixes(), key=len, reverse=True):
+                if base.lower().endswith(sfx):
+                    ext = base[-len(sfx):]
+                    break
+            stem = base[:-len(ext)] if ext else base
+            i = 1
+            while True:
+                path = os.path.join(output_dir, "%s-%d%s" % (stem, i, ext))
+                if not os.path.exists(path):
+                    break
+                try:
+                    with open(path, "rb") as fh:
+                        if fh.read() == data:
+                            return path, False
+                except OSError:
+                    pass
+                i += 1
+    tmp = path + ".importing"
+    with open(tmp, "wb") as fh:
+        fh.write(data)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, path)
+    return path, True
+
+
 def save_mortal_report(report_id, data, output_dir, overwrite=True, model_tag=None):
     """写 <output_dir>/<report_id>.mortal-a|b|c（按 model_tag，用户 m05806 ②）。
 
@@ -626,10 +677,11 @@ def find_mortal_files(output_dir, key):
 # 下载
 # ---------------------------------------------------------------------------
 def _auto_mix(entry, seen=None, results=None):
-    """新牌谱落盘后按牌局进程 hash 扫描已下载牌谱；命中同一场就合并为 [mix]。
+    """新牌谱落盘后按牌局进程 hash 扫描 data/paipu；命中同一场就合并为 [mix]。
 
-    失败不破坏原文件，只把错误记在 entry["mix_error"]；成功则把 entry / seen / 之前的
-    results 里指向被删源文件的 path 全部改到 mix 文件，界面于是不会展示已删除的路径。
+    无 AI 的纯天凤同局只在目录内按特征码去重，不生成 mix。失败不破坏原文件，只把
+    错误记在 entry["mix_error"]；成功则按结果的 map 把 entry / seen / 之前 results
+    里指向被删源文件的 path 改到各自目录的保留文件。
     """
     path = entry.get("path")
     if not path or not entry.get("written"):
@@ -639,22 +691,34 @@ def _auto_mix(entry, seen=None, results=None):
     except Exception as exc:  # noqa: BLE001 - 判重失败不能影响已经完成的下载
         entry["mix_error"] = "%s: %s" % (type(exc).__name__, exc)
         return
-    if res.get("merged"):
-        mix_path = res.get("path")
-        entry["path"] = mix_path
-        entry["mixed"] = True
-        entry["mix_models"] = list(res.get("models") or [])
-        removed = {os.path.abspath(p) for p in (res.get("removed") or [])}
+    merged = bool(res.get("merged"))
+    deduped = res.get("reason") == "deduped"
+    if merged or deduped:
+        mapping = res.get("map") or {}
+        def remap(value):
+            if not value:
+                return None
+            return mapping.get(os.path.abspath(value)) or mapping.get(value)
+        result_path = remap(entry.get("path")) or res.get("path")
+        if result_path:
+            entry["path"] = result_path
+        if merged:
+            entry["mixed"] = True
+            entry["mix_models"] = list(res.get("models") or [])
+        else:
+            entry["deduped"] = True
         if seen:
             for key, value in list(seen.items()):
-                if value and os.path.abspath(value) in removed:
-                    seen[key] = mix_path
+                new_path = remap(value)
+                if new_path:
+                    seen[key] = new_path
         if results:
             for other in results:
-                other_path = other.get("path")
-                if other_path and os.path.abspath(other_path) in removed:
-                    other["path"] = mix_path
-                    other["mixed"] = True
+                new_path = remap(other.get("path"))
+                if new_path:
+                    other["path"] = new_path
+                    if merged:
+                        other["mixed"] = True
     elif not res.get("ok"):
         entry["mix_error"] = res.get("error") or "判重失败"
 
