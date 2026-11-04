@@ -560,17 +560,19 @@ class Expect(object):
             # 按剩余枚数累加；不乘概率 p，也不按牌种数 +1。d>=2 一律 0。
             if d == 1:
                 n_abs = 4 - counts[t] - self.meldc[t]
-                for mode in (TSUMO, RON):
-                    for measure in ("avail", "abs"):
-                        key_tp = ("tp", FURO_ASSUME, "sum", mode, measure)
-                        if any(g[key_tp] > 0 for g in kids):
-                            out[("da", FURO_ASSUME, mode, measure)] += (
-                                al[t] if measure == "avail" else n_abs)
-                for measure in ("avail", "abs"):
-                    key_tp = ("tp", MENZEN_ASSUME, "sum", measure)
+                # 副露 4 键 + 门清 2 键同形：da 键末位是口径，对应 tp 键末位也是口径
+                targets = [
+                    (("da", FURO_ASSUME, mode, measure),
+                     ("tp", FURO_ASSUME, "sum", mode, measure))
+                    for mode in (TSUMO, RON) for measure in ("avail", "abs")
+                ] + [
+                    (("da", MENZEN_ASSUME, measure),
+                     ("tp", MENZEN_ASSUME, "sum", measure))
+                    for measure in ("avail", "abs")
+                ]
+                for key_da, key_tp in targets:
                     if any(g[key_tp] > 0 for g in kids):
-                        out[("da", MENZEN_ASSUME, measure)] += (
-                            al[t] if measure == "avail" else n_abs)
+                        out[key_da] += al[t] if key_da[-1] == "avail" else n_abs
             p = al[t] / float(ul)
             # 打牌层的选择：argmax{p(打完的后继状态 -> 和牌状态) x 和牌打点} = argmax 未归一化的
             # ("sc", ...)（用户 m02389：打牌仍然要考虑达到和牌状态的概率）；同一条分支上的和牌

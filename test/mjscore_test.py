@@ -675,6 +675,20 @@ for _expr in ("3", ">=3", "4", "3-5"):
        "轻量库 面子手向听数 %s 返回空（不做 >=3 -> >=2 映射）" % _expr)
 eq(store.query(std_conn, [{"key": "shanten_mentsu", "expr": "3"}], limit=5)["total"] > 0, True,
    "标准库 面子手向听数=3 有结果（内部值 3 = >=3）")
+# impl-plan 5.3：标准库 `2` 只命中恰好 2（等值匹配，不把 3 也带进来）
+# store.query 缺省第三类 =「出牌」，SQL 对照也必须带 f_meld_wait = 否（否则会把鸣牌响应帧算进来）
+_q_std2 = store.query(std_conn, [{"key": "shanten_mentsu", "expr": "2"}], limit=100000)
+_std2_where = "s_shanten_mentsu = 2 AND f_meld_wait = ?"
+_cnt_std2 = std_conn.execute(
+    "SELECT COUNT(*) c FROM frame WHERE " + _std2_where, [feats.NO]).fetchone()["c"]
+eq(_q_std2["total"], _cnt_std2,
+   "标准库 面子手向听数=2 只命中恰好 2（默认「出牌」%d 行）" % _cnt_std2)
+# store.query 的 RESULT_COLS 不含特征列，用 idx 集合与库内“恰好 2 且出牌”的集合对拍
+_idx_std2 = {r["idx"] for r in _q_std2["rows"]}
+_idx_std2_want = {r["idx"] for r in std_conn.execute(
+    "SELECT idx FROM frame WHERE " + _std2_where, [feats.NO])}
+eq(_idx_std2, _idx_std2_want,
+   "标准库 面子手向听数=2 的结果 idx 集合 == 恰好 2 且出牌的 idx 集合（不含 3）")
 # 扩充：目标库类型优先；显式 light=False 与轻量库冲突时只警告、不改类型
 _res_ext_l = cli.analyze(FILES[:2], db=light_db, tool="python", light=False, extend=True)
 check(any("轻量" in w and "目标库" in w for w in _res_ext_l["warnings"]),
@@ -714,12 +728,81 @@ eq(_r1["db_total"] > _r0["db_total"], True, "扩充后库内行数增加（%d ->
 _eqconn = store.connect(ex_db, create=False)
 eq(len(store.source_ids(_eqconn)), 3, "扩充后 source 表共 3 个牌谱")
 _eqconn.close()
+# 空库扩充也必须读目标库 db_type（用户拍板 A：包括空库，目标库类型权威）
+def _make_empty_db(path, db_type=None):
+    """造一个 schema 12 / app 1.6.0 的空库；db_type=None = 不写 meta.db_type。"""
+    conn = store.open_db(path)
+    store.set_meta(conn, "schema_version", store.SCHEMA_VERSION)
+    store.set_meta(conn, "app_version", store.APP_VERSION)
+    if db_type is not None:
+        store.set_meta(conn, "db_type", db_type)
+    conn.commit()
+    return conn
+
+
+# A1. 空轻量库 + 请求标准 → 仍按轻量执行，meta.db_type 不被覆盖
+empty_light = os.path.join(TMP, "empty_light.sqlite")
+_mk = _make_empty_db(empty_light, "light")
+_mk.close()
+_e1 = cli.analyze(FILES[:1], db=empty_light, tool="python", light=False, extend=True)
+check(any("目标库" in w and "轻量" in w for w in _e1["warnings"]),
+      "空轻量库扩充传入标准模式给 warning：%r" % _e1["warnings"])
+eq((_e1["logs"], len(_e1["skipped"])), (1, 0), "空轻量库扩充照常写入")
+eq(_e1.get("db_type"), "light", "空轻量库扩充：摘要 db_type = 目标库 light")
+_ec = store.connect(empty_light, create=False)
+eq(store.get_db_type(_ec), "light", "空轻量库扩充后 meta.db_type 仍为 light（未被覆盖）")
+eq(_ec.execute("SELECT MAX(s_shanten_mentsu) m FROM frame").fetchone()["m"], 2,
+   "空轻量库扩充：新增记录按 light 计算（向听最大 2）")
+_ec.close()
+
+# A2. 空标准库 + 默认轻量请求 → 仍按标准执行，meta.db_type 不被覆盖
+empty_std = os.path.join(TMP, "empty_std.sqlite")
+_mk = _make_empty_db(empty_std, "standard")
+_mk.close()
+_e2 = cli.analyze(FILES[:1], db=empty_std, tool="python", light=True, extend=True)
+check(any("目标库" in w and "标准" in w for w in _e2["warnings"]),
+      "空标准库扩充传入轻量模式给 warning：%r" % _e2["warnings"])
+eq(_e2.get("db_type"), "standard", "空标准库扩充：摘要 db_type = 目标库 standard")
+_ec = store.connect(empty_std, create=False)
+eq(store.get_db_type(_ec), "standard", "空标准库扩充后 meta.db_type 仍为 standard（未被覆盖）")
+eq(_ec.execute("SELECT MAX(s_shanten_mentsu) m FROM frame").fetchone()["m"], 3,
+   "空标准库扩充：新增记录按 standard 计算（向听最大 3）")
+_ec.close()
+
+# 没有 db_type 记录的空库：get_db_type 容错为 standard（旧库/半成品库）
 empty_db = os.path.join(TMP, "empty.sqlite")
-_e0 = store.open_db(empty_db)
+_e0 = _make_empty_db(empty_db, None)
+eq(store.get_db_type(_e0), "standard", "无 db_type 记录的空库容错为 standard")
 _e0.close()
-_e1 = cli.analyze(FILES[:1], db=empty_db, tool="python", extend=True)
-check(any("还没有任何牌谱记录" in w for w in _e1["warnings"]), "空库扩充给出「按新建处理」警告：%r" % _e1["warnings"])
-eq((_e1["logs"], len(_e1["skipped"])), (1, 0), "空库扩充按新建处理")
+
+# server /api/analyze 的 light 显式布尔解析（第 1 轮 Minor 4）
+eq(server._parse_bool(None), True, "server light：None → 默认 True")
+eq(server._parse_bool(True), True, "server light：bool True 原样")
+eq(server._parse_bool(False), False, "server light：bool False 原样")
+for _s in ("false", "FALSE", "0", "no", "off", " false "):
+    eq(server._parse_bool(_s), False, "server light：字符串 %r → False" % _s)
+for _s in ("true", "1", "yes", "on"):
+    eq(server._parse_bool(_s), True, "server light：字符串 %r → True" % _s)
+eq(server._parse_bool(0), False, "server light：数值 0 → False")
+eq(server._parse_bool("whatever"), True, "server light：其它字符串按 Python 真值 → True")
+_seen_light = {}
+_orig_server_analyze = server.cli.analyze
+
+
+def _fake_server_analyze(*args, **kwargs):
+    _seen_light.update(kwargs)
+    return {"ok": True}
+
+
+server.cli.analyze = _fake_server_analyze
+try:
+    server.api_analyze({"paths": ["dummy"], "light": "false"})
+    eq(_seen_light.get("light"), False, "POST /api/analyze：字符串 \"false\" 传成 light=False")
+    _seen_light.clear()
+    server.api_analyze({"paths": ["dummy"]})
+    eq(_seen_light.get("light"), True, "POST /api/analyze：缺省 light=True")
+finally:
+    server.cli.analyze = _orig_server_analyze
 eq(cli.parse_condition_lines("巡目=3\n供托>=1000\n# 注释\n自家立直状态: 是"),
    [{"key": "junme", "expr": "3"}, {"key": "kyotaku", "expr": ">=1000"},
     {"key": "riichi_self", "expr": "是"}], "条件行解析")

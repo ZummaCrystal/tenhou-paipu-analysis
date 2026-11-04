@@ -33,7 +33,8 @@
     POST /api/query             {db_name, db, conds:[{key,expr}], ai:{mode,picks}, wait, limit, offset} -> 检索
                                  ai = 第零类方案，wait = 第三类「出牌 / 鸣牌响应」（缺省「出牌」，用户 m07289）
                                  响应顶层带 db_type（standard / light，v1.6.0）
-    POST /api/browse            {db_name, db, limit, offset} -> 全部浏览（按特征码顺序；limit<=0 = 全部）
+    POST /api/browse            {db_name, db, limit, offset} -> 全部浏览（按特征码顺序；limit<=0 = 全部；
+                                响应顶层带 db_type）
     POST /api/detail            {db_name, db, idx} -> 单行详情（顶层带 db_type）
     POST /api/round-frames      {db_name, db, log_id, round_index} -> 一局内的打点行
     POST /api/frame-feats       {db_name, db, log_id, round_index, frame_index, seat} -> 单帧 48 个特征值（顶层带 db_type）
@@ -77,6 +78,26 @@ class ApiError(Exception):
     def __init__(self, message, code=400):
         super().__init__(message)
         self.code = code
+
+
+def _parse_bool(value, default=True):
+    """请求体布尔值显式解析（v1.6.0，第 2 轮审核 Minor 4）。
+
+    None → default；bool 原样；字符串识别 false/0/no/off 与 true/1/yes/on；
+    其余值按 Python 真值。避免裸 ``bool("false")`` 把字符串当成 True。
+    """
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        v = value.strip().lower()
+        if v in ("false", "0", "no", "off"):
+            return False
+        if v in ("true", "1", "yes", "on"):
+            return True
+        return bool(value)
+    return bool(value)
 
 
 def _user_path(p):
@@ -257,7 +278,7 @@ def api_analyze(payload):
         raise ApiError("打点工具只能是 auto / node / python")
     res = cli.analyze(files, db=payload.get("db") or None,
                       db_name=payload.get("db_name") or None,
-                      tool=tool, light=bool(payload.get("light", True)),
+                      tool=tool, light=_parse_bool(payload.get("light"), True),
                       extend=bool(payload.get("extend")))
     return res
 

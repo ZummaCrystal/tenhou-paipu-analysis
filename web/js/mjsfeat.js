@@ -80,6 +80,8 @@
 
   /* ---- 第二类特征（第 21 轮，m02959；v1.6.0 第 85 轮新增 6 个直接进张）：值由 Python 端算好后入库，这里只登记定义 ---- */
   var SECOND_FEATURES = [
+    /* 注册表为两种库共用：max:3 是标准库上限；light 实际显示上限 2（2 表示 >=2），
+       由 fmtFeatValue / featHint 按库类型处理，检索仍按内部整数值匹配。 */
     { key: 'shanten_kokushi', name: '国士無双向听数', kind: 'int', min: -1, max: 3 },
     { key: 'shanten_chiitoi', name: '七対子向听数', kind: 'int', min: -1, max: 3 },
     { key: 'shanten_mentsu', name: '面子手向听数', kind: 'int', min: -1, max: 3 },

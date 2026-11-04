@@ -330,7 +330,8 @@ def _analyze(inputs, db=None, db_name=None, tool="auto", light=True, node=None,
 
     extend=True（「扩充现有数据库」）：目标库必须已存在、结构版本与软件版本都匹配；
     库里 source 表已记录过的牌谱（特征码相同）直接跳过，只把新牌谱追加进去。
-    扩充时**强制使用目标库的 db_type**：如果调用方传了与之冲突的类型，只加 warning 并忽略。
+    扩充时**目标库的 db_type 始终权威（包括空库）**：如果调用方传了与之冲突的类型，
+    只加 warning 并忽略；目标库已有 db_type 记录时绝不改写它。
     """
     t0 = time.time()
     db_path = db_path_of(db, db_name)
@@ -346,19 +347,18 @@ def _analyze(inputs, db=None, db_name=None, tool="auto", light=True, node=None,
         conn0 = store.connect(db_path, create=False)      # 同时校验结构版本 / 软件版本
         try:
             existing = store.source_ids(conn0)
-            if existing:
-                target_type = store.get_db_type(conn0)
-                if target_type != db_type:
-                    warnings.append("扩充按目标库类型（%s）执行，忽略本次传入的 %s 模式"
-                                    % ("轻量" if target_type == "light" else "标准",
-                                       "轻量" if db_type == "light" else "标准"))
-                db_type = target_type
+            # 用户拍板 A：只要目标库存在（包括空库），meta.db_type 就是权威。
+            # 目标库没有 db_type 记录时 get_db_type 容错为 standard；新建库不走这里，仍默认轻量。
+            target_type = store.get_db_type(conn0)
+            if target_type != db_type:
+                warnings.append("扩充按目标库类型（%s）执行，忽略本次传入的 %s 模式"
+                                % ("轻量" if target_type == "light" else "标准",
+                                   "轻量" if db_type == "light" else "标准"))
+            db_type = target_type
         finally:
             conn0.close()
-        # 让后续打点 / 补齐第二类特征都按目标库类型执行（空库按新建处理，沿用传入类型）
+        # 后续打点 / 补齐第二类特征都按目标库类型执行
         light = (db_type == "light")
-        if not existing:
-            warnings.append("要扩充的数据库还没有任何牌谱记录，本次按新建处理")
     if fixture:
         files = [os.path.abspath(fixture)]
         records = [dict(r) for r in nodeharness.parse_jsonl(
@@ -454,7 +454,8 @@ def _analyze(inputs, db=None, db_name=None, tool="auto", light=True, node=None,
         store.set_meta(conn, "record_count", total)
         store.set_meta(conn, "source_count", src_count)
         store.set_meta(conn, "round_count", round_count)
-        store.set_meta(conn, "db_type", db_type)
+        if not extend:            # 扩充时目标库的 db_type 已存在（或按容错值执行），绝不改写
+            store.set_meta(conn, "db_type", db_type)
         store.set_meta(conn, "full", "1")
         store.set_meta(conn, "doukou", store.DOUKOU)
         store.set_meta(conn, "full_note", store.FULL_NOTE)

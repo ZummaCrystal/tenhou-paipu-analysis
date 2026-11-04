@@ -1930,8 +1930,9 @@ check(/\.file-info\s*\{[^}]*text-overflow:\s*ellipsis/.test(cssText), '顶栏文
 var fpCss = cssRule(cssText, '.feat-panel');
 check(/min-width:\s*0/.test(fpCss) && /overflow:\s*hidden/.test(fpCss), '特征面板 min-width:0 + overflow:hidden（长特征码不再撑宽面板）');
 var fphCss = cssRule(cssText, '.feat-panel-head');
-check(/flex:\s*0\s+0\s+112px/.test(fphCss) && /flex-wrap:\s*wrap/.test(fphCss)
-  && /align-content:\s*flex-start/.test(fphCss), '特征面板标题行固定 112px（v1.6.0：40 行一屏）');
+check(/flex:\s*0\s+0\s+106px/.test(fphCss) && /flex-wrap:\s*wrap/.test(fphCss)
+  && /align-content:\s*flex-start/.test(fphCss),
+  '特征面板标题行固定 106px（v1.6.0：40 行一屏，比 112px 再留 6px 余量）');
 check(/\.feat-panel-head\s+\.muted\s*\{[^}]*white-space:\s*normal/.test(cssText)
   && /\.feat-panel-head\s+\.muted\s*\{[^}]*word-break:\s*break-all/.test(cssText), '标题行里的特征码完整换行显示（不省略，用户 m01518 ①）');
 var frowCss = cssRule(cssText, '.feat-row');

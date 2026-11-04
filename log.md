@@ -3943,7 +3943,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./build.ps1 -Clean -Skip
 - `mjscore/store.py`：`SCHEMA_VERSION = 12`；新增 `get_db_type(conn)`（缺失按 standard 容错）；`insert_records()` 删除 `full` 参数并始终写 `frame_full`；`FULL_NOTE` / 文档 / 错误提示改为「始终写入原始数据」。
 - `mjscore/cli.py`：`analyze(..., light=True)` / `_analyze(..., light=True)`，删除 `full`；新建默认为轻量，`--standard` 关闭；扩充读取目标库 `db_type` 强制按目标类型执行（冲突只 warning）；写 `meta.db_type` 与 `meta.full="1"`；`list_dbs()` 返回 `db_type`；`feat_value_text(key, value, db_type)`；`run_query()` 响应顶层带 `db_type`；`--features` 48；删除 `--full`，新增 `--standard`。
 - `mjscore/server.py`：`/api/analyze` 接受 `light`（默认 true）、删除 `full`；`/api/dbs` 带 `db_type`；`/api/query` / `/api/detail` / `/api/frame-feats`（以及 `/api/browse`）响应顶层带 `db_type`；`/api/features` 自动 48。
-- 前端：`mjsfeat.js` 手动补 6 条直接进张并更新 48/23 注释；`index.html` 删除 `anFull` / `anFullNote` / `anFullHelp`，新增默认勾选的 `anLight` + 轻量说明；`app.js` 发送 `{paths, db_name, extend, light}`、扩充联动勾选/禁用、DB 下拉显示轻量/标准、`fmtFeatValue(key,v,dbType)`（轻量 2→`>=2`、标准 3→`>=3`）、`featHint` 按库类型、面板从响应顶层取 `db_type`；`style.css` 面板 40 行（13px / 1.1 / 1px，标题 112px，局面 22px，正文 padding 2px）。
+- 前端：`mjsfeat.js` 手动补 6 条直接进张并更新 48/23 注释；`index.html` 删除 `anFull` / `anFullNote` / `anFullHelp`，新增默认勾选的 `anLight` + 轻量说明；`app.js` 发送 `{paths, db_name, extend, light}`、扩充联动勾选/禁用、DB 下拉显示轻量/标准、`fmtFeatValue(key,v,dbType)`（轻量 2→`>=2`、标准 3→`>=3`）、`featHint` 按库类型、面板从响应顶层取 `db_type`；`style.css` 面板 40 行（13px / 1.1 / 1px，标题 112px → 第 2 轮再收至 106px 留余量，局面 22px，正文 padding 2px）。
 - 版本 / 文档：`mjscore/__init__.py` / `package.json` → 1.6.0；`readme.md` / `docs/readme-dev.md` 同步 48 / 23 / 40 / schema 12 / 轻量库 / 删除 `--full`；本文件补充实现与测试记录。
 
 ### 85.7 测试记录
@@ -3964,19 +3964,90 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./build.ps1 -Clean -Skip
 - `test/naga_test.py`：262 OK / 0 FAIL。
 - `test/apptest.js` / `test/selftest.js` / `test/uitest.js`：全部通过。
 - 面板无滚动条实测（headless Chrome，`--allow-file-access-from-files`；probe 在 `temp/v160-dispatch/panel_probe.html`，不入库）：
-  - 1764×959：40 行，行高 16.3px，`featPanelList.scrollHeight=658 == clientHeight=658`，`featPanel.scrollHeight=814 == clientHeight=814`，无滚动条。
-  - 1920×1080：40 行，`scrollHeight=779 == clientHeight=779`，`featPanel 935 == 935`，无滚动条。
+  - 第 2 轮（标题 112px → 106px）1764×959：40 行，行高 16.3px，正文内容高 655.88px、`featPanelList.clientHeight=664`，**底部余量 8.13px**；`featPanel.scrollHeight=814 == clientHeight=814`，无滚动条（`noBodyScrollbar=true` / `noPanelScrollbar=true`）。
+  - 第 2 轮 1920×1080：40 行，正文内容高 655.88px、`clientHeight=785`，底部余量 129.13px；`featPanel 935 == 935`，无滚动条。
+  - 说明：`scrollHeight` 不会小于 `clientHeight`，第 1 轮记录的 `658 == 658` 实际余量约 2.1px；本轮改成按行矩形实测内容高度，1764×959 余量 8.13px（≥ 6px 目标）。
 - 性能（本机开发环境；Python 打点）：
   - 整库分析（单文件 2026082919 共 660 帧）：新建轻量库（cap=2）99.1 s；新建标准库（cap=3）101.6 s；轻量不慢于标准（差异在噪声内）。
   - `shanten_at` 2000 个摸牌帧（预热后交替复测）：cap=2 ≈ 1.92 ms/帧、cap=3 ≈ 1.95 ms/帧（差 <2%，无额外枚举）。
   - `Expect.values` 200 个 d0/d1 帧：cap=2 62.0 ms/帧、cap=3 64.2 ms/帧（轻量略快，无新开枚举）。
   - 轻量 / 标准逐帧对比 660 行 × 23 个第二类特征：除 3 个向听列（轻量 = min(标准, 2)）外 0 差异；6 个直接进张 + 12 个期望特征 + 2 个危险特征完全相同。
   - 直接进张没有新开向听枚举：d=1 只读现有 `kids` 的 `tp`，d=0 只读现有 `tp`，14 张只读现有 `keep`；`shanten_of` 调用次数不因 6 个直接进张增加（代码路径上没有新增调用）。
-- `test/mjscore_test.py` 全量：**308 OK / 0 FAIL**，exit=0，wall 约 72.8 分钟（覆盖 schema 12 / db_type / 轻量检索 / 扩充类型 / 旧库拒绝 / 双工具 73 列交叉校验 / 服务端顶层 db_type / frame_full 始终写入）。
+- **第 1 轮** `test/mjscore_test.py` 全量：**308 OK / 0 FAIL**，exit=0，wall 约 72.8 分钟（覆盖 schema 12 / db_type / 轻量检索 / 扩充类型 / 旧库拒绝 / 双工具 73 列交叉校验 / 服务端顶层 db_type / frame_full 始终写入）。第 2/3 轮按用户要求改为 10% 抽样，未重跑全量，见 85.9。
 
 ### 85.8 提交与留意
 
 - 分支 `feat/v1.6.0-advance-features`，不 push、不 tag、不打包发布。
 - 既有语料基线失败（非本轮回归）：`agari_test.py` 186 OK / 3 FAIL（本地 69 个 `.tenhou` vs 测试写死的 71 个，和牌 618 vs 640、立直 530 vs 545）；`shanten_test.py` / `expect_test.py` 的 `.xml` 语料计数为 0（同样为语料目录漂移；这两项在基线就失败）；`shanten_test.py` 第 4 节随后因 `n_frame=0` 除零。新增的 cap / 直接进张断言均通过。
-- `mjscore_test.py` 全量 308 OK / 0 FAIL（wall 约 72.8 分钟，exit=0），见 85.7。
+- **第 1 轮** `mjscore_test.py` 全量 308 OK / 0 FAIL（wall 约 72.8 分钟，exit=0），见 85.7；第 2/3 轮按用户要求改为 10% 抽样，未重跑全量，见 85.9。
 
+### 85.9 第 2 轮审核修复（用户拍板 A）与第 3 轮 10% 抽样收尾
+
+第 1 轮独立审核 `temp/v160-dispatch/review-1.md`：GATE PASS，0 Critical / 0 Important / 10 Minor + 1 NEEDS_DECISION。用户对 NEEDS_DECISION 拍板：**采用 A —— 扩充已有数据库时，目标库 `meta.db_type` 始终权威（包括空库）**。
+
+#### A. 扩充空库的类型口径（用户拍板 A）
+
+- 旧逻辑：只有目标库 `source` 表非空时才读 `store.get_db_type(conn0)`；空库沿用调用方传入的 `light`，并在写库末尾用 `set_meta` 覆盖原库 `meta.db_type`。
+- 新逻辑（`mjscore/cli.py` 的 `_analyze(..., extend=True)`）：
+  - 只要目标库存在（**包括空库**），就读取 `store.get_db_type(conn0)`，冲突时加 warning 后按目标库类型执行；
+  - 扩充路径不再调用 `store.set_meta(conn, "db_type", ...)`，目标库原有 `db_type` 绝不被改写；
+  - 目标库没有 `db_type` 记录时，`get_db_type` 的容错值 `standard` 即执行口径；新建库（`extend=False`）仍默认轻量；
+  - 删除「空库按新建处理、沿用传入类型」的旧分支与 warning/注释。
+- 回归测试（`test/mjscore_test.py` 2e）：
+  - 空轻量库 + 以 `light=False` 扩充 → 摘要 `db_type=light`、`meta.db_type` 仍为 `light`、新增记录向听最大值 2（按 light 计算）、有冲突 warning；
+  - 空标准库 + 以默认 `light=True` 扩充 → 摘要 `db_type=standard`、`meta.db_type` 仍为 `standard`、新增记录向听最大值 3（按 standard 计算）、有冲突 warning；
+  - 无 `db_type` 记录的空库 → `get_db_type` 容错为 `standard`。
+
+#### Minor 逐项处理
+
+1. `log.md` 文件尾多余 EOF 空行：删除，并统一为单个 CRLF 结尾（本文件）。
+2. `web/style.css` 面板零余量：`.feat-panel-head` 112px → **106px**，给正文 40 行留 6px；`test/apptest.js` 的字面断言同步改为 106px。第 2 轮 headless Chrome 实测见 85.7（1764×959 底部余量 **8.13px**，1920×1080 余量 129.13px，均无滚动条）。
+3. `test/mjscore_test.py` 2e：新增「标准库 `面子手向听数=2` 只命中恰好 2」断言（`total` 等于库内 `s_shanten_mentsu=2 AND f_meld_wait=否` 的行数，即与 `store.query` 缺省「出牌」筛选同口径；结果 idx 集合与 SQL 集合一致）。第 3 轮抽样探针发现初版对照漏了默认「出牌」筛选（79 vs 110），已在本轮修正为同一筛选口径。
+4. `mjscore/server.py`：新增 `_parse_bool(value, default=True)` 显式解析 `/api/analyze` 的 `light`（None → 默认 True；bool 原样；字符串识别 false/0/no/off 与 true/1/yes/on；其余按 Python 真值），不再使用裸 `bool(...)`；2e 直接断言解析表，并 monkeypatch `cli.analyze` 验证字符串 `"false"` 确实传成 `light=False`。
+5. `mjscore/feats.py`：`2 if light else 3` 提取为局部变量 `shanten_cap`，`shanten_at` / `expect.values` 共用，行为不变。
+6. `mjscore/expect.py`：d=1 的副露 4 键 + 门清 2 键合并为一个 `targets` 列表 + 单层循环，按 `key_da[-1]` 选 `al[t]` / 绝对枚数，行为不变（既有 expect 对拍全过）。
+7. 文档微漂移：`mjscore/server.py` 模块 docstring 补 `/api/browse` 顶层 `db_type`；`web/js/mjsfeat.js` 的向听 `max:3` 处补注「注册表为两种库共用，light 实际显示上限 2（2=≥2），由 `fmtFeatValue` / `featHint` 处理」。
+8. 本补记：A 口径 + 第 2 轮修复 + 测试/面板实测记录。
+
+#### 保留项（本轮不改，非阻塞）
+
+- `mjscore/shanten.py` 的 `cap()` 仍是一行转发（Middle Man），但 `test/shanten_test.py` 仍直接使用，保留。
+- 面板布局探针仍未入库（`temp/v160-dispatch/panel_probe.html`），CI 无法复现布局验收；本轮已记录 headless Chrome 实测数字。
+- `light` 布尔贯穿 10+ 签名的 Data Clumps / 中文映射三份，按用户要求不做 DbType/配置对象大重构。
+- `server.py` 的 `extend` 仍用 `bool(...)`（本次只按任务修 `light`）。
+
+#### 第 2 轮测试记录
+
+- 聚焦探针（RED → GREEN，`temp/v160-dispatch/probe_b_round2.py`，不入库）：
+  - RED：空轻量库扩充得到 `db_type=standard`、`meta.db_type` 被覆盖、向听最大 3、无冲突 warning；空标准库反向得到 light；`server._parse_bool` 尚不存在（AttributeError）。
+  - GREEN：A1/A2 空库类型、新增记录计算口径、meta 不被覆盖、冲突 warning，以及 server 布尔解析 27 项全部通过。
+- `test/expect_test.py`：150 OK / 1 FAIL（既有 `.xml` 语料 0 样本，与基线同构；新增直接进张 section 全过），exit=1。
+- `test/shanten_test.py`：1c cap 断言全过；整体因既有 `.xml` 语料 0 在第 4 节计数失败并除零（与基线同构），exit=1。
+- `node test/apptest.js` / `node test/selftest.js` / `node test/uitest.js`：全部通过，exit=0。
+- 面板 headless Chrome 实测（第 2 轮，标题 106px；真实 `web/index.html` iframe、40 行）：
+  - 1764×959：`featPanelList.clientHeight=664`，40 行内容高 655.88px，底部余量 8.13px；`featPanel.scrollHeight=814 == clientHeight=814`；`noBodyScrollbar=true` / `noPanelScrollbar=true`。
+  - 1920×1080：`clientHeight=785`，内容高 655.88px，余量 129.13px；`featPanel 935 == 935`；无滚动条。
+- `test/mjscore_test.py` 全量：**按用户最新要求未重跑**（上一轮全量在运行中被用户终止；本轮不把第 1 轮 308/0 当作本轮证据），改为下列 10% 抽样聚焦测试。
+
+#### 第 3 轮收尾：按用户要求改为 10% 抽样（未跑全量）
+
+- 抽样规则（确定性，脚本 `temp/v160-dispatch/probe_round3_sample10.py`，不入库）：
+  - 语料池 = `data/**/*.tenhou` 按路径排序，共 **69** 个；取 **7** 个（7/69 = **10.1%**），下标 `round(i*(N-1)/6)`，`i=0..6` ⇒ `[0, 11, 23, 34, 45, 57, 68]`。
+  - 每份牌谱取约 10% 的局：`desired = max(1, round(n_rounds*0.1))`；本抽样每份 8–13 局 ⇒ 各取 **1** 局，局下标 `[5] / [4] / [5] / [5] / [5] / [5] / [6]`；所选局内全部打点帧参与，共 **368 帧**（单文件分别为 85 / 50 / 68 / 45 / 55 / 30 / 35）。
+  - 样本文件：`2026082919gm-00a9-0000-4e40cd3e` / `2026090123gm-00a9-0000-aa2f1583` / `2026090620gm-00a9-0000-4af8b10b` / `2026090920gm-00a9-0000-961c1cdd` / `2026091420gm-00a9-0000-a8203cc1` / `2026091919gm-00a9-0000-2bb0d132` / `2026092221gm-00a9-0000-df47ac5a`（均为 `.tenhou`）。
+  - 命令：`python temp/v160-dispatch/probe_round3_sample10.py`；结果 **40 OK / 0 FAIL，exit=0，耗时 236.1 s**（约 4 分钟，< 10 分钟额度）。
+- 特征对比（368 帧 × 23 项）：
+  - 3 个向听列全部 `light == min(standard, 2)`；其余 20 项（6 直接进张 + 12 期望 + 2 危险）**完全一致**，0 差异。
+  - 第二类注册表 **23 项** = 3 向听 + 6 直接进张 + 12 期望 + 2 危险；类型 **11 int + 12 float**；全部帧 23 项齐全，**6 个直接进张均为 int 0..136**，3 个向听均为 int 且不超库类型上限。
+- 空库扩充 A（各用 1 个抽样牌谱 `2026082919`；完整 `cli.analyze`，本段约 87 s）：
+  - 空 **light** 库 + `light=False, extend=True`：摘要 `db_type=light`、`meta.db_type` 仍 **light**、新增记录 `MAX(s_shanten_mentsu)=2`、有冲突 warning；未按标准计算，meta 未被覆盖。
+  - 空 **standard** 库 + `light=True, extend=True`：摘要 `db_type=standard`、`meta.db_type` 仍 **standard**、`MAX(s_shanten_mentsu)=3`、有冲突 warning；meta 未被覆盖。
+- server：`_parse_bool` 的 None / bool / `false,0,no,off` / `true,1,yes,on` / 其它值全部断言通过；monkeypatch `cli.analyze` 后 `POST /api/analyze {"light":"false"}` 确实传成 `light=False`，缺省为 True。
+- 标准库向听 `=2` 等值检索（抽样标准记录 368 行，其中 `s_shanten_mentsu=2` 共 110 行；默认「出牌」筛选下查询命中 **79** 行）：
+  - `total` 与 SQL `COUNT(s_shanten_mentsu=2 AND f_meld_wait=0)` 一致，结果 `idx` 集合完全一致；
+  - 79 行逐行 `query_detail` 的内部值都**恰好为 2**；与 `=3` 的结果集合**交集为 0**（等值不是 >=2）。
+  - 说明：首次探针把默认「出牌」筛选误当成全帧比较，出现 79 vs 110 的探针期望错误；改为同一第三类筛选口径后通过，产品代码未改。
+- 面板 40 行 headless Chrome 实测（标题 106px；真实 `web/index.html` iframe）：
+  - 1764×959：40 行，行高 16.3px，正文内容高 655.88px、`featPanelList.clientHeight=664`，**底部余量 8.13px**；`featPanel.scrollHeight=814 == clientHeight=814`，`noBodyScrollbar=true` / `noPanelScrollbar=true`。
+  - 1920×1080：正文内容高 655.88px、`clientHeight=785`，余量 129.13px；`featPanel 935 == 935`，无滚动条。
+- 快速套件：`test/expect_test.py` **150 OK / 1 FAIL**（既有 `.xml` 语料 0 样本）；`test/shanten_test.py` **1c cap 全过**，整体因既有 `.xml` 语料 0 计数失败 + 第 4 节除零（与基线同构）；`test/apptest.js` / `test/selftest.js` / `test/uitest.js` **全部通过，exit=0**。

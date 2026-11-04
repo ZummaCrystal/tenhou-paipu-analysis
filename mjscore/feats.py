@@ -365,13 +365,14 @@ def second_class(st, seat, log=None, light=False):
     否则 danger.values 会抛 ValueError。期望特征用 expect 的默认上限（向听 1）。
     light=True = 轻量库：只把三种向听数的内部上限从 3 改成 2（Expect.max_shanten 仍为 1）。
     """
-    sh = shanten.shanten_at(st, seat, cap=2 if light else 3)   # {'kokushi':…, 'chiitoi':…, 'mentsu':…}
+    shanten_cap = 2 if light else 3
+    sh = shanten.shanten_at(st, seat, cap=shanten_cap)   # {'kokushi':…, 'chiitoi':…, 'mentsu':…}
     out = {
         "shanten_kokushi": sh[shanten.KOKUSHI],
         "shanten_chiitoi": sh[shanten.CHIITOI],
         "shanten_mentsu": sh[shanten.MENSU],
     }
-    out.update(expect.values(st, seat, shanten_cap=2 if light else 3))
+    out.update(expect.values(st, seat, shanten_cap=shanten_cap))
     out.update(danger.values(st, seat, log))
     return out
 
