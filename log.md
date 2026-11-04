@@ -3852,3 +3852,77 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./build.ps1 -Clean -Skip
 2. 历史 Mortal 报告 URL 已过期，无法补下；站点若更换端点再更新下载层。
 3. `agari_test.py` 的语料总数 / 事件数写死值可考虑改成随语料动态计算，避免数据目录变化后误报。
 4. 完整 `mjscore_test.py` 建议在无工具时限的普通终端补跑一次。
+
+## 85. 第 85 轮：v1.6.0 直接进张 6 项 + 轻量库方案共识（尚未实现）
+
+### 85.1 本轮状态
+
+- 本轮只达成方案共识，**未改功能代码、未改数据库结构、未升版本**；仅在 `mjscore/expect.py` 的 `DEFAULT_MAX_SHANTEN` 下方加入「轻量/标准都保持 1」的共识注释。
+- 实施方案：`docs/impl-plan-v1.6.0-advance-features.md`。
+- 交接文档：`docs/handover-v1.6.0-advance-features.md`。
+
+### 85.2 已确认的特征口径
+
+- 第二类新增 6 条（不是 12 条）：
+  - `furo_tsumo_advance_avail` / `furo_tsumo_advance_abs`
+  - `furo_ron_advance_avail` / `furo_ron_advance_abs`
+  - `menzen_advance_avail` / `menzen_advance_abs`
+  - 中文名：副露自摸 / 副露荣和 / 立直·默听 × 直接进张枚数 / 直接进张绝对枚数。
+  - 顺序：3 个向听 → 6 个直接进张 → 6 个期望听牌 → 6 个期望打点 → 2 个危险。
+  - 类型 int，0..136。
+- 不按国士無双 / 七対子 / 面子手拆分；沿用 `min_shanten()` 三牌型取最小。
+- 直接进张 = 逐牌种摸入后，存在一张可打的牌使内部向听数 == 当前 - 1；按剩余张数计，不按牌种数 +1。
+- `advance_avail` 用 `avail[t]`；`advance_abs` 用 `4 - 自己手牌 - 自己副露`。
+- 覆盖范围方案 A：`d ∈ {-1,0,1}` 有值，`d >= 2` 一律 0。
+- d=0 时直接进张等于现有 `tp`；d=1 时在现有 `node()` 的 `kids` 里读 `tp > 0`；14 张帧在 `keep` 节点中取 max。
+- 副露是假设：门清帧也按 `state=FURO, menzen=False` 判役；立直/默听仅当前门清帧，`state=RIICHI, menzen=True`。
+- **不需要 `force_open` 向听模式**：d=0 子节点的 `_eval` 已经用正确的假设判役；d=1 读 `tp` 即可。
+- 轻量库：`db_type = "standard" | "light"`；轻量只把 `shanten.CAP` 从 3 改成 2（`2` 表示 `>=2`）。
+- **`Expect.max_shanten` 在轻量和标准中都保持 1**；轻量只改 `shanten.CAP`，不改期望特征枚举深度。
+  - 原因：改成 0 会让 d=1 的 `node()` 不再展开，直接进张无法复用 d=0 子节点，只能另开一层枚举，违反「直接进张嵌入现有枚举」的设计。
+  - 已在 `expect.py` 的 `DEFAULT_MAX_SHANTEN` 下方加注释；实现时保留，不要删除。
+- 轻量/标准库的 6 个直接进张 + 12 个期望特征完全相同；唯一差异是 3 个向听列。
+- 检索按内部整数值匹配：轻量库 `2` 命中 `>=2`，`3` / `>=3` / `4` 返回空；不做特殊映射。
+- 只展示当前选中的数据库，不做跨库优先。
+- v1.6.0 / schema 12 / 拒绝 v1.5.x 与 schema 11 旧库。
+- 删除 `--full`；数据库始终写 `frame_full`。
+- 新建库默认轻量；扩充时按目标库类型自动勾选/禁用。
+- 当前帧特征面板 40 行，一屏显示完，无滚动条。
+
+### 85.3 两个追踪局面（用于钉死代码结构）
+
+#### 图1：2 向听来自 shanten 枚举，不是 Expect 树
+
+- 局面：東1局 0本場 4巡目 東家，`round_index=0, ev_index=24, seat=0`。
+- 手牌 `3388m 3346p 233467s`。
+- `shanten_at` = 国士 3 / 七対 2 / 面子 2。
+- `mentsu_need` 最优拆解 `333m 888m 456p 33p 234s`，缺 3m / 8m / 5p，弃 3s / 6s / 7s；`need=3` → 2 向听。
+- 同一帧 `Expect` 的 `dist=2`，但 `d > max_shanten(1)`，`node()` 直接返回 0，所以 12 个期望特征全 0。
+- 结论：标准库能识别 2 向听数值，但默认不为 2 向听帧计算期望特征；轻量库不需要额外处理 2 向听。
+
+#### 图2：六项期望特征如何使用判别器
+
+- 局面：東3局 0本場 9巡目 北家，`round_index=2, ev_index=76, seat=1`。
+- 摸牌后 `55789m 34556p 444s 北`；`d0=0`，`keep` 只有打北；打后 `55789m 34556p 444s`，听 4p/7p。
+- 可见张数：4p 自己 1 张（avail 3 / 绝对 3）；7p 牌河 1 张（avail 3 / 绝对 4）→ 6 / 7。
+- 判别器：
+  - 副露自摸/荣和：`state=FURO, menzen=False` → 4p/7p 都无役 → 0。
+  - 立直荣和：`state=RIICHI, menzen=True, riichi=1` → 5200。
+  - 立直自摸：7900。
+  - 默听荣和：0（只有宝牌/赤宝牌，无役）。
+  - 默听自摸：4000。
+- 结论：副露 4 项为 0 是因为副露假设下无役，不是「门清所以不算副露」；同一个判别器只换 `state/menzen/riichi` 入参。
+
+### 85.4 直接进张嵌入现有枚举的实现要点
+
+- d=1：现有 `node()` 的进张循环已经算出 `kids`（d=0 子节点）；对每个合格 `t`，若 `any(g[("tp", 假设, "sum", 模式, 口径)] > 0 for g in kids)`，则累加 `al[t]` 或 `4 - counts[t] - self.meldc[t]`。
+- d=0：直接进张 = 现有 `tp`。
+- d=-1 / d>=2：0。
+- 14 张：现有 `compute()` 的 `keep` 节点取 max。
+- 不需要新开枚举、不需要额外 `shanten_of`、不需要 `force_open`。
+
+### 85.5 下一步
+
+- 按 `docs/impl-plan-v1.6.0-advance-features.md` 第 6 节顺序实现。
+- 先做 `shanten` cap 参数和 `expect` 直接进张的单元测试，再接 DB/UI。
+- 实现时先跑基线测试并记录既有失败（尤其 `agari_test.py` 的语料计数漂移）。

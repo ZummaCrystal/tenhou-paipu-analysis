@@ -60,6 +60,9 @@ from .shanten import GROUPS
 MAX_SHANTEN = 2
 # 默认上限。向听数 2 的帧要枚举两层（单帧约 10 s，见第 19 轮报告），默认只算到 1。
 DEFAULT_MAX_SHANTEN = 1
+# v1.6.0 第 85 轮共识：轻量分析（light）也不改这个值——无论 standard / light，
+# max_shanten 始终为 1。改成 0 会让 d=1 的 node 不再展开，直接进张无法复用
+# d=0 子节点的 tp，必须另开一层进张枚举，违反「直接进张嵌入现有枚举」的设计。
 
 # 「假想状态」：副露手（门清役不存在）/ 门清 + 立直 / 门清 + 默听（用户 m02512）
 FURO_ASSUME = "furo"
