@@ -1025,9 +1025,9 @@ legend { color: var(--fg-dim); padding: 0 8px; }
   flex-wrap: wrap;
   gap: 2px 8px;
   align-content: flex-start;
-  /* 固定高度 = 标题行 + 预留 5 行特征码：特征码完整换行显示，帧与帧之间不跳（用户 m01518 ①） */
-  flex: 0 0 133px;
-  height: 133px;
+  /* v1.6.0：40 行一屏显示（1764x959 / 1920x1080 无滚动条）。标题区固定 112px，特征码最多 4 行 */
+  flex: 0 0 112px;
+  height: 112px;
   overflow: hidden;
 }
 .feat-panel-head .fp-title { flex: 0 0 auto; }
@@ -1036,20 +1036,20 @@ legend { color: var(--fg-dim); padding: 0 8px; }
   /* 特征码另起一行、占满面板宽度，完整显示（自动换行、不省略）（用户 m01518 ①） */
   flex: 1 1 100%; min-width: 0;
   font-family: Consolas, "Courier New", monospace;
-  font-size: 14px; line-height: 19px;
+  font-size: 12px; line-height: 16px;
   white-space: normal; word-break: break-all;
-  max-height: 94px; overflow: hidden;
+  max-height: 64px; overflow: hidden;
   -webkit-user-select: text; user-select: text;
 }
-.feat-panel-body { overflow: auto; flex: 1 1 auto; padding: 5px 0; }
+.feat-panel-body { overflow: auto; flex: 1 1 auto; padding: 2px 0; }
 /* 局面（第三类特征「等待鸣牌」的展示，用户 m07289）：大号、醒目的居中文字，固定在面板底部
    （flex: 0 0 auto ⇒ 不参与滚动、不顶出滚动条，正文区自己收缩） */
 .feat-panel-mode {
   flex: 0 0 auto;
-  padding: 9px 5px;
+  padding: 5px;
   border-top: 1px solid var(--line);
   text-align: center;
-  font-size: 26px; font-weight: 700; letter-spacing: 3px;
+  font-size: 22px; font-weight: 700; letter-spacing: 3px;
   color: var(--accent);
   -webkit-user-select: text; user-select: text;
 }
@@ -1058,8 +1058,9 @@ legend { color: var(--fg-dim); padding: 0 8px; }
   display: flex;
   align-items: baseline;
   gap: 10px;
-  padding: 2px 11px 2px 8px;
-  font-size: 15px;
+  padding: 1px 11px 1px 8px;
+  font-size: 13px;
+  line-height: 1.1;
   border-left: 3px solid transparent;
   overflow: hidden;
 }

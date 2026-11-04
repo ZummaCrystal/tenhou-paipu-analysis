@@ -5,8 +5,8 @@
 都经由这个本地服务完成：
 
     GET  /                       302 跳转到 /web/index.html（页面在 web/，素材在 media/）
-    GET  /api/health             {ok:true, name, version, author, author_email}（软件名 / 版本号 v1.3.1 / 作者）
-    GET  /api/features           42 个特征定义（7 个第零类 + 17 个第一类 + 17 个第二类 + 1 个第三类，
+    GET  /api/health             {ok:true, name, version, author, author_email}（软件名 / 版本号 v1.6.0 / 作者）
+    GET  /api/features           48 个特征定义（7 个第零类 + 17 个第一类 + 23 个第二类 + 1 个第三类，
                                  第 52 / 59 / 60 轮；第零类自第 60 轮起**按帧判定**；
                                  第 63 轮 / 用户 m07289：「等待鸣牌」改列第三类，检索改用「出牌 / 鸣牌响应」单选）
                                  + 第零类检索方案（ai_modes）+ 第三类局面选项（wait_modes）+ 打点口径
@@ -24,17 +24,19 @@
                                  -> {path, naga:true, kind, text}（浏览器手选 / 拖放文件时没有磁盘路径，
                                  只能把字节发过来让服务端转换；用户 m01171 第 1 条 / m05937 ③；
                                  Mortal 报告也走这个接口，服务端按 ?name= 的后缀分派）
-    POST /api/analyze            {paths:[], db_name, db, tool, full, extend}  -> 打点入库（同步阻塞）
+    POST /api/analyze            {paths:[], db_name, db, tool, light, extend}  -> 打点入库（同步阻塞）
                                  paths 支持天凤 .tenhou/.xml、NAGA 报告 .naga/.json.gz/.json 与
                                  Mortal 报告 .mortal-a/-b/-c（用户 m00080 目标 3 / m05545 ② / m05937 ③）
-                                 extend=true = 扩充已有数据库（库里已有的牌谱自动跳过）
+                                 light 默认 true = 轻量库（三种向听数上限 2）；false = 标准库
+                                 extend=true = 扩充已有数据库（库里已有的牌谱自动跳过；按目标库 db_type 执行）
     GET  /api/analyze-progress   分析进度（前端轮询；{progress:{...}}）
     POST /api/query             {db_name, db, conds:[{key,expr}], ai:{mode,picks}, wait, limit, offset} -> 检索
                                  ai = 第零类方案，wait = 第三类「出牌 / 鸣牌响应」（缺省「出牌」，用户 m07289）
+                                 响应顶层带 db_type（standard / light，v1.6.0）
     POST /api/browse            {db_name, db, limit, offset} -> 全部浏览（按特征码顺序；limit<=0 = 全部）
-    POST /api/detail            {db_name, db, idx} -> 单行详情
+    POST /api/detail            {db_name, db, idx} -> 单行详情（顶层带 db_type）
     POST /api/round-frames      {db_name, db, log_id, round_index} -> 一局内的打点行
-    POST /api/frame-feats       {db_name, db, log_id, round_index, frame_index, seat} -> 单帧 42 个特征值
+    POST /api/frame-feats       {db_name, db, log_id, round_index, frame_index, seat} -> 单帧 48 个特征值（顶层带 db_type）
     POST /api/download          {url | text | url_file, subdir} -> 下载牌谱到 data/paipu/<子目录>（后台线程）
     GET  /api/download-progress 牌谱下载进度（前端轮询；{progress:{...}}）
     POST /api/delete-db         {name, db_name} -> 删除数据库
@@ -255,7 +257,7 @@ def api_analyze(payload):
         raise ApiError("打点工具只能是 auto / node / python")
     res = cli.analyze(files, db=payload.get("db") or None,
                       db_name=payload.get("db_name") or None,
-                      tool=tool, full=bool(payload.get("full")),
+                      tool=tool, light=bool(payload.get("light", True)),
                       extend=bool(payload.get("extend")))
     return res
 
@@ -281,7 +283,9 @@ def api_browse(payload):
     limit = 200 if limit is None else int(limit)
     conn = store.connect(_db_of(payload), create=False)
     try:
-        return _browse(conn, limit, int(payload.get("offset") or 0))
+        res = _browse(conn, limit, int(payload.get("offset") or 0))
+        res["db_type"] = store.get_db_type(conn)
+        return res
     finally:
         conn.close()
 
@@ -289,7 +293,8 @@ def api_browse(payload):
 def api_detail(payload):
     conn = store.connect(_db_of(payload), create=False)
     try:
-        return {"row": store.query_detail(conn, int(payload.get("idx")))}
+        return {"row": store.query_detail(conn, int(payload.get("idx"))),
+                "db_type": store.get_db_type(conn)}
     finally:
         conn.close()
 
@@ -320,9 +325,9 @@ def api_frame_feats(payload):
                                payload.get("round_index"),
                                payload.get("frame_index"),
                                payload.get("seat"))
+        return {"row": row, "db_type": store.get_db_type(conn)}
     finally:
         conn.close()
-    return {"row": row}
 
 
 def api_download(payload):

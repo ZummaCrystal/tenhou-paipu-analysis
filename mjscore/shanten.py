@@ -3,7 +3,8 @@
 三种牌型各算一个向听数，取值 {-1, 0, 1, 2, 3}：
   -1 = 已经和牌；0 = 听牌；n = 还差 n 次「打一张 + 摸一张」才能听牌；>= 3 一律记 3
   （内部值 3 = >=3；对外显示/导出时一律写成 >=3，见 cli.feat_value_text() 与
-  web/js/app.js fmtFeatValue()，用户 m04115②）。
+  web/js/app.js fmtFeatValue()，用户 m04115②）。v1.6.0 轻量库把上限从 3 改成 2
+  （内部值 2 = >=2），标准库仍为 3；其余口径不变。
 
 口径（m01278）：向听数 = 把当前手牌变成某个和牌形最少还要摸进几张牌（记 need，
 向听数 = need - 1，need >= 4 一律记 3）。等价说法：往手里补 d 张牌后，手上存在一个
@@ -60,9 +61,17 @@ def rank_of(kind):
     return kind % 9
 
 
-def cap(need):
-    """「还差几张」→ 向听数（-1..3）：need 张牌才能凑成和牌形 ⇒ 向听数 need - 1。"""
-    return CAP if need > CAP else need - 1
+def _cap_value(need, limit):
+    """「还差几张」→ 向听数，上限为 limit（need 超过 limit 一律记 limit）。"""
+    return limit if need > limit else need - 1
+
+
+def cap(need, cap=CAP):
+    """「还差几张」→ 向听数（-1..cap）：need 张牌才能凑成和牌形 ⇒ 向听数 need - 1。
+
+    v1.6.0 轻量库传 ``cap=2``：内部值 2 表示 >=2（标准库 cap=3，3 表示 >=3）。
+    """
+    return _cap_value(need, cap)
 
 
 def _capacity(counts, avail):
@@ -216,11 +225,12 @@ def mentsu_need(counts, n_melds=0, avail=None, melds=(), seat_wind=27, round_win
     return best[0]
 
 
-def shanten_of(counts, n_melds=0, avail=None, melds=(), seat_wind=27, round_wind=27):
-    """三种牌型各算一次 → {'kokushi': …，'chiitoi': …，'mentsu': …}（-1..3）。
+def shanten_of(counts, n_melds=0, avail=None, melds=(), seat_wind=27, round_wind=27, cap=CAP):
+    """三种牌型各算一次 → {'kokushi': …，'chiitoi': …，'mentsu': …}（-1..cap）。
 
     有副露时必须把副露牌传进 `melds`（起和役交给和牌判别器判，m01436/m01701）；只给 `n_melds` 会报错。
     国士無双 / 七対子本身要求门清（有副露直接无解），所以起和役只影响面子手。
+    ``cap`` = 内部上限：标准 3、轻量 2（v1.6.0；2 表示 >=2）。
     """
     melds = tuple(melds or ())
     if melds:
@@ -228,9 +238,9 @@ def shanten_of(counts, n_melds=0, avail=None, melds=(), seat_wind=27, round_wind
     elif n_melds:
         raise ValueError("有副露时必须传 melds（起和役要按副露牌判，m01436）")
     return {
-        KOKUSHI: cap(kokushi_need(counts, n_melds, avail)),
-        CHIITOI: cap(chiitoi_need(counts, n_melds, avail)),
-        MENSU: cap(mentsu_need(counts, n_melds, avail, melds, seat_wind, round_wind)),
+        KOKUSHI: _cap_value(kokushi_need(counts, n_melds, avail), cap),
+        CHIITOI: _cap_value(chiitoi_need(counts, n_melds, avail), cap),
+        MENSU: _cap_value(mentsu_need(counts, n_melds, avail, melds, seat_wind, round_wind), cap),
     }
 
 
@@ -261,10 +271,11 @@ def avail_counts(state, seat):
     return [4 - v for v in visible_counts(state, seat)]
 
 
-def shanten_at(state, seat):
+def shanten_at(state, seat, cap=CAP):
     """截面上某个座位的三种向听数（手牌、副露牌、场上可见牌、自风/场风）。
 
     自风 = 27 + (seat - oya) % 4（东 27/南 28/西 29/北 30），场风 = 27 + 局数 // 4。
+    ``cap`` = 内部上限：标准 3、轻量 2（v1.6.0）。
     """
     pl = state["players"][seat]
     return shanten_of(
@@ -273,4 +284,5 @@ def shanten_at(state, seat):
         melds=pl["melds"],
         seat_wind=27 + (seat - state["oya"]) % 4,
         round_wind=27 + state["round"] // 4,
+        cap=cap,
     )

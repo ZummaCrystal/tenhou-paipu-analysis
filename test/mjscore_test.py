@@ -3,11 +3,11 @@ r"""mjscore 正式测试。
 
 覆盖：
   1. 解析口径（牌谱数 / 局数 / 帧数 / 逐帧牌张不变量）
-  2. 打点口径（非自摸摸牌帧 + 吃/碰副露帧 + 鸣牌响应帧、巡目按出牌计、42 个特征 = 7 第零类 + 17 第一类 + 17 第二类 + 1 第三类、条目名格式）
+  2. 打点口径（非自摸摸牌帧 + 吃/碰副露帧 + 鸣牌响应帧、巡目按出牌计、48 个特征 = 7 第零类 + 17 第一类 + 23 第二类 + 1 第三类、条目名格式）
   3. 写库 + 检索（analyze / query / 条件错误提示 / 特征值域）
   4. 双工具交叉校验（node 与 python 打点全字段逐项一致 —— readme 硬约束）
   5. 本地服务接口（server.py 的 GET/POST 路由与错误码）
-  6. 第 21 轮：17 个第二类特征、帧特征接口、分析与下载进度、下载模块（离线）
+  6. 第 21 轮：23 个第二类特征、帧特征接口、分析与下载进度、下载模块（离线）
   7. 第 22 轮：软件版本（meta.app_version + 库版本校验）、扩充现有数据库（按特征码跳过已有牌谱）；
      第 36 轮：v0.2.0 / schema 5 / 第一类 18 项（用户 m02227 ②③④、m02356 改名、m02357 顺序）；
      第 52 轮：第零类 3 项（用户 m04556 ②③，第一类回到 17 项）；第 59 轮：v1.0.0 / schema 7 /
@@ -19,7 +19,7 @@ r"""mjscore 正式测试。
      kind='wait' 行改为「鸣牌响应帧」（可能鸣牌的那一家各一行）、「等待鸣牌」编为第三类特征 1 项（不进检索下拉 /
       不列进当前帧特征），检索新增必选单选「出牌 / 鸣牌响应」（默认「出牌」= 只检索出牌帧）；
       第 74 轮：v1.4.0 / schema 11：新版 NAGA 报告（アナンタ → NAGA-避四、ウロボロス → NAGA-争一）
-      ⇒ 第零类 7 项、共 42 个特征（用户 m09507）；
+      ⇒ 第零类 7 项、共 48 个特征（用户 m09507）；
       第 75 轮：v1.4.1：新版 NAGA 按「默听支 / 立直支」联合分布展示（决策表 + 概率条左右分色，用户 m09803）；
       第 76 轮：仍 v1.4.1：AI 决策表「其它」行按表内显示值补足到 100.0%（用户 m09901）；
       第 77 轮：v1.4.2：概率条统一配色（默听条统一紫、立直条统一红，取消 argmax 高亮，用户 m10014）；
@@ -27,6 +27,7 @@ r"""mjscore 正式测试。
 第 79 轮：v1.4.4：打开检索 / 一览条目时显示该牌谱文件的真实后缀（用户 m10331）
 第 82 轮：v1.5.0：期望打点补回赤 5 且摸进 5 区分赤 / 非赤；1.4.x 库需重新分析（用户 m00398）
 第 84 轮：v1.5.1：牌谱本地导入 + 全目录同局合并；schema 11 不变，1.5.x 库可直接沿用
+第 85 轮：v1.6.0：直接进张 6 项 + 轻量库；schema 12，v1.5.x / schema 11 旧库拒绝
 
  运行：
   & 'D:\coding\anaconda3\envs\py314_null\python.exe' test\mjscore_test.py
@@ -168,10 +169,10 @@ eq(KINDS, {"draw": 2679, "chi": 50, "pon": 57, "wait": 680}, "打点行 kind 分
 per_file = sorted(len(feats.records_for_game(g)) for g in GAMES)
 eq(per_file, [458, 660, 676, 699, 973], "各牌谱打点行数（升序）")
 
-# --- 2c. 第 21 轮：17 个第二类特征 -----------------------------------------
+# --- 2c. 第 21 轮：23 个第二类特征 -----------------------------------------
 print("=== 2c. 第二类特征（第 21 轮） ===")
-eq(len(feats.FEATURES), 42, "特征注册表 42 项（7 第零类 + 17 第一类 + 17 第二类 + 1 第三类）")
-eq(len(feats.SECOND_KEYS), 17, "第二类特征 17 项")
+eq(len(feats.FEATURES), 48, "特征注册表 48 项（7 第零类 + 17 第一类 + 23 第二类 + 1 第三类）")
+eq(len(feats.SECOND_KEYS), 23, "第二类特征 23 项")
 eq([f["key"] for f in feats.FEATURES][:7],
    ["ai_balance", "ai_superhuro", "ai_naga_avoid4", "ai_naga_aggressive",
     "ai_mortal41a", "ai_mortal41b", "ai_mortal41c"],
@@ -192,7 +193,7 @@ eq(feats.FIRST_KEYS[6], "riichi_self", "第一类第 7 项 = 自家立直状态�
 eq(feats.BY_KEY["meld_wait"]["name"], "等待鸣牌", "等待鸣牌特征名")
 eq(feats.BY_KEY["meld_wait"]["col"], "f_meld_wait", "等待鸣牌列名 = f_meld_wait")
 eq(feats.BY_KEY["meld_wait"]["values"], [feats.YES, feats.NO], "等待鸣牌取值 = 是/否")
-eq([f["key"] for f in feats.FEATURES][-1], "meld_wait", "注册表末项 = 第三类（列顺序 7 + 17 + 17 + 1）")
+eq([f["key"] for f in feats.FEATURES][-1], "meld_wait", "注册表末项 = 第三类（列顺序 7 + 17 + 23 + 1）")
 _st_wait = replay.initial_state(GAMES[0], 0)
 eq(feats.extract(_st_wait, 0, "wait")["meld_wait"], "是", "等待鸣牌帧（kind='wait'）⇒ 是")
 eq(feats.extract(_st_wait, 0)["meld_wait"], "否", "不传 kind 的普通帧 ⇒ 否")
@@ -242,18 +243,18 @@ eq([k for k, v in feats.ai_frame_values(_fg, 0, 0, 1)[0].items() if v == "是"],
    "不是决策者的行 ⇒ 五项全「否」（与牌谱里有没有该模型无关）")
 _eq_am = feats.ai_frame_values(_fg, 0, 0, 0)
 eq((_eq_am[1], _eq_am[2]), ("NAGA-平衡", "NAGA"), "辅助列 ai_models / ai_series 也按帧给")
-eq([f["key"] for f in feats.FEATURES][24:41], list(feats.SECOND_KEYS), "第 25 项起 17 项就是第二类特征（顺序一致；末项是第三类）")
+eq([f["key"] for f in feats.FEATURES][24:47], list(feats.SECOND_KEYS), "第 25 项起 23 项就是第二类特征（顺序一致；末项是第三类）")
 eq(sorted(f["col"] for f in feats.FEATURES if f["col"].startswith("s_")),
    sorted("s_" + k for k in feats.SECOND_KEYS), "第二类列名 = s_<key>")
-eq(sorted(set(f["kind"] for f in feats.FEATURES[24:41])), ["float", "int"], "第二类特征只有 int / float")
+eq(sorted(set(f["kind"] for f in feats.FEATURES[24:47])), ["float", "int"], "第二类特征只有 int / float")
 miss_keys = [(feats.row_label(r), k) for r in ALL for k in feats.SECOND_KEYS if k not in r["feats"]]
-eq(len(miss_keys), 0, "每行都带 17 个第二类特征（首例 %s）" % (miss_keys[0] if miss_keys else "-"))
+eq(len(miss_keys), 0, "每行都带 23 个第二类特征（首例 %s）" % (str(miss_keys[0]) if miss_keys else "-"))
 nulls = [(feats.row_label(r), k) for r in ALL for k in feats.SECOND_KEYS if r["feats"][k] is None]
-eq(len(nulls), 0, "第二类特征没有 None（首例 %s）" % (nulls[0] if nulls else "-"))
+eq(len(nulls), 0, "第二类特征没有 None（首例 %s）" % (str(nulls[0]) if nulls else "-"))
 _badint = [(feats.row_label(r), k) for r in ALL for k in feats.SECOND_KEYS
            if feats.BY_KEY[k]["kind"] == "int"
            and (isinstance(r["feats"][k], bool) or not isinstance(r["feats"][k], int))]
-eq(len(_badint), 0, "整数类第二类特征都是 int（首例 %s）" % (_badint[0] if _badint else "-"))
+eq(len(_badint), 0, "整数类第二类特征都是 int（首例 %s）" % (str(_badint[0]) if _badint else "-"))
 _noriichi = [r for r in ALL if r["feats"]["riichi_others_n"] == 0]
 eq(sum(1 for r in _noriichi if r["feats"]["riichi_others_danger_suji"] != -1
        or r["feats"]["riichi_others_danger_ryanmen"] != -1), 0,
@@ -282,7 +283,7 @@ _pos = [r for r in ALL if r["feats"]["furo_ron_score"] > 0]
 check(len(_pos) > 0, "存在副露荣和期望打点 > 0 的帧（%d 个，例如 %s）"
       % (len(_pos), feats.row_label(_pos[0]) if _pos else "-"))
 _check_second = feats.second_class.__doc__ or ""
-check("17 个第二类特征" in _check_second, "second_class 文档说明 17 项")
+check("23 个第二类特征" in _check_second, "second_class 文档说明 23 项")
 
 draws = 0
 tsumo = 0
@@ -449,7 +450,7 @@ print("  -- 打点抽查：%d 行，违规类别 %d 个" % (len(ALL), len(bad)))
 # ------------------------------------------------------------------ 3
 print("=== 3. 写库 + 检索 ===")
 py_db = os.path.join(TMP, "py.sqlite")
-res = cli.analyze(FILES, db=py_db, tool="python", full=True)
+res = cli.analyze(FILES, db=py_db, tool="python", light=False)
 eq(res["ok"], True, "analyze 返回 ok")
 eq(res["tool"], "python", "指定 --tool python")
 eq(res["logs"], 5, "analyze 牌谱数")
@@ -466,7 +467,7 @@ conn = store.connect(py_db, create=False)
 _m = store.get_meta(conn)
 check(len(_m) >= 5, "meta 可读（%d 项）" % len(_m))
 eq(store.get_meta(conn).get("schema_version"), str(store.SCHEMA_VERSION), "meta schema_version")
-eq(store.SCHEMA_VERSION, 11, "结构版本 = 11（第 74 轮：新增 f_ai_naga_avoid4 / f_ai_naga_aggressive，用户 m09507）")
+eq(store.SCHEMA_VERSION, 12, "结构版本 = 12（v1.6.0：新增 6 个直接进张特征列 + meta.db_type）")
 conn.execute("UPDATE meta SET v = '1' WHERE k = 'schema_version'")
 conn.commit()
 try:
@@ -479,14 +480,14 @@ conn.execute("UPDATE meta SET v = ? WHERE k = 'schema_version'", (str(store.SCHE
 conn.commit()
 eq(store.get_meta(conn).get("app_version"), store.APP_VERSION, "meta 记录生成该库的软件版本")
 eq(store.app_version_of(conn), store.APP_VERSION, "app_version_of")
-eq(store.APP_VERSION, "1.5.1", "软件版本 = 1.5.1（第 84 轮：本地导入 + 全目录合并；schema 11 不变）")
+eq(store.APP_VERSION, "1.6.0", "软件版本 = 1.6.0（第 85 轮：直接进张 6 项 + 轻量库；schema 12）")
 print("=== 版本兼容（用户 m09354 ⑤：大版本 + 中版本相同即可）===")
-check(store.version_compatible("1.5.0"), "v1.5.0 与当前版本兼容（补丁版本不同不影响）")
-check(store.version_compatible("1.5.1"), "v1.5.1 与当前版本兼容（同版本）")
+check(not store.version_compatible("1.5.0"), "v1.5.0 与当前 1.6.x 不兼容（中版本不同）")
+check(not store.version_compatible("1.5.1"), "v1.5.1 与当前 1.6.x 不兼容（中版本不同）")
 check(store.version_compatible(""), "无版本记录（第 22 轮以前的库）按兼容处理")
-check(not store.version_compatible("1.4.4"), "1.4.x 与 1.5.x 不兼容（赤 5 口径变化，旧库需重析）")
-check(not store.version_compatible("1.3.1"), "1.3.x 与 1.5.x 不兼容（中版本不同）")
-check(not store.version_compatible("2.0.0"), "2.x 与 1.5.x 不兼容（大版本不同）")
+check(not store.version_compatible("1.4.4"), "1.4.x 与当前版本不兼容")
+check(not store.version_compatible("1.3.1"), "1.3.x 与当前版本不兼容（中版本不同）")
+check(not store.version_compatible("2.0.0"), "2.x 与当前版本不兼容（大版本不同）")
 
 conn.execute("UPDATE meta SET v = '0.0.9' WHERE k = 'app_version'")
 conn.commit()
@@ -516,7 +517,7 @@ _raw.commit()
 _raw.close()
 conn = store.connect(py_db, create=False)
 try:
-    cli.analyze(FILES, db=py_db, tool="python", full=True, extend=True)
+    cli.analyze(FILES, db=py_db, tool="python", extend=True)
     check(False, "扩充一个已含全部牌谱的库应报错")
 except FileNotFoundError as _exc:
     check("都已经在数据库里了" in str(_exc), "扩充全部重复提示：%s" % _exc)
@@ -577,12 +578,12 @@ eq(store.query(conn, [{"key": "junme", "expr": ">=1"}], limit=5000,
 _chi = [r for r in allq["rows"] if r["kind"] == "chi"][0]
 eq(_chi["kind"], "chi", "副露帧行 kind：%s" % _chi["label"])
 one = store.query_detail(conn, allq["rows"][0]["idx"])
-eq(len(one["feats"]), 42, "query_detail 展开 42 个特征（7 + 17 + 17 + 1）")
+eq(len(one["feats"]), 48, "query_detail 展开 48 个特征（7 + 17 + 23 + 1）")
 rf = store.round_frames(conn, allq["rows"][0]["log_id"], 0)
 eq(len(rf) > 0, True, "round_frames 返回本局帧")
 check("kind" in rf[0], "round_frames 行含 kind")
 _exp = store.export_json(conn, limit=3)
-eq((len(_exp["frames"]), len(_exp["features"]), len(_exp["source"])), (3, 42, 5),
+eq((len(_exp["frames"]), len(_exp["features"]), len(_exp["source"])), (3, 48, 5),
    "export_json 结构 meta/features/source/frames")
 conn.close()
 
@@ -625,6 +626,77 @@ try:
 except ValueError as exc:
     check("第零类" in str(exc), "第零类特征不能走特征词条：%s" % exc)
 
+# --- 2e. v1.6.0：轻量库 / 标准库（db_type、向听上限、检索语义、始终写 frame_full）---
+print("=== 2e. 轻量库 / 标准库（v1.6.0） ===")
+std_conn = store.connect(py_db, create=False)
+eq(store.get_db_type(std_conn), "standard", "标准库 meta.db_type = standard")
+eq(store.get_meta(std_conn).get("full"), "1", "标准库 meta.full 恒为 1（--full 已删除）")
+conn_l = None
+light_db = os.path.join(TMP, "light.sqlite")
+res_l = cli.analyze(FILES[:1], db=light_db, tool="python")   # 新建库默认轻量
+eq(res_l.get("db_type"), "light", "新建库默认 db_type=light")
+conn_l = store.connect(light_db, create=False)
+eq(store.get_db_type(conn_l), "light", "轻量库 meta.db_type = light")
+eq(store.get_meta(conn_l).get("full"), "1", "轻量库 meta.full 也恒为 1")
+_light_full = conn_l.execute("SELECT COUNT(*) c FROM frame_full").fetchone()["c"]
+check(_light_full > 0, "轻量库始终写 frame_full（%d 行）" % _light_full)
+_light_sh = [conn_l.execute("SELECT MAX(%s) m FROM frame" % k).fetchone()["m"]
+             for k in ("s_shanten_kokushi", "s_shanten_chiitoi", "s_shanten_mentsu")]
+check(all(v is not None and v <= 2 for v in _light_sh),
+      "轻量库 3 个向听列最大值 <= 2（%r）" % _light_sh)
+_std_sh = [std_conn.execute("SELECT MAX(%s) m FROM frame" % k).fetchone()["m"]
+           for k in ("s_shanten_kokushi", "s_shanten_chiitoi", "s_shanten_mentsu")]
+eq(_std_sh, [3, 3, 3], "标准库 3 个向听列最大值 = 3")
+# 唯一差异是 3 个向听列：6 直接进张 + 12 期望 + 2 危险 全部与标准库相同；轻量向听 = min(标准, 2)
+_non_sh = [f["col"] for f in feats.SECOND_FEATURES if f["key"] not in feats.SHANTEN_KEYS]
+_sh_cols = ["s_" + k for k in feats.SHANTEN_KEYS]
+_sel = "SELECT log_id, round_index, ev_index, seat, %s FROM frame" % ", ".join(_non_sh + _sh_cols)
+_std_map = dict(((r["log_id"], r["round_index"], r["ev_index"], r["seat"]), r)
+                for r in std_conn.execute(_sel))
+_diff = []
+for _r in conn_l.execute(_sel):
+    _k = (_r["log_id"], _r["round_index"], _r["ev_index"], _r["seat"])
+    _s = _std_map.get(_k)
+    if _s is None:
+        _diff.append(("缺行", _k))
+        continue
+    for _c in _non_sh:
+        if _r[_c] != _s[_c]:
+            _diff.append((_c, _k, _r[_c], _s[_c]))
+    for _c in _sh_cols:
+        if _r[_c] != min(_s[_c], 2):
+            _diff.append((_c, _k, _r[_c], _s[_c]))
+eq(_diff, [], "轻量/标准只有 3 个向听列不同（其余 20 个第二类特征逐帧一致）：%d 帧" % len(_std_map))
+# 检索按内部整数匹配：轻量 2 命中 >=2 桶；3 / >=3 / 4 无结果
+_q_light2 = store.query(conn_l, [{"key": "shanten_mentsu", "expr": "2"}], limit=5)
+check(_q_light2["total"] > 0, "轻量库 面子手向听数=2 有结果（%d 行）" % _q_light2["total"])
+for _expr in ("3", ">=3", "4", "3-5"):
+    eq(store.query(conn_l, [{"key": "shanten_mentsu", "expr": _expr}], limit=5)["total"], 0,
+       "轻量库 面子手向听数 %s 返回空（不做 >=3 -> >=2 映射）" % _expr)
+eq(store.query(std_conn, [{"key": "shanten_mentsu", "expr": "3"}], limit=5)["total"] > 0, True,
+   "标准库 面子手向听数=3 有结果（内部值 3 = >=3）")
+# 扩充：目标库类型优先；显式 light=False 与轻量库冲突时只警告、不改类型
+_res_ext_l = cli.analyze(FILES[:2], db=light_db, tool="python", light=False, extend=True)
+check(any("轻量" in w and "目标库" in w for w in _res_ext_l["warnings"]),
+      "扩充轻量库时传入标准模式给警告：%r" % _res_ext_l["warnings"])
+eq(store.get_db_type(conn_l), "light", "扩充后轻量库类型不变")
+_light_sh2 = conn_l.execute("SELECT MAX(s_shanten_mentsu) m FROM frame").fetchone()["m"]
+eq(_light_sh2, 2, "扩充按目标库类型（轻量）执行：向听最大仍为 2")
+eq(_res_ext_l.get("db_type"), "light", "扩充结果摘要的 db_type = 目标库类型")
+conn_l.close()
+# 拒绝 schema 11 / v1.5.x
+std_conn.execute("UPDATE meta SET v = '11' WHERE k = 'schema_version'")
+std_conn.commit()
+try:
+    store.connect(py_db, create=False)
+    check(False, "schema 11 旧库应拒绝打开")
+except ValueError as _exc:
+    check("数据库版本过低" in str(_exc) and "12" in str(_exc),
+          "schema 11 拒绝提示写明当前 schema 12：%s" % _exc)
+std_conn.execute("UPDATE meta SET v = ? WHERE k = 'schema_version'", (str(store.SCHEMA_VERSION),))
+std_conn.commit()
+std_conn.close()
+
 try:
     cli.resolve_feature("巡目")
     check(True, "resolve_feature 支持中文名")
@@ -659,7 +731,7 @@ eq(sorted(os.path.basename(d["name"]) for d in cli.list_dbs()
 print("=== 4. 双工具交叉校验 ===")
 eq(nodeharness.available(), True, "检测到 node 运行时")
 node_db = os.path.join(TMP, "node.sqlite")
-res_n = cli.analyze(FILES, db=node_db, tool="node", full=True)
+res_n = cli.analyze(FILES, db=node_db, tool="node", light=False)
 eq(res_n["tool"], "node", "指定 --tool node")
 eq(res_n["annotations"], 3466, "node 打点数与 python 一致")
 auto_db = os.path.join(TMP, "auto.sqlite")
@@ -684,7 +756,7 @@ keep, rows_n, full_n = dump(node_db)
 _, rows_p, full_p = dump(py_db)
 eq(len(rows_n), 3466, "node 库 frame 行数")
 eq(len(rows_p), 3466, "python 库 frame 行数")
-eq(sum(1 for c in keep if c.startswith("s_")), 17, "交叉校验覆盖 17 个第二类特征列")
+eq(sum(1 for c in keep if c.startswith("s_")), 23, "交叉校验覆盖 23 个第二类特征列")
 diffs = 0
 first = ""
 for i, (a, b) in enumerate(zip(rows_n, rows_p)):
@@ -694,10 +766,10 @@ for i, (a, b) in enumerate(zip(rows_n, rows_p)):
             first = "第 %d 行 %s" % (i, [c for c, x, y in zip(keep, a, b) if x != y])
 eq(diffs, 0, "全字段逐项一致（%d 列 × %d 行，首例 %s）" % (len(keep), len(rows_n), first or "-"))
 eq(full_n, full_p, "frame_full 行数一致（%d）" % full_n)
-eq(full_n > 0, True, "full=True 写了 frame_full")
+eq(full_n > 0, True, "v1.6.0 起始终写 frame_full（--full 已删除）")
 
 # --- 4b. 第 14 轮：同一牌谱重分析不留孤儿 frame_full ------------------------
-res_re = cli.analyze(FILES, db=py_db, tool="python", full=True)
+res_re = cli.analyze(FILES, db=py_db, tool="python", light=False)
 eq(res_re["db_total"], 3466, "重分析后库内总行数不变")
 _, rows_re, full_re = dump(py_db)
 eq(len(rows_re), 3466, "重分析后 frame 行数不变")
@@ -768,7 +840,7 @@ BASE = "http://127.0.0.1:%d" % PORT
 
 
 def http(path, payload=None, timeout=15):
-    """timeout：/api/analyze 要跑完整个目录（含 17 个第二类特征），必须给足。"""
+    """timeout：/api/analyze 要跑完整个目录（含 23 个第二类特征），必须给足。"""
     url = BASE + path
     data = None
     headers = {}
@@ -790,7 +862,7 @@ try:
     eq((d.get("author"), d.get("author_email")), ("Zumma Crystal", "z1025zzsg@sohu.com"),
        "health 带作者信息（m04115③）")
     st, d = http("/api/features")
-    eq((st, len(d.get("features") or [])), (200, 42), "GET /api/features 42 项（7 + 17 + 17 + 1）")
+    eq((st, len(d.get("features") or [])), (200, 48), "GET /api/features 48 项（7 + 17 + 23 + 1）")
     eq(len(d.get("ai_features") or []), 7, "features 带 ai_features 7 项（第零类）")
     eq([m["key"] for m in (d.get("ai_modes") or [])], ["any", "naga", "mortal", "multi"],
        "features 带 4 种第零类检索方案")
@@ -805,9 +877,11 @@ try:
        "16 个互斥取值特征都带 values（第零类 7 项 + 第一类 8 项 + 第三类 1 项；前端据此渲染下拉）")
     eq(feats.BY_KEY["oya_meld"]["name"], "亲家（他家）副露状态", "特征 15 显示名已修正")
     # --- 第 23 轮：向听数对外显示 >=3（显示口径；检索仍按内部整数匹配，见第 6 节 5 条）---
-    eq(cli.feat_value_text("shanten_mentsu", 3), ">=3", "向听数内部值 3 显示为 >=3")
-    eq(cli.feat_value_text("shanten_chiitoi", 3), ">=3", "七対子向听数 3 显示为 >=3")
-    eq(cli.feat_value_text("shanten_mentsu", 2), "2", "向听数 2 原样显示")
+    eq(cli.feat_value_text("shanten_mentsu", 3), ">=3", "向听数内部值 3 显示为 >=3（标准库）")
+    eq(cli.feat_value_text("shanten_chiitoi", 3), ">=3", "七対子向听数 3 显示为 >=3（标准库）")
+    eq(cli.feat_value_text("shanten_mentsu", 2), "2", "标准库向听数 2 原样显示")
+    eq(cli.feat_value_text("shanten_mentsu", 2, "light"), ">=2", "轻量库向听数 2 显示为 >=2")
+    eq(cli.feat_value_text("shanten_mentsu", 3, "light"), "3", "轻量库不存在 3：按整数原样显示（不做映射）")
     eq(cli.feat_value_text("junme", 3), "3", "非向听数特征不受影响")
     # --- 第 23 轮：库名解析要容忍带 .sqlite 后缀（扩充报「数据库不存在」的根因）---
     eq(cli.db_path_of(None, "x.sqlite"), cli.db_path_of(None, "x"), "库名带 .sqlite 与不带等价")
@@ -818,8 +892,8 @@ try:
           "扩充不存在的库：报错不重复后缀（%s）" % (d.get("error") or "")[:90])
     st, d = http("/api/dbs")
     eq((st, d.get("dir")), (200, cli.DB_DIR), "GET /api/dbs")
-    check(all("app_version" in x and "compatible" in x for x in (d.get("dbs") or [])),
-          "/api/dbs 每项带 app_version / compatible")
+    check(all("app_version" in x and "compatible" in x and "db_type" in x for x in (d.get("dbs") or [])),
+          "/api/dbs 每项带 app_version / compatible / db_type")
     check(any(x["name"] == "__mjtest_ver__.sqlite" and not x["compatible"] for x in (d.get("dbs") or [])),
           "不兼容的库被标 compatible=false")
     st, d = http("/api/scan?dir=" + urllib.parse.quote(DATA))
@@ -833,8 +907,10 @@ try:
     st, d = http("/api/analyze", {"paths": FILES, "db_name": "__mjtest__", "tool": "node"}, timeout=3600)
     eq((st, d.get("ok")), (200, True), "POST /api/analyze（文件列表 + node）")
     eq((d.get("logs"), d.get("db_total")), (5, 3466), "analyze 摘要")
+    eq(d.get("db_type"), "light", "POST /api/analyze 默认轻量，摘要带 db_type")
+    check("full" not in d, "analyze 摘要不再有 full 字段（--full 已删除）")
     eq(d.get("warnings"),
-       ["--tool node：第一类特征来自 node，第二类 17 项由 python 补齐（js 侧没有实现）"],
+       ["--tool node：第一类特征来自 node，第二类 23 项由 python 补齐（js 侧没有实现）"],
        "analyze 带 node 路径的第二类特征补齐警告")
 
     # --- 第 21 轮新接口：进度 / 帧特征 / 下载 -----------------------------
@@ -865,7 +941,8 @@ try:
                                       "round_index": _pick["round_index"], "frame_index": _pick["frame_index"]})
     eq((st, (d.get("row") or {}).get("frame_index")), (200, _pick["frame_index"]),
        "POST /api/frame-feats 命中帧（round %d / frame %d）" % (_pick["round_index"], _pick["frame_index"]))
-    eq(len(((d.get("row") or {}).get("feats") or {})), 42, "frame-feats 行带 42 个特征")
+    eq(d.get("db_type"), "light", "POST /api/frame-feats 响应顶层带 db_type")
+    eq(len(((d.get("row") or {}).get("feats") or {})), 48, "frame-feats 行带 48 个特征")
     st, d = http("/api/frame-feats", {"db_name": "__mjtest__", "log_id": "nope",
                                       "round_index": 0, "frame_index": 1})
     eq((st, d.get("row")), (200, None), "POST /api/frame-feats 未命中返回 null")
@@ -895,6 +972,7 @@ try:
         {"key": "kyotaku", "expr": ">=1000"},
         {"key": "riichi_self", "expr": "是"}]})
     eq((st, d.get("total")), (200, 1), "POST /api/query 精确检索")
+    eq(d.get("db_type"), "light", "POST /api/query 响应顶层带 db_type")
     eq((d["rows"][0]["label"] if d.get("rows") else ""),
        "2026083021gm-00a9-0000-d0810acf 東三局 0本場 3巡目 西家", "命中行条目名（与 row_label 一致）")
     check(bool(d.get("rows")) and d["rows"][0]["label"].endswith("西家"), "命中行条目名：%s"
@@ -920,7 +998,8 @@ try:
     eq((st, len(d.get("rows") or [])), (200, 100), "POST /api/browse 分页")
 
     st, d = http("/api/detail", {"db_name": "__mjtest__", "idx": 2076})
-    eq((st, len(((d.get("row") or {}).get("feats") or {}))), (200, 42), "POST /api/detail 展开 42 特征")
+    eq(d.get("db_type"), "light", "POST /api/detail 响应顶层带 db_type")
+    eq((st, len(((d.get("row") or {}).get("feats") or {}))), (200, 48), "POST /api/detail 展开 48 特征")
     st, d = http("/api/round-frames", {"db_name": "__mjtest__", "log_id": "2026083021gm-00a9-0000-d0810acf",
                                        "round_index": 0})
     eq((st, len(d.get("rows") or []) > 0), (200, True), "POST /api/round-frames")

@@ -51,10 +51,10 @@
       <div class="card">
         <h2>牌谱分析</h2>
         <p class="muted">选择本地牌谱文件或一个子目录，对其中<b>每一个非自摸的摸牌帧</b>、<b>每一个吃/碰后等待出牌的帧</b>与<b>每一个等待鸣牌决策的帧</b>
-          （视角＝摸牌者本人；巡目按「出牌」计）标注 42 个特征（7 个第零类 + 17 个第一类 + 17 个第二类 + 1 个第三类：向听数 / 期望枚数 /</p>
+          （视角＝摸牌者本人；巡目按「出牌」计）标注 48 个特征（7 个第零类 + 17 个第一类 + 23 个第二类 + 1 个第三类：向听数 / 直接进张 / 期望枚数 /</p>
         <p class="muted">期望打点 / 危险筋组·两面组），写入本地 SQLite 数据库。</p>
-        <p class="muted">特征取值说明：三种向听数的内部取值 3 表示「>=3 向听」，界面与文档里一律显示成 <b>&gt;=3</b>；
-          检索时按 <b>&gt;=3</b> 填写条件即可。</p>
+        <p class="muted">特征取值说明：标准库三种向听数内部值 3 表示「&gt;=3 向听」、显示成 <b>&gt;=3</b>；
+          轻量库内部上限 2、显示成 <b>&gt;=2</b>（v1.6.0）。检索都按内部整数匹配。</p>
         <button id="btnGoAnalyze">进入牌谱分析</button>
       </div>
 
@@ -175,7 +175,7 @@
     <div class="card wide">
       <h2>牌谱分析</h2>
         <p class="muted">选择一个牌谱文件或一个子目录，对其中<b>每一个非自摸的摸牌帧</b>、<b>每一个吃/碰后等待出牌的帧</b>与<b>每一个鸣牌响应帧</b>
-          （视角＝当前决策者；巡目按「出牌」计）标注 42 个特征（7 个第零类 + 17 个第一类 + 17 个第二类 + 1 个第三类），写入本地 SQLite 数据库。分析由本地服务完成：
+          （视角＝当前决策者；巡目按「出牌」计）标注 48 个特征（7 个第零类 + 17 个第一类 + 23 个第二类 + 1 个第三类），写入本地 SQLite 数据库。分析由本地服务完成：
         请先运行 <code>python server.py</code>，再从它打印的地址打开本页。</p>
 
       <div class="row">
@@ -183,8 +183,8 @@
         <label class="chk"><input type="radio" name="anMode" id="anModeExtend" value="extend" /> 扩充现有数据库</label>
         <label for="anDbName">数据库名</label>
         <input id="anDbName" type="text" value="paipu" size="14" />
-        <label class="chk"><input type="checkbox" id="anFull" /> 同时写入原始数据（--full）</label>
-        <button id="btnFullHelp" class="ghost" title="勾选与不勾选的区别">？</button>
+        <label class="chk"><input type="checkbox" id="anLight" checked /> 开启轻量分析</label>
+        <button id="btnLightHelp" class="ghost" title="轻量与标准的区别">？</button>
       </div>
 
       <div id="anExtendRow" class="row hidden">
@@ -193,11 +193,11 @@
         <span id="anExtendInfo" class="muted"></span>
       </div>
 
-      <details id="anFullHelp" class="hint">
-        <summary>「同时写入原始数据（--full）」勾选与不勾选的区别</summary>
-        <p id="anFullNote" class="muted">勾选：把每一帧的原始数据（手牌 / 副露 / 宝牌 / 分数）一起写进 frame_full 表，
-          以后新增特征时可以直接用旧牌谱重算；不勾选：只写 42 个特征值与定位信息，数据库更小
-          （约为勾选时的一半），但新增特征时必须重新分析牌谱。</p>
+      <details id="anLightHelp" class="hint">
+        <summary>「开启轻量分析」说明</summary>
+        <p id="anLightNote" class="muted">轻量数据库：三种向听数的内部上限从 <code>&gt;=3</code> 改为 <code>&gt;=2</code>
+          （内部值 <code>2</code> 表示 <code>&gt;=2</code>）；其余特征与标准库相同。新建库默认勾选；
+          扩充时由目标库自动决定（勾选状态只读）。数据库始终写入原始数据（frame_full），无需再选。</p>
       </details>
 
       <div class="row">
@@ -247,8 +247,8 @@
   <section id="view-search" class="view hidden">
     <div class="card wide">
       <h2>牌谱检索</h2>
-<p class="muted">先指定一个本地数据库文件，再逐条添加「牌谱特征」（<b>可填取值的有 34 个特征</b>：
-        17 个第一类 + 17 个第二类，不能重复添加；第零类 7 项走上面的「是否具有AI决策」方案，且第零类是<b>按帧判定</b>的 —— 命中的是「这一帧自己满足方案」的帧，同一份牌谱里有的帧命中、有的不命中；第三类「等待鸣牌」不出现在特征下拉里，改用上面的「出牌 / 鸣牌响应」单选），
+<p class="muted">先指定一个本地数据库文件，再逐条添加「牌谱特征」（<b>可填取值的有 40 个特征</b>：
+        17 个第一类 + 23 个第二类，不能重复添加；第零类 7 项走上面的「是否具有AI决策」方案，且第零类是<b>按帧判定</b>的 —— 命中的是「这一帧自己满足方案」的帧，同一份牌谱里有的帧命中、有的不命中；第三类「等待鸣牌」不出现在特征下拉里，改用上面的「出牌 / 鸣牌响应」单选），
         整数特征填 整数 / 区间 / 列表 / 比较，期望枚数·期望打点等实数特征可填
         <code>0.5</code> / <code>0-1.5</code> / <code>0,1,2.5</code> / <code>&gt;=3</code>）；
 点「检索」返回<b>同时满足全部条件</b>的打点帧（检索范围＝播放里的「决策帧」：非自摸的摸牌帧、吃 / 碰后等待出牌的帧、以及有人打出牌后<b>可能鸣牌</b>的那一家各自的鸣牌响应帧；「出牌 / 鸣牌响应」单选与全部条件同时满足）。

@@ -1,21 +1,21 @@
 # -*- coding: utf-8 -*-
 """SQLite 打点数据库：建库 / 写库 / 检索 / 导出。
 
-表结构（star schema，压缩维度 = 42 个特征：7 个第零类 + 17 个第一类 + 17 个第二类 + 1 个第三类；
+表结构（star schema，压缩维度 = 48 个特征：7 个第零类 + 17 个第一类 + 23 个第二类 + 1 个第三类；
 第零类 7 项 = **这一帧**有没有对应 AI 模型的决策概率表（按帧判定：这一帧做决策的那名玩家带该模型的数据
 才是「是」；第 52 轮 / 用户 m04556 ②、第 59 轮 / m05937 ②、第 60 轮 / m06323 ① / m06560。模型名 =
 NAGA-平衡 / NAGA-超副露 / NAGA-避四 / NAGA-争一 / Mortal-4.1-避四 / Mortal-4.1-平衡 / Mortal-4.1-争一，列
 f_ai_balance / f_ai_superhuro / f_ai_naga_avoid4 / f_ai_naga_aggressive / f_ai_mortal41a / f_ai_mortal41b /
 f_ai_mortal41c；另有辅助列 ai_models / ai_series
 供按系列聚合），天凤 / NAGA / Mortal 报告可混编进同一个库）：
-    meta          库级元信息（schema 版本、软件版本、工具、口径说明、特征注册表）
-    feature_def   42 个特征的注册表（key / 中文名 / 类型 / 值域 / 列名）
+    meta          库级元信息（schema 版本、软件版本、工具、库类型 standard/light、口径说明、特征注册表）
+    feature_def   48 个特征的注册表（key / 中文名 / 类型 / 值域 / 列名）
     source        每个已入库牌谱（特征码 / 原始文件路径 / 局数 / 打点数）
     round         每个已入库的局（局况 / 本场 / 供托 / 起家 / 分数）
     frame         **一行 = 一个打点帧**（kind=draw 非自摸的摸牌帧 / kind=chi|pon 吃碰后等待出牌的帧 /
                   kind=wait 鸣牌响应帧 —— 别人打出牌之后、**可能鸣牌**的那一家各一行，用户 m07289）：
-                  定位列 + 42 个特征列（打点维度）+ ai_models / ai_series 辅助列
-    frame_full   惰性维度：后续新增特征时按 key 逐列追加，无需改表结构（--full 时写原始数据）
+                  定位列 + 48 个特征列（打点维度）+ ai_models / ai_series 辅助列
+    frame_full   惰性维度：后续新增特征时按 key 逐列追加，无需改表结构（v1.6.0 起**始终写原始数据**）
 检索：把用户填的特征条件编译成 WHERE 子句（枚举精确匹配 / 整数区间 / 比较），
       全部条件用 AND 组合（readme：「检索满足全部条件的帧」）；第零类特征不填取值，
       改用四种互斥方案（任意AI决策 / NAGA决策 / Mortal决策 / 同时具有，见 compile_ai()）；
@@ -31,7 +31,9 @@ import sqlite3
 from . import ai_models, feats, mjlog
 from . import __version__ as APP_VERSION, version_compatible   # 软件本体版本 + 兼容判据（用户 m09354 ⑤）
 
-SCHEMA_VERSION = 11  # 11：第零类补 NAGA-避四 / NAGA-争一（新增 f_ai_naga_avoid4 / f_ai_naga_aggressive，
+SCHEMA_VERSION = 12  # 12：v1.6.0（第 85 轮）新增 6 个「直接进张」列（s_*_advance_*）+ meta.db_type
+                     #     （standard / light）+ 删除 --full（frame_full 始终写入）⇒ schema 11 及以前的库不再支持
+                     # 11：第零类补 NAGA-避四 / NAGA-争一（新增 f_ai_naga_avoid4 / f_ai_naga_aggressive，
                      #     新版 NAGA 报告的两种新形态，用户 m09507）⇒ schema 10 及以前的库不再支持
                      # 10：第一类「等待鸣牌」改列**第三类特征**；打点行改为 kind='wait' 的「鸣牌响应」帧
                      #    （判据 = 可能被他家鸣牌〔吃 / 碰 / 杠，含食替禁止〕，每个可能鸣牌的家各一行；
@@ -49,7 +51,7 @@ SCHEMA_VERSION = 11  # 11：第零类补 NAGA-避四 / NAGA-争一（新增 f_ai
                      # 3：新增 17 个第二类特征列（s_*，第 21 轮）；2 = frame.kind + 巡目按出牌计（第 13 轮）
 
 META_KEYS = ("schema_version", "app_version", "created_at", "updated_at", "tool", "record_count",
-             "source_count", "round_count", "full", "noted")
+             "source_count", "round_count", "db_type", "full", "noted")
 
 TABLES = [
     """CREATE TABLE IF NOT EXISTS meta (
@@ -81,7 +83,7 @@ FEATURE_DDL_TYPES = {"int": "INTEGER", "float": "REAL", "enum": "TEXT"}
 
 
 def _feature_columns_ddl():
-    """frame 表的特征列声明（名字、顺序 = feats.FEATURES 注册表顺序；第 21 轮起含 17 个第二类特征）。"""
+    """frame 表的特征列声明（名字、顺序 = feats.FEATURES 注册表顺序；v1.6.0 起含 23 个第二类特征）。"""
     return ", ".join("%s %s" % (f["col"], FEATURE_DDL_TYPES.get(f["kind"], "TEXT"))
                      for f in feats.FEATURES)
 
@@ -118,10 +120,10 @@ DOUKOU = ("打点对象 = 决策帧，分两类（第三类特征「等待鸣牌
           "吃/碰/大明杠不算）+ 1；鸣牌响应帧的巡目 = 该家下一次出牌会是第几巡（用户 m06832）。"
           "副露 = 吃/碰/加杠/大明杠/暗杠 的组数（拔北不计）；供托 = 立直棒×1000 + 本场×300；"
           "顺位同分时按自风 東→南→西→北 排先；该家自己就是亲家时，亲家（他家）三项记 否/否/0。")
-FULL_NOTE = ("--full（同时写入原始数据）：勾选时除了 42 个特征值，还把该帧的原始数据"
+FULL_NOTE = ("数据库始终写入原始数据：除了 48 个特征值，还把该帧的原始数据"
              "（手牌 / 副露 / 宝牌指示牌 / 分数 / 牌谱路径）写进 frame_full 表 —— "
-             "以后新增特征时可以只按这些原始数据重算，不必重新解析 XML；"
-"不勾选时只写 42 个特征值（库更小、写库略快），但后续新增特征只能重新分析全部牌谱。")
+             "以后新增特征时可以只按这些原始数据重算，不必重新解析 XML。"
+             "v1.6.0 起删除 --full 参数，所有库都写 frame_full。")
 
 
 # ------------------------------------------------------------------ 连接与建库
@@ -164,16 +166,16 @@ def check_version(conn, db_path=""):
     ver = int(row["v"])
     if ver != SCHEMA_VERSION:
         raise ValueError(
-            "数据库版本过低（库的结构版本 %d，当前软件需要 %d；v0.2.x 及以前的库在 v0.3.0 起不再支持），"
+            "数据库版本过低（库的结构版本 %d，当前软件 v%s 需要 %d；v1.5.x / schema 11 及以前的库在 v1.6.0 起不再支持），"
             "请删除后重新分析：python analyze.py <牌谱路径> --delete-db <库名>（%s）"
-            % (ver, SCHEMA_VERSION, os.path.abspath(db_path)))
+            % (ver, APP_VERSION, SCHEMA_VERSION, os.path.abspath(db_path)))
     row = conn.execute("SELECT v FROM meta WHERE k = 'app_version'").fetchone()
     if row is None or not str(row["v"]).strip():
         return False          # 第 22 轮之前生成的库：没有软件版本记录
     recorded = str(row["v"]).strip()
     if not version_compatible(recorded):
         raise ValueError(
-            "数据库版本不匹配（库由软件版本 %s 生成，当前软件版本 %s；只有大版本 + 中版本相同的库才能使用），"
+            "数据库版本不匹配（库由软件版本 %s 生成，当前软件版本 %s；v1.6.0 要求大版本 + 中版本为 1.6），"
             "请删除后重新分析：python analyze.py <牌谱路径> --delete-db <库名>（%s）"
             % (recorded, APP_VERSION, os.path.abspath(db_path)))
     return True
@@ -194,6 +196,19 @@ def set_meta(conn, k, v):
 
 def get_meta(conn):
     return {r["k"]: r["v"] for r in conn.execute("SELECT k, v FROM meta")}
+
+
+def get_db_type(conn):
+    """库类型：``"light"`` / ``"standard"``（v1.6.0）。
+
+    读 meta.db_type；缺失 / 取值非法时按 standard 处理（只用于容错，新库必须写）。
+    """
+    try:
+        row = conn.execute("SELECT v FROM meta WHERE k = 'db_type'").fetchone()
+    except sqlite3.Error:
+        return "standard"
+    v = str(row["v"]).strip().lower() if row is not None else ""
+    return "light" if v == "light" else "standard"
 
 
 def app_version_of(conn):
@@ -248,23 +263,27 @@ FRAME_INSERT = ("INSERT OR REPLACE INTO frame ("
                 + ") VALUES (" + ", ".join(["?"] * (len(FRAME_FACT_COLS) + len(feats.FEATURES) + 4)) + ")")
 
 
-def insert_records(conn, records, tool="", log_path="", added_at="", full=False):
+def insert_records(conn, records, tool="", log_path="", added_at=""):
+    """写打点行；v1.6.0 起**始终**把原始数据写进 frame_full（--full 已删除）。
+
+    fixture 路径的记录可能没有 tiles / melds / dora / scores / names：仍只写存在的字段，
+    不因为缺字段报错；正式 analyze 路径的 make_record 必须包含这些字段。
+    """
     n = 0
     for rec in records:
         vals = [rec.get(c) for c in FRAME_FACT_COLS]
-        # 第二类特征（第 21 轮）与第一类一起写入；老 fixture 缺列时记 NULL 而不是 KeyError
+        # 第二类特征（第 21 轮 / v1.6.0 共 23 项）与第一类一起写入；老 fixture 缺列时记 NULL 而不是 KeyError
         vals += [rec["feats"].get(f["key"]) for f in feats.FEATURES]
         vals += [feats.row_label(rec), log_path or rec.get("path", ""), tool, added_at]
         cur = conn.execute(FRAME_INSERT, vals)
         idx = cur.lastrowid
         n += 1
-        if full:
-            for key, value in (("tiles", rec.get("tiles")), ("melds", rec.get("melds")),
-                               ("dora", rec.get("dora")), ("scores", rec.get("scores")),
-                               ("names", rec.get("names"))):
-                if value is not None:
-                    conn.execute("INSERT OR REPLACE INTO frame_full (frame_idx, key, value) VALUES (?,?,?)",
-                                 (idx, key, _json(value)))
+        for key, value in (("tiles", rec.get("tiles")), ("melds", rec.get("melds")),
+                           ("dora", rec.get("dora")), ("scores", rec.get("scores")),
+                           ("names", rec.get("names"))):
+            if value is not None:
+                conn.execute("INSERT OR REPLACE INTO frame_full (frame_idx, key, value) VALUES (?,?,?)",
+                             (idx, key, _json(value)))
     return n
 
 
@@ -279,7 +298,7 @@ def prune_frame_full(conn):
 
     frame 的唯一键是 (log_id, round_index, ev_index, seat)：重新分析同一个牌谱时
     `INSERT OR REPLACE` 会先删旧行、再插入**新的 idx**；frame_full 是按 frame_idx 存的，
-    不清就会留下永远取不到的孤儿行（--full 重分析 N 次就多 N 份垃圾，实测 1 次多 13930 行）。
+    不清就会留下永远取不到的孤儿行（重分析 N 次就多 N 份垃圾，实测 1 次多 13930 行）。
     返回删除的行数。
     """
     cur = conn.execute("DELETE FROM frame_full WHERE frame_idx NOT IN (SELECT idx FROM frame)")
@@ -477,7 +496,7 @@ def query_detail(conn, idx):
 
 
 def frame_feats(conn, log_id, round_index, frame_index, seat=None):
-    """按 (log_id, round_index, frame_index[, seat]) 取一帧的全部 42 个特征值。
+    """按 (log_id, round_index, frame_index[, seat]) 取一帧的全部 48 个特征值。
 
     前端「当前帧特征面板」用：Python 的 frame_index = ev_index + 1，
     与 web/js/replay.js buildFrames() 的帧号同口径，所以前端可直接把播放位置传进来。

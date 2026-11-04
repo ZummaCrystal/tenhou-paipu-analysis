@@ -1930,10 +1930,17 @@ check(/\.file-info\s*\{[^}]*text-overflow:\s*ellipsis/.test(cssText), '顶栏文
 var fpCss = cssRule(cssText, '.feat-panel');
 check(/min-width:\s*0/.test(fpCss) && /overflow:\s*hidden/.test(fpCss), '特征面板 min-width:0 + overflow:hidden（长特征码不再撑宽面板）');
 var fphCss = cssRule(cssText, '.feat-panel-head');
-check(/flex:\s*0\s+0\s+133px/.test(fphCss) && /flex-wrap:\s*wrap/.test(fphCss)
-  && /align-content:\s*flex-start/.test(fphCss), '特征面板标题行 = 标题 + 预留 5 行特征码（固定 133px）');
+check(/flex:\s*0\s+0\s+112px/.test(fphCss) && /flex-wrap:\s*wrap/.test(fphCss)
+  && /align-content:\s*flex-start/.test(fphCss), '特征面板标题行固定 112px（v1.6.0：40 行一屏）');
 check(/\.feat-panel-head\s+\.muted\s*\{[^}]*white-space:\s*normal/.test(cssText)
   && /\.feat-panel-head\s+\.muted\s*\{[^}]*word-break:\s*break-all/.test(cssText), '标题行里的特征码完整换行显示（不省略，用户 m01518 ①）');
+var frowCss = cssRule(cssText, '.feat-row');
+check(/font-size:\s*13px/.test(frowCss) && /line-height:\s*1\.1/.test(frowCss)
+  && /padding:\s*1px\s+11px\s+1px\s+8px/.test(frowCss),
+  '特征行 13px / 1.1 / 1px（v1.6.0：40 行在 1764x959 / 1920x1080 一屏）');
+check(/\.feat-panel-body\s*\{[^}]*overflow:\s*auto/.test(cssText)
+  && /\.feat-panel-mode\s*\{[^}]*font-size:\s*22px/.test(cssText),
+  '面板正文可滚动 + 局面文字 22px（实际无溢出时不会出现滚动条）');
 check(/\.ev-text\s*\{[^}]*text-overflow:\s*ellipsis/.test(cssText), '事件行文本省略号');
 check(/\.p-hand\s+\.drawn\s*\{[^}]*min-width:\s*var\(--tile-w\)/.test(cssText)
   && /\.p-hand\s+\.drawn\s*\{[^}]*align-items:\s*flex-end/.test(cssText)
@@ -2390,7 +2397,7 @@ for (var ci = 0; ci < recsCur.length; ci++) {
   if (recsCur[ci].kind === 'chi' || recsCur[ci].kind === 'pon') { recCall = recsCur[ci]; break; }
 }
 var ROWCALL = recCall ? dbRow(recCall, f.replace(/\.xml$/, '')) : null;
-/* 第 21 轮 / 第 29 轮 / 第 36 轮 / 第 52 轮 / 第 59 轮 / 第 62 轮 / 第 63 轮 / 第 74 轮：假数据库行的 42 个特征值
+/* 第 21 轮 / 第 29 轮 / 第 36 轮 / 第 52 轮 / 第 59 轮 / 第 62 轮 / 第 63 轮 / 第 74 轮：假数据库行的 48 个特征值
    （第零类 7 项 + 第一类 17 项 + 第二类 17 项 + 第三类 1 项：枚举一律 '是' / 实数 0.5 / 整数 1） */
 var FAKE_FEATS = {};
 MJSFEAT.FEATURES.forEach(function (f4) {
@@ -2430,16 +2437,16 @@ global.fetch = function (url, opt) {
                     text: function () { return syncOk(JSON.stringify(obj)); } });
   }
   if (path.indexOf('/api/dbs') === 0) {
-    return json({ ok: true, dbs: [{ name: 'paipu', size: 400000, meta: { record_count: '2679', tool: 'node' },
-                                    app_version: '0.2.0', compatible: true }] });
+    return json({ ok: true, dbs: [{ name: 'paipu', size: 400000, db_type: 'light',
+                                    meta: { record_count: '2679', tool: 'node', db_type: 'light' },
+                                    app_version: '1.6.0', compatible: true }] });
   }
   if (path.indexOf('/api/features') === 0) {
-    return json({ ok: true, name: '天凤牌谱分析', version: '1.5.1', schema_version: 11,
+    return json({ ok: true, name: '天凤牌谱分析', version: '1.6.0', schema_version: 12,
                   features: MJSFEAT.FEATURES,
                   first_features: MJSFEAT.FIRST_FEATURES, second_features: MJSFEAT.SECOND_FEATURES,
                   third_features: MJSFEAT.THIRD_FEATURES, wait_modes: ['出牌', '鸣牌响应'],
-                  full_note: '勾选：把每一帧的原始数据写进 frame_full 表，以后新增特征可以直接用旧牌谱重算；'
-                    + '不勾选：只写 42 个特征值，数据库更小，但新增特征时必须重新分析牌谱。' });
+                  full_note: '数据库始终写入原始数据（frame_full）；--full 已删除。' });
   }
   if (path.indexOf('/api/paipu-browse') === 0) {
     var bdir = decodeURIComponent((path.split('dir=')[1] || '')) || 'data/paipu';
@@ -2461,6 +2468,7 @@ global.fetch = function (url, opt) {
   if (path.indexOf('/api/analyze') === 0) {
     return json({ ok: true, db: 'data/db/paipu.sqlite', db_total: 2679, logs: 2, rounds: 10,
                   annotations: 300, tool: 'node', warnings: [],
+                  db_type: (body && body.light === false) ? 'standard' : 'light',
                   extend: !!(body && body.extend), skipped: [] });
   }
   if (path.indexOf('/api/read') === 0) {
@@ -2473,18 +2481,20 @@ global.fetch = function (url, opt) {
       return json({ ok: false, error: '「巡目」的可接受条件：整数 / 区间(1-3) / 列表(1,2,3) / 比较(>=3)，收到「boom」' }, 400);
     }
     if (body && body.conds && body.conds[0] && body.conds[0].expr === 'call') {
-      return json({ ok: true, total: 2, limit: body.limit, offset: 0, used: ['巡目'], rows: [ROWCALL, ROW0] });
+      return json({ ok: true, total: 2, limit: body.limit, offset: 0, used: ['巡目'],
+                    db_type: 'light', rows: [ROWCALL, ROW0] });
     }
-    return json({ ok: true, total: 2, limit: body.limit, offset: 0, used: ['巡目'], rows: [ROW0, ROW1] });
+    return json({ ok: true, total: 2, limit: body.limit, offset: 0, used: ['巡目'],
+                  db_type: 'light', rows: [ROW0, ROW1] });
   }
   if (path.indexOf('/api/browse') === 0) {
-    return json({ ok: true, total: 2, limit: body.limit, offset: 0, rows: [ROW0, ROW1] });
+    return json({ ok: true, total: 2, limit: body.limit, offset: 0, db_type: 'light', rows: [ROW0, ROW1] });
   }
   if (path.indexOf('/api/frame-feats') === 0) {
-    return json({ ok: true, row: FAKE.frameFeats });
+    return json({ ok: true, db_type: 'light', row: FAKE.frameFeats });
   }
   if (path.indexOf('/api/detail') === 0) {
-    return json({ ok: true, row: FAKE.detailRow });
+    return json({ ok: true, db_type: 'light', row: FAKE.detailRow });
   }
   if (path.indexOf('/api/download') === 0) {
     var sub = (body && body.subdir) || '';
@@ -2510,6 +2520,10 @@ for (var ri2 = reqs.length - 1; ri2 >= 0; ri2--) {
 }
 check(areq.url === '/api/analyze' && areq.body && areq.body.paths.length === 1,
       '只提交勾选的文件（' + (areq.body ? areq.body.paths.length : '?') + ' 个）');
+check(areq.body.light === true && !('full' in areq.body),
+      '分析 payload 含 light=true、不含 full（v1.6.0 默认轻量）：' + JSON.stringify(areq.body));
+check(byId.anLight && byId.anLight.checked && !byId.anFull,
+      '分析页有默认勾选的「开启轻量分析」，没有 --full 复选框');
 check(byId.anMsg.textContent.indexOf('完成') >= 0, '分析结果提示：' + byId.anMsg.textContent);
 
 /* 8.2b 牌谱目录 / 牌谱文件改成下拉选择（用户 m01171 第 2 条：前缀固定 data/paipu） */
@@ -2533,6 +2547,8 @@ check(App.analyzeState.files.length === 2, '点「扫描」回到整个目录：
 /* 8.3 牌谱检索：添加特征 / 不能重复 */
 byId.btnGoSearch.fire('click');
 check(App.view === 'search', '进入牌谱检索视图');
+check(byId.scDbSelect.textContent.indexOf('轻量') >= 0,
+      '检索数据库下拉显示库类型：' + byId.scDbSelect.textContent);
 /* 8.3a 第零类特征检索方案（用户 m04556 ③）：四种互斥方案 + 「同时具有」的方形多选框，默认不选 = 不筛选 */
 check(byId.aiModes.childNodes.length === 4, '第零类方案 ' + byId.aiModes.childNodes.length + ' 个互斥选项');
 check(byId.aiModes.textContent.indexOf('任意AI决策') >= 0 && byId.aiModes.textContent.indexOf('NAGA决策') >= 0
@@ -2562,7 +2578,7 @@ check(aqreq.url === '/api/query' && aqreq.body.conds.length === 0 && aqreq.body.
 byId.btnAiClear.fire('click');
 check(App.aiPayload() === null && byId.aiPicks.classList.contains('hidden'), '「清除方案」回到不筛选');
 check(byId.scFeatSelect.childNodes.length === MJSFEAT.FEATURES.length - MJSFEAT.AI_FEATURES.length - 1,
-      '特征下拉 ' + byId.scFeatSelect.childNodes.length + ' 项 = 42 − 7 − 1（第零类与第三类都不进下拉，用户 m04556 ③ / m07289）');
+      '特征下拉 ' + byId.scFeatSelect.childNodes.length + ' 项 = 48 − 7 − 1（第零类与第三类都不进下拉，用户 m04556 ③ / m07289）');
 /* 第 63 轮（用户 m07289 的补充要求）：第三类特征「局面」是第零类框右端的必选单选
    「出牌」（默认，= 等待出牌的局面）/「鸣牌响应」；不选也按默认「出牌」筛选（服务端 AND）。 */
 check(aqreq.body.wait === '出牌', '检索请求默认带第三类单选 wait=出牌：' + JSON.stringify(aqreq.body.wait));
@@ -2588,6 +2604,7 @@ inp.fire('input');
 byId.btnRunQuery.fire('click');
 var qreq = reqs[reqs.length - 1];
 check(qreq.url === '/api/query' && qreq.body.conds[0].expr === '3', '检索条件 = ' + JSON.stringify(qreq.body.conds));
+check(App.searchState.dbType === 'light', '检索响应顶层 db_type 存进 Sc.dbType：' + App.searchState.dbType);
 check(qreq.body.wait === '出牌', '检索请求默认带第三类单选 wait=出牌：' + JSON.stringify(qreq.body.wait));
 /* 第 63 轮（用户 m07289 的补充要求）：第三类特征「局面」是第零类框右端的必选单选 —— 切到「鸣牌响应」
    后请求带 wait=鸣牌响应（服务端按 f_meld_wait 过滤，与其它条件 AND）。 */
@@ -2765,16 +2782,25 @@ byId.btnClearConds.fire('click');
 /* 8.10 第二类特征接入 / 帧特征面板 / 分析进度 / 牌谱下载（第 21 轮） */
 console.log('\n=== 8.10 第二类特征 / 帧特征面板 / 分析进度 / 牌谱下载（第 21 轮） ===');
 
-/* (1) 42 个特征（7 第零类 + 17 第一类 + 17 第二类 + 1 第三类；第 36 轮新增立直家（他家）一发巡，第 52 轮新增第零类三项，
+/* (1) 48 个特征（7 第零类 + 17 第一类 + 23 第二类 + 1 第三类；第 36 轮新增立直家（他家）一发巡，第 52 轮新增第零类三项，
    第 59 轮再补 Mortal 避四 / 争一，第 62 轮新增「等待鸣牌」，第 63 轮把「等待鸣牌」编为第三类特征，
    第 74 轮补新版 NAGA 避四 / 争一，用户 m05937 ② / m07289 / m09507） */
 byId.btnClearConds.fire('click');
-check(MJSFEAT.FEATURES.length === 42, '前端特征注册表 ' + MJSFEAT.FEATURES.length + ' 项 = 42（7 第零类 + 17 第一类 + 17 第二类 + 1 第三类）');
-check(byId.scFeatSelect.childNodes.length === 34, '特征下拉 ' + byId.scFeatSelect.childNodes.length + ' 项 = 42 − 7 − 1（第零类与第三类不进下拉）');
+check(MJSFEAT.FEATURES.length === 48, '前端特征注册表 ' + MJSFEAT.FEATURES.length + ' 项 = 48（7 第零类 + 17 第一类 + 23 第二类 + 1 第三类）');
+check(byId.scFeatSelect.childNodes.length === 40, '特征下拉 ' + byId.scFeatSelect.childNodes.length + ' 项 = 48 − 7 − 1（第零类与第三类不进下拉）');
 var fkeys = MJSFEAT.FEATURES.map(function (f5) { return f5.key; });
 check(fkeys.indexOf('shanten_mentsu') >= 0 && fkeys.indexOf('damaten_tsumo_score') >= 0
       && fkeys.indexOf('riichi_others_danger_suji') >= 0 && fkeys.indexOf('riichi_others_danger_ryanmen') >= 0,
       '第二类特征已注册：面子手向听 / 默听自摸期望打点 / 危险筋组 / 危险两面组');
+var advKeys = ['furo_tsumo_advance_avail', 'furo_tsumo_advance_abs',
+               'furo_ron_advance_avail', 'furo_ron_advance_abs',
+               'menzen_advance_avail', 'menzen_advance_abs'];
+check(advKeys.every(function (k) { return fkeys.indexOf(k) >= 0; })
+      && MJSFEAT.FEATURES[24].key === 'shanten_kokushi'
+      && MJSFEAT.FEATURES[27].key === 'furo_tsumo_advance_avail'
+      && MJSFEAT.FEATURES[32].key === 'menzen_advance_abs'
+      && MJSFEAT.FEATURES[33].key === 'furo_tsumo_tenpai_expect',
+      '6 个直接进张已注册，顺序 = 3 向听 → 6 直接进张 → 6 期望听牌（下标 24-32）');
 check(MJSFEAT.AI_FEATURES.length === 7 && MJSFEAT.FEATURES[0].key === 'ai_balance'
       && MJSFEAT.FEATURES[0].name === 'NAGA-平衡 分析' && MJSFEAT.FEATURES[0].values.join('/') === '是/否'
       && MJSFEAT.FEATURES[1].key === 'ai_superhuro' && MJSFEAT.FEATURES[1].name === 'NAGA-超副露 分析'
@@ -2793,9 +2819,9 @@ check(MJSFEAT.FEATURES[12].key === 'rank' && MJSFEAT.FEATURES[13].key === 'riich
       '「顺位」之后紧跟第一类「自家立直状态」（「等待鸣牌」已移出第一类，用户 m07289）');
 check(MJSFEAT.THIRD_FEATURES.length === 1 && MJSFEAT.THIRD_FEATURES[0].key === 'meld_wait'
       && MJSFEAT.THIRD_FEATURES[0].name === '等待鸣牌' && MJSFEAT.THIRD_FEATURES[0].values.join('/') === '是/否'
-      && MJSFEAT.FIRST_FEATURES.length === 17 && MJSFEAT.SECOND_FEATURES.length === 17
-      && MJSFEAT.FEATURES[41].key === 'meld_wait' && fkeys.indexOf('meld_wait') === 41,
-      '「等待鸣牌」独立成第三类（1 项，排在 42 项最后：7 + 17 + 17 + 1，用户 m07289）');
+      && MJSFEAT.FIRST_FEATURES.length === 17 && MJSFEAT.SECOND_FEATURES.length === 23
+      && MJSFEAT.FEATURES[47].key === 'meld_wait' && fkeys.indexOf('meld_wait') === 47,
+      '「等待鸣牌」独立成第三类（1 项，排在 48 项最后：7 + 17 + 23 + 1，用户 m07289）');
 check(byId.scFeatSelect.textContent.indexOf('等待鸣牌') < 0, '第三类特征不出现在检索下拉里（用户 m07289）');
 
 /* (2) 实数特征走文本框 + 小数条件提示 */
@@ -2808,7 +2834,7 @@ check(finps.length === 2, '两个文本框条件：' + finps.length + ' 行（�
 check(!!finps[1] && finps[1].placeholder.indexOf('实数') >= 0, '实数特征提示：' + (finps[1] ? finps[1].placeholder : '无'));
 check(byId.scCondList.textContent.indexOf('默听自摸期望打点') >= 0, '实数特征行名 = 默听自摸期望打点');
 
-/* (3) 帧特征面板：条目模式走 /api/detail，34 行（42 − 第零类 7 项 − 第三类 1 项）+ 检索用到的特征高亮（用户 m05937 ② / m07289） */
+/* (3) 帧特征面板：条目模式走 /api/detail，40 行（48 − 第零类 7 项 − 第三类 1 项）+ 检索用到的特征高亮（用户 m05937 ② / m07289） */
 byId.scDbPath.value = 'data/db/paipu.sqlite';
 finps[0].value = 'call';          /* 第 1 条条件走假接口的 call 分支 */
 finps[0].fire('input');
@@ -2816,6 +2842,7 @@ finps[1].value = '0.5';
 finps[1].fire('input');
 byId.btnRunQuery.fire('click');
 check(App.items.length === 2 && App.items[0].kind !== 'draw', '再次拿到副露帧条目 ' + App.items.length + ' 个');
+FAKE_FEATS.shanten_mentsu = 2;   /* v1.6.0：轻量库内部值 2 应显示 >=2 */
 FAKE.detailRow = { idx: App.items[0].idx, log_id: App.items[0].log_id, label: App.items[0].label, feats: FAKE_FEATS };
 App.featPanelState.key = '';   /* 8.8 用同一 idx 缓存过（当时假响应还是 null），置空让面板重新拉一次 */
 byId.scResultList.childNodes[0].fire('click');
@@ -2824,7 +2851,11 @@ for (var di = reqs.length - 1; di >= 0; di--) { if (reqs[di].url.indexOf('/api/d
 check(!!dreq && dreq.body.idx === App.items[0].idx && dreq.body.db === 'data/db/paipu.sqlite',
       '条目模式走 /api/detail 且带同一个数据库（m03580 修复）：' + JSON.stringify(dreq ? dreq.body : null));
 var frows = byId.featPanelList.querySelectorAll('.feat-row');
-check(frows.length === 34, '帧特征面板 ' + frows.length + ' 行 = 34 个特征（42 − 第零类 7 项 − 第三类 1 项）');
+check(frows.length === 40, '帧特征面板 ' + frows.length + ' 行 = 40 个特征（48 − 第零类 7 项 − 第三类 1 项）');
+check(App.featPanelState.dbType === 'light', '帧特征面板记录响应顶层 db_type：' + App.featPanelState.dbType);
+var _shRow = byId.featPanelList.querySelector('[data-key="shanten_mentsu"]');
+check(!!_shRow && _shRow.querySelector('.feat-value').textContent === '>=2',
+      '轻量库面板把向听 2 显示成 >=2：' + (_shRow ? _shRow.querySelector('.feat-value').textContent : '（没有该行）'));
 var firstShown = MJSFEAT.FEATURES[MJSFEAT.AI_FEATURES.length];   /* 第零类之后的第一项特征 */
 check(frows[0].querySelector('.feat-name').textContent === firstShown.name,
       '第 1 行特征名 = ' + frows[0].querySelector('.feat-name').textContent + '（第零类不列在这里）');
@@ -2858,27 +2889,48 @@ for (var fi2 = reqs.length - 1; fi2 >= 0; fi2--) { if (reqs[fi2].url.indexOf('/a
 check(!!freq && freq.body.frame_index === RC0.frame_index && freq.body.seat === RC0.seat
       && freq.body.db === 'data/db/paipu.sqlite',
       '手动播放走 /api/frame-feats：' + JSON.stringify(freq ? freq.body : null));
-check(byId.featPanelList.querySelectorAll('.feat-row').length === 34, '手动播放时面板同样 34 行');
+check(byId.featPanelList.querySelectorAll('.feat-row').length === 40, '手动播放时面板同样 40 行');
+check(byId.featPanelList.querySelectorAll('.feat-row').length
+      === MJSFEAT.FEATURES.length - MJSFEAT.AI_FEATURES.length - MJSFEAT.THIRD_FEATURES.length,
+      '面板行数 = 48 − 7 第零类 − 1 第三类 = 40（口径由注册表推导）');
 
-/* (4b) m03580：版本号 / 扩充现有数据库 / --full 说明 */
+/* (4b) 版本号 / 扩充现有数据库 / 轻量说明 */
 check(byId.anTool === undefined, '打点工具选择已删除（m03580）');
 App.loadMeta();   /* init() 时假服务还没装好，这里显式重拉一次 /api/features */
-check(App.version === '1.5.1', 'App.version = ' + App.version);
-check(App.version === '1.5.1' && byId.appVer.textContent === 'v1.5.1',
+check(App.version === '1.6.0', 'App.version = ' + App.version);
+check(App.version === '1.6.0' && byId.appVer.textContent === 'v1.6.0',
       '标题栏显示版本号：' + byId.appVer.textContent);
-check(byId.anFullNote.textContent.indexOf('勾选') >= 0 && byId.anFullNote.textContent.length > 20,
-      '--full 说明来自 /api/features：' + byId.anFullNote.textContent.slice(0, 24) + '…');
+check(App.schemaVersion === 12, 'schema_version = 12（v1.6.0）：' + App.schemaVersion);
+check(!byId.anFull && !byId.anFullNote && !byId.anFullHelp,
+      '--full 复选框 / 说明已删除');
+check(byId.anLight && byId.anLight.checked && !byId.anLight.disabled,
+      '新建模式：轻量复选框默认勾选且可编辑');
+check(!!byId.anLightNote && html.indexOf('轻量数据库：三种向听数') >= 0
+      && html.indexOf('frame_full') >= 0 && html.indexOf('anFull') < 0,
+      '轻量说明文案写在 index.html（轻量数据库 / frame_full / 无 anFull）');
 App.fillExtendSelect([
-  { name: 'paipu', size: 400000, app_version: '0.2.0', compatible: true, meta: { record_count: '2679' } },
-  { name: 'old', size: 1000, app_version: '0.0.9', compatible: false, meta: { record_count: '10' } }
+  { name: 'paipu', size: 400000, db_type: 'light', app_version: '1.6.0', compatible: true, meta: { record_count: '2679' } },
+  { name: 'std', size: 400000, db_type: 'standard', app_version: '1.6.0', compatible: true, meta: { record_count: '2679' } },
+  { name: 'old', size: 1000, db_type: 'standard', app_version: '0.0.9', compatible: false, meta: { record_count: '10' } }
 ]);
-check(byId.anExtendDb.childNodes.length === 2, '扩充下拉 ' + byId.anExtendDb.childNodes.length + ' 个库');
-check(byId.anExtendDb.childNodes[0].textContent.indexOf('v0.2.0') >= 0
-      && byId.anExtendDb.childNodes[1].textContent.indexOf('版本不兼容') >= 0,
-      '扩充下拉显示版本 / 不匹配标记：' + byId.anExtendDb.childNodes[1].textContent);
+check(byId.anExtendDb.childNodes.length === 3, '扩充下拉 ' + byId.anExtendDb.childNodes.length + ' 个库');
+check(byId.anExtendDb.childNodes[0].textContent.indexOf('轻量') >= 0
+      && byId.anExtendDb.childNodes[1].textContent.indexOf('标准') >= 0
+      && byId.anExtendDb.childNodes[2].textContent.indexOf('版本不兼容') >= 0,
+      '扩充下拉显示轻量 / 标准 / 不匹配标记：' + byId.anExtendDb.childNodes[0].textContent);
 App.anSetMode('extend');
 check(App.analyzeState.mode === 'extend' && !byId.anExtendRow.classList.contains('hidden')
       && byId.anDbName.disabled === true, '扩充模式：显示下拉、禁用数据库名输入（互斥）');
+check(byId.anLight.checked && byId.anLight.disabled,
+      '扩充轻量库：轻量复选框自动勾选并禁用');
+byId.anExtendDb.value = 'std';
+byId.anExtendDb.fire('change');
+check(!byId.anLight.checked && byId.anLight.disabled,
+      '扩充标准库：轻量复选框自动取消并禁用');
+byId.anExtendDb.value = 'paipu';
+byId.anExtendDb.fire('change');
+check(byId.anLight.checked && byId.anLight.disabled,
+      '切回轻量库：复选框自动勾选（仍禁用）');
 var tgt = App.anTargetDb();
 check(tgt.extend === true && tgt.db_name === 'paipu', '扩充模式提交目标：' + JSON.stringify(tgt));
 byId.btnAnalyze.fire('click');
@@ -2886,11 +2938,29 @@ var ereq = null;
 for (var ei = 0; ei < reqs.length; ei++) { if (reqs[ei].url === '/api/analyze') { ereq = reqs[ei]; } }
 check(!!ereq && ereq.body.extend === true && ereq.body.db_name === 'paipu' && ereq.body.tool === undefined,
       '扩充提交带 extend、不带 tool：' + JSON.stringify(ereq ? ereq.body : null));
+check(!!ereq && ereq.body.light === true && !('full' in ereq.body),
+      '扩充轻量库时 payload light=true、无 full：' + JSON.stringify(ereq ? ereq.body : null));
 check(byId.anMsg.textContent.indexOf('扩充') >= 0, '扩充结果提示：' + byId.anMsg.textContent);
 App.anSetMode('new');
 check(App.analyzeState.mode === 'new' && byId.anExtendRow.classList.contains('hidden')
       && byId.anDbName.disabled === false, '新建模式：隐藏下拉、数据库名可用');
+check(byId.anLight.checked && !byId.anLight.disabled,
+      '切回新建模式：轻量复选框恢复默认勾选且可编辑');
 check(App.anTargetDb().extend === false, '新建模式提交目标不带 extend');
+/* (4c) DB 类型格式化（v1.6.0） */
+check(App.dbTypeText('light') === '轻量' && App.dbTypeText('standard') === '标准',
+      'DB 类型显示名 = 轻量 / 标准');
+check(App.fmtFeatValue('shanten_mentsu', 2, 'light') === '>=2',
+      '轻量库向听 2 显示 >=2');
+check(App.fmtFeatValue('shanten_mentsu', 2, 'standard') === '2',
+      '标准库向听 2 仍显示 2');
+check(App.fmtFeatValue('shanten_mentsu', 3, 'standard') === '>=3',
+      '标准库向听 3 显示 >=3');
+check(App.fmtFeatValue('shanten_mentsu', 3, 'light') === '3',
+      '轻量库内部值 3 不映射成 >=3（按整数原样显示）');
+check(App.featHint(MJSFEAT.FEATURES[26], 'light').indexOf('2 = >=2') >= 0
+      && App.featHint(MJSFEAT.FEATURES[26], 'standard').indexOf('3 = >=3') >= 0,
+      '向听数条件提示按库类型区分');
 
 /* (5) 分析进度条 */
 FAKE.anProgress = { running: true, files_total: 2, files_done: 1, current: f.replace(/\.xml$/, ''),

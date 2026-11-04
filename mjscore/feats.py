@@ -67,13 +67,14 @@
     * 「亲家（他家）」在决策者自己就是亲家时记 否 / 否 / 0（不存在"他家的亲家"）。
     * 顺位并列时按自风顺序（東南西北）排先，与天凤一致。
     * 供托按"立直棒×1000 + 本场×300"折算，与 readme 定义一致。
-     * 第 21 轮起本模块还产出 17 个第二类特征（见下面的 SECOND_FEATURES，m02959）：
+     * 第 21 轮起本模块还产出第二类特征（见下面的 SECOND_FEATURES，m02959；v1.6.0 起 23 个）：
        向听数 3（国士無双 / 七対子 / 面子手，-1 = 已和牌、0 = 听牌；
-       内部值 3 表示 >=3，对外显示一律写成 >=3）+
+       内部值 3 表示 >=3，对外显示一律写成 >=3；轻量库上限 2、2 表示 >=2）+
+       直接进张 6（副露自摸 / 副露荣和 × 枚数 / 绝对枚数，立直/默听共用两项；v1.6.0）+
        期望枚数 6（副露自摸 / 副露荣和 × 期望枚数 / 绝对枚数，立直/默听共用两项）+
        期望打点 6（副露 / 立直 / 默听 × 荣和 / 自摸）+ 立直家（他家）危险特征 2
        （-1 = 场上没有他家立直）。第二类特征只在本模块（Python）实现，--tool node
-       时由 cli.py 后处理补齐；期望特征的算法与口径见 log.md 第 13 / 19 节。
+       时由 cli.py 后处理补齐；期望特征的算法与口径见 log.md 第 13 / 19 / 85 节。
      * 「巡目」按「出牌」计：打牌 +1；暗杠/加杠视为出了一次牌 +1；吃/碰/大明杠不算。
       即巡目 = 该家本局已出牌次数（含暗杠/加杠）+ 1。副露过的人巡目会比"按摸牌次数计"大：
       第 5 巡出牌后吃了一张再出牌，那一手就是第 6 巡（大明杠同理）；
@@ -126,11 +127,12 @@ AI_FEATURES = [
 AI_KEYS = [f["key"] for f in AI_FEATURES]
 
 # ------------------------------------------------ 第二类特征（用户 m02959 接入检索）
-# 17 个 = 三种向听数 3 + 期望枚数 6 + 期望打点 6（mjscore/expect.py）+ 立直家危险特征 2（mjscore/danger.py）。
+# 23 个 = 三种向听数 3 + 直接进张 6（v1.6.0）+ 期望枚数 6 + 期望打点 6（mjscore/expect.py）
+# + 立直家危险特征 2（mjscore/danger.py）。
 # kind = int(整数) / float(实数)：期望特征是实数，检索条件支持小数（见 store.parse_cond）。
 # 算法只在 Python 一侧实现（expect 的枚举开销很大，移植到 js 风险过高）：--tool node 时
 # node 算第一类 17 项（web/js/mjsfeat.js 与这里同构，用户 m06832；「等待鸣牌」是第三类，用户 m07289）：
-# 这 17 列由 cli.fill_second_class 用 Python 补齐；第零类 7 列由 cli.fill_ai 按牌谱来源补（用户 m04556 ②）。
+# 这 23 列由 cli.fill_second_class 用 Python 补齐；第零类 7 列由 cli.fill_ai 按牌谱来源补（用户 m04556 ②）。
 SHANTEN_FEATURES = [
     {"key": "shanten_kokushi", "name": "国士無双向听数", "col": "s_shanten_kokushi",
      "kind": "int", "min": -1, "max": 3},
@@ -141,7 +143,14 @@ SHANTEN_FEATURES = [
 ]
 # 向听数的三个 key：内部取值 3 表示「>=3 向听」，对外显示一律写成 >=3（用户 m04115②）。
 # 界面的取值格式化见 web/js/app.js fmtFeatValue()，命令行见 cli.feat_value_text()。
+# v1.6.0 轻量库：内部上限 2，取值 {-1,0,1,2}，2 对外显示 >=2。
 SHANTEN_KEYS = tuple(f["key"] for f in SHANTEN_FEATURES)
+
+# 6 个直接进张（v1.6.0 第 85 轮）：数据来自 expect.ADVANCE_FEATURES；int 0..136。
+ADVANCE_FEATURES = [
+    {"key": k, "name": n, "col": "s_" + k, "kind": "int", "min": 0, "max": 136}
+    for k, n in expect.ADVANCE_FEATURES
+]
 
 EXPECT_FEATURES = [
     {"key": k, "name": n, "col": "s_" + k, "kind": "float", "min": 0.0, "max": 100000.0}
@@ -154,8 +163,9 @@ DANGER_FEATURES = [
     for k, n in danger.FEATURES
 ]
 
-SECOND_FEATURES = SHANTEN_FEATURES + EXPECT_FEATURES + DANGER_FEATURES
+SECOND_FEATURES = SHANTEN_FEATURES + ADVANCE_FEATURES + EXPECT_FEATURES + DANGER_FEATURES
 SECOND_KEYS = [f["key"] for f in SECOND_FEATURES]
+ADVANCE_KEYS = [f["key"] for f in ADVANCE_FEATURES]
 
 # ------------------------------------------------- 第三类特征（用户 m07289 的补充要求）
 # 「等待鸣牌」不再算普通第一类特征：它描述的是**帧的类型**（这一帧是不是「鸣牌响应」帧），
@@ -169,7 +179,7 @@ THIRD_KEYS = [f["key"] for f in THIRD_FEATURES]
 # 第一类 17 项的最终顺序（用户 m02357：「立直家（他家）一发巡」紧随「立直家（他家）数量」；
 # 用户 m04556 ② 把原第 1 项「NAGA决策」移到第零类、用户 m07289 把「等待鸣牌」移到第三类 ⇒ 剩下的就是 BASE_FEATURES）
 FIRST_KEYS = [f["key"] for f in BASE_FEATURES]
-# 最终注册表 = 第零类 7 项 + 第一类 17 项 + 第二类 17 项 + 第三类 1 项（共 42 项；列顺序 / 界面顺序都按它）
+# 最终注册表 = 第零类 7 项 + 第一类 17 项 + 第二类 23 项 + 第三类 1 项（共 48 项；列顺序 / 界面顺序都按它）
 FEATURES = AI_FEATURES + BASE_FEATURES + SECOND_FEATURES + THIRD_FEATURES
 
 BY_KEY = {f["key"]: f for f in FEATURES}
@@ -348,19 +358,20 @@ def extract(st, seat, kind=None):
     }
 
 
-def second_class(st, seat, log=None):
-    """17 个第二类特征的取值（视角 = seat）。返回 {key: value}。
+def second_class(st, seat, log=None, light=False):
+    """23 个第二类特征的取值（视角 = seat）。返回 {key: value}。
 
     log 是本局的 danger.DangerLog（危险特征要用全局出牌序）；有他家立直时必须给，
     否则 danger.values 会抛 ValueError。期望特征用 expect 的默认上限（向听 1）。
+    light=True = 轻量库：只把三种向听数的内部上限从 3 改成 2（Expect.max_shanten 仍为 1）。
     """
-    sh = shanten.shanten_at(st, seat)          # {'kokushi':…, 'chiitoi':…, 'mentsu':…}
+    sh = shanten.shanten_at(st, seat, cap=2 if light else 3)   # {'kokushi':…, 'chiitoi':…, 'mentsu':…}
     out = {
         "shanten_kokushi": sh[shanten.KOKUSHI],
         "shanten_chiitoi": sh[shanten.CHIITOI],
         "shanten_mentsu": sh[shanten.MENSU],
     }
-    out.update(expect.values(st, seat))
+    out.update(expect.values(st, seat, shanten_cap=2 if light else 3))
     out.update(danger.values(st, seat, log))
     return out
 
@@ -516,13 +527,13 @@ def paipu_url_of(game, log_id):
     return mjlog.paipu_url(log_id)
 
 
-def make_record(game, round_index, ev_index, st, seat, kind, drawn, log=None):
-    """组装一个打点行（5 + 17 + 17 + 1 特征 + 事实字段）。kind = draw / chi / pon / wait；drawn = 摸到的牌或 None。"""
+def make_record(game, round_index, ev_index, st, seat, kind, drawn, log=None, light=False):
+    """组装一个打点行（7 + 17 + 23 + 1 特征 + 事实字段）。kind = draw / chi / pon / wait；drawn = 摸到的牌或 None。"""
     me = st["players"][seat]
     vals = extract(st, seat, kind)              # 第一类 17 项 + 第三类「等待鸣牌」（视角 = seat，用户 m07289）
-    vals.update(second_class(st, seat, log))    # 第二类 17 项（m02959）
+    vals.update(second_class(st, seat, log, light=light))    # 第二类 23 项（m02959 / v1.6.0）
     ai_vals, ai_models_txt, ai_series_txt = ai_frame_values(game, round_index, ev_index, seat)
-    vals.update(ai_vals)                        # 第零类 5 项（按帧判定，用户 m06323 ①）
+    vals.update(ai_vals)                        # 第零类 7 项（按帧判定，用户 m06323 ①）
     lid = game.get("log_id") or ""
     rec = {
         "log_id": lid,
@@ -559,29 +570,30 @@ def make_record(game, round_index, ev_index, st, seat, kind, drawn, log=None):
     return rec
 
 
-def draw_record(game, round_index, ev_index, st, ev, seat, log=None):
+def draw_record(game, round_index, ev_index, st, ev, seat, log=None, light=False):
     """非自摸的摸牌帧（kind='draw'）。"""
-    return make_record(game, round_index, ev_index, st, seat, "draw", ev["tile"], log)
+    return make_record(game, round_index, ev_index, st, seat, "draw", ev["tile"], log, light)
 
 
-def call_record(game, round_index, ev_index, st, ev, seat, log=None):
+def call_record(game, round_index, ev_index, st, ev, seat, log=None, light=False):
     """吃 / 碰之后「等待出牌」的那一帧（kind = 'chi' / 'pon'）。"""
-    return make_record(game, round_index, ev_index, st, seat, ev["callType"], None, log)
+    return make_record(game, round_index, ev_index, st, seat, ev["callType"], None, log, light)
 
 
-def wait_record(game, round_index, ev_index, st, ev, seat, log=None):
+def wait_record(game, round_index, ev_index, st, ev, seat, log=None, light=False):
     """「等待鸣牌决策」的一行（kind='wait'，用户 m06801 / m06832）。
 
     ev = 那张出牌事件；seat = 可能鸣牌（吃 / 碰 / 杠）的一家（用户 m07289 ①②）。
     ev_index 用该出牌事件的下标 ⇒ frame_index = ev_index + 1 = 播放里显示这张出牌的那一帧。
     """
-    return make_record(game, round_index, ev_index, st, seat, "wait", None, log)
+    return make_record(game, round_index, ev_index, st, seat, "wait", None, log, light)
 
 
-def records_for_round(game, round_index, log=None):
+def records_for_round(game, round_index, log=None, light=False):
     """产出本局所有打点行（出牌帧 + 鸣牌响应帧；用户 m06801 / m07289）。
 
     log = 本局的 danger.DangerLog（危险特征要按全局出牌序算）；不给就现建一个。
+    light=True = 轻量库（三种向听数上限 2；其余 45 个特征与标准库相同）。
     """
     events = game["rounds"][round_index]["events"]
     st = replay.initial_state(game, round_index)
@@ -597,25 +609,25 @@ def records_for_round(game, round_index, log=None):
             if (nxt is not None and nxt["type"] == "agari"
                     and nxt["winner"] == ev["player"] and nxt["fromWho"] == ev["player"]):
                 continue  # 自摸和了：本轮打点排除
-            out.append(draw_record(game, round_index, i, st, ev, ev["player"], log))
+            out.append(draw_record(game, round_index, i, st, ev, ev["player"], log, light))
         elif ev["type"] == "call" and ev["callType"] in ("chi", "pon"):
             # 摆出副露牌后、等待出牌的那一帧。
             # 暗杠 / 加杠 / 大明杠没有这一帧：它们紧接着摸岭上牌，到那一帧再打点。
-            out.append(call_record(game, round_index, i, st, ev, ev["player"], log))
+            out.append(call_record(game, round_index, i, st, ev, ev["player"], log, light))
         elif ev["type"] == "discard":
             # 鸣牌响应帧（用户 m07289 ①②）：判据 = 「这张牌**可能**被他家鸣牌」——与牌谱里实际
             # 有没有出现鸣牌无关（碰 = 同种 ≥2 张；吃 = 下家能凑顺子且吃后还剩可打的牌，食替禁止）。
             # 可能鸣牌的每一家各出一行，与播放视图的关键帧判据完全一致。
             kind = mjlog.kind_of(ev["tile"])
             for s in responders(st, ev["player"], kind):
-                out.append(wait_record(game, round_index, i, st, ev, s, log))
+                out.append(wait_record(game, round_index, i, st, ev, s, log, light))
     return out
 
 
-def records_for_game(game):
+def records_for_game(game, light=False):
     out = []
     for ri in range(len(game["rounds"])):
-        out.extend(records_for_round(game, ri))
+        out.extend(records_for_round(game, ri, light=light))
     return out
 
 

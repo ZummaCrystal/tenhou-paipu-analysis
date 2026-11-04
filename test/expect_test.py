@@ -30,7 +30,7 @@ try:
 except Exception:
     pass
 
-from mjscore import agari, expect, feats, mjlog, replay, shanten
+from mjscore import agari, cli, expect, feats, mjlog, replay, shanten
 
 OK = [0]
 BAD = [0]
@@ -102,7 +102,8 @@ def state_for(hand, melds=(), seen=(), oya=3, round_=0, riichi=False, dora=()):
 
 
 def node_keys():
-    """`Expect.node()` 返回字典的全部键（36 个：枚数分子 12 + 枚数分母 12 + 打点分子 6 + 分母 6）。"""
+    """`Expect.node()` 返回字典的全部键（42 个：枚数分子 12 + 枚数分母 12 + 打点分子 6 + 分母 6
+    + 直接进张 6）。"""
     out = []
     for agg in expect.AGGS:
         for mode in (TSUMO, RON):
@@ -116,6 +117,11 @@ def node_keys():
         for mode in (TSUMO, RON):
             out.append(("sc", assume, mode))
             out.append(("ms", assume, mode))
+    for mode in (TSUMO, RON):
+        for measure in ("avail", "abs"):
+            out.append(("da", expect.FURO_ASSUME, mode, measure))
+    for measure in ("avail", "abs"):
+        out.append(("da", expect.MENZEN_ASSUME, measure))
     return set(out)
 
 
@@ -357,6 +363,102 @@ def ref_frame(e, counts, assume):
     return vals, scs
 
 
+def advance_vals(feats):
+    """6 个直接进张特征的整数值（节点字典 / compute() 返回的 dict 都适用）。"""
+    return dict((k, int(feats[k])) for k in expect.ADVANCE_KEYS)
+
+
+def _advance_zero():
+    return dict((k, 0) for k in expect.ADVANCE_KEYS)
+
+
+def ref_advance_leaf(e, counts, used=None):
+    """独立参考：d=0 叶子的 6 个直接进张值。
+
+    直接复用 ref_leaf()（它自己用 agari.score 判役 / 算枚数，不看模块的 da 实现）：
+      * 副露假设：ref_leaf 只累计「有役和牌张」的枚数，无役时返回 0 —— 正好是 tp；
+      * 门清：门清自摸必有役 => 全部形状听牌的枚数（all_waits=True）。
+    """
+    out = _advance_zero()
+    if e.dist(counts, used) != 0:
+        return out
+    for mode in (TSUMO, RON):
+        av, ab = ref_leaf(e, counts, mode == TSUMO, assume=expect.FURO_ASSUME, used=used)[:2]
+        tag = "tsumo" if mode == TSUMO else "ron"
+        out["furo_%s_advance_avail" % tag] = int(av)
+        out["furo_%s_advance_abs" % tag] = int(ab)
+    if e.menzen:
+        av, ab = ref_leaf(e, counts, True, assume=expect.MENZEN_ASSUME, used=used,
+                          all_waits=True)[:2]
+        out["menzen_advance_avail"] = int(av)
+        out["menzen_advance_abs"] = int(ab)
+    return out
+
+
+def ref_advance_node(e, counts, used=None):
+    """独立参考：13-3n 张节点的 6 个直接进张值（不调用模块的 node()）。
+
+    d=0：叶子退化为 tp；d=1：逐牌种摸入、逐张试打，用 ref_advance_leaf() 看 d=0 子节点
+    在该假设下有没有有役和牌张，按剩余枚数累加；d>=2 / d=-1：0。
+    """
+    d = e.dist(counts, used)
+    if d == 0:
+        return ref_advance_leaf(e, counts, used)
+    out = _advance_zero()
+    if d != 1:
+        return out
+    if used is None:
+        used = (0,) * 34
+    al = e._avail_left(used)
+    for t in range(34):
+        if counts[t] >= 4 or al[t] <= 0:
+            continue
+        c14 = list(counts)
+        c14[t] += 1
+        nu = list(used)
+        nu[t] += 1
+        nu = tuple(nu)
+        if e.dist(c14, nu) != 0:
+            continue
+        keep = [sub(c14, c) for c in range(34) if c14[c] > 0 and e.dist(sub(c14, c), nu) == 0]
+        if not keep:
+            continue
+        kids = [ref_advance_leaf(e, h, nu) for h in keep]
+        for key in expect.ADVANCE_KEYS:
+            if not any(g[key] > 0 for g in kids):
+                continue
+            out[key] += al[t] if key.endswith("_avail") else (4 - counts[t] - e.meldc[t])
+    return out
+
+
+def ref_advance_frame(e, counts, used=None):
+    """独立参考：一帧（13-3n / 14-3n 张）的 6 个直接进张值。
+
+    14 张：独立算 dmin / keep（所有打到最小整体向听数的切牌），对每个 keep 的 13 张
+    调用 ref_advance_node()，6 项分别取 max（不是 sum）。
+    """
+    used = (0,) * 34 if used is None else used
+    n13 = e.n13
+    total = sum(counts)
+    if total not in (n13, n13 + 1):
+        return _advance_zero()
+    if total == n13:
+        return ref_advance_node(e, counts, used)
+    d0 = e.dist(counts, used)
+    if d0 == -1 or d0 > e.max:
+        return _advance_zero()
+    disc = [c for c in range(34) if counts[c] > 0]
+    ds = dict((c, e.dist(sub(counts, c), used)) for c in disc)
+    dmin = min(ds.values())
+    keep = [sub(counts, c) for c in disc if ds[c] == dmin]
+    if dmin > e.max:
+        return _advance_zero()
+    vals = [ref_advance_node(e, h, used) for h in keep]
+    if not vals:
+        return _advance_zero()
+    return dict((k, max(v[k] for v in vals)) for k in expect.ADVANCE_KEYS)
+
+
 def section1():
     print("=== 1. waits_of 与暴力枚举对拍 ===")
     eq(sorted(expect.waits_of(agari.counts_of(ids([0, 1, 2, 3, 4, 5, 10, 11, 12, 15, 15, 22, 24])))),
@@ -402,7 +504,8 @@ def section2():
     near(f1["damaten_tsumo_score"], 1100.0,
          "嵌张：默听自摸期望打点 1100（m02389：和牌前提下的条件期望，只有一种和牌张）")
     eq(f1["damaten_ron_score"], 0.0, "嵌张：默听荣和期望打点 0（无役）")
-    eq(sum(v for k, v in f1.items() if k.startswith("furo")), 0.0, "嵌张：副露 6 项全 0")
+    eq(sum(f1[k] for k in expect.KEYS if k.startswith("furo")), 0.0,
+       "嵌张：副露 6 个期望特征全 0（不含新增的 furo_*_advance_*）")
     near(f1["riichi_ron_score"], 1300.0,
          "嵌张：立直荣和期望打点 1300（m02512：未立直的门清帧也按立直假设算；默听时无役）")
     near(f1["riichi_tsumo_score"], 2000.0,
@@ -433,8 +536,8 @@ def section2():
     eq(f3["furo_ron_tenpai_abs"], 8.0, "副露：荣和期望听牌绝对枚数 8")
     near(f3["furo_ron_score"], 1000.0, "副露：荣和期望打点 1000（役牌 1 番 30 符）")
     near(f3["furo_tsumo_score"], 1100.0, "副露：自摸期望打点 1100（两张和牌张得点相同）")
-    eq(sum(v for k, v in f3.items() if k.startswith(("menzen", "damaten", "riichi"))), 0.0,
-       "副露：门清 6 项全 0")
+    eq(sum(f3[k] for k in expect.KEYS if k.startswith(("menzen", "damaten", "riichi"))), 0.0,
+       "副露：门清 6 个期望特征全 0（不含新增的 menzen_advance_*）")
 
     f3b = expect.values(state_for(h3, melds=[chi([18, 19, 20])]), 0)  # 吃 123s
     eq(f3b["furo_ron_tenpai_expect"], 0.0, "副露无役（吃 123s）：荣和期望枚数 0")
@@ -477,7 +580,7 @@ def section2():
     eq(fty["furo_ron_tenpai_expect"], 8.0, "副露假设（断幺九）：副露荣和期望枚数 8")
     near(fty["furo_ron_score"], 1000.0, "副露假设（断幺九）：副露荣和期望打点 1000")
     eq(set(ety.node(ety.counts).keys()), node_keys(),
-       "节点字典 = 36 个键（枚数分子 12 + 枚数分母 12 + 打点分子 6 + 打点分母 6）")
+       "节点字典 = 42 个键（枚数分子 12 + 枚数分母 12 + 打点分子 6 + 打点分母 6 + 直接进张 6）")
 
     # m02073：概率分步扣掉「已假想摸进」的牌（不会摸到第 5 张）
     five = ids([22, 22, 22, 0, 1, 2, 3, 4, 5, 10, 11, 12, 26])
@@ -553,8 +656,8 @@ def section2b():
     near(f["riichi_tsumo_score"], 5200.0, "赤 5 手牌：立直自摸 4 番 20 符 5200")
     near(f["damaten_ron_score"], 2000.0, "赤 5 手牌：默听荣和 2 番 30 符 2000")
     near(f["damaten_tsumo_score"], 2700.0, "赤 5 手牌：默听自摸 3 番 20 符 2700")
-    eq(sum(v for k, v in f.items() if k.startswith("furo")), 0.0,
-       "赤 5 不是役：副露假设仍无役")
+    eq(sum(f[k] for k in expect.KEYS if k.startswith("furo")), 0.0,
+       "赤 5 不是役：副露 6 个期望特征仍无役（不含新增的 furo_*_advance_*）")
     eq(f["menzen_tenpai_expect"], 8.0, "赤 5 不影响听牌枚数")
 
     h14 = h + [ids([23])[0]]                                 # 和 6s
@@ -788,6 +891,158 @@ def section3c():
         print("    差异 %s" % (b,))
 
 
+def node_advance_vals(n):
+    """把节点字典里的 6 个 ("da", ...) 键取成 {特征 key: 整数}。"""
+    out = {}
+    for mode in (TSUMO, RON):
+        for measure in ("avail", "abs"):
+            tag = "tsumo" if mode == TSUMO else "ron"
+            out["furo_%s_advance_%s" % (tag, measure)] = int(
+                n[("da", expect.FURO_ASSUME, mode, measure)])
+    for measure in ("avail", "abs"):
+        out["menzen_advance_%s" % measure] = int(n[("da", expect.MENZEN_ASSUME, measure)])
+    return out
+
+
+def state_at_game(game, round_index, ev_index):
+    """按交接文档的 state_at()：回放本局事件到第 ev_index 个（含）。"""
+    st = replay.initial_state(game, round_index)
+    for i, ev in enumerate(game["rounds"][round_index]["events"]):
+        replay.apply_event(st, ev)
+        if i == ev_index:
+            break
+    return st
+
+
+def section5():
+    print("=== 5. 直接进张 6 项（d=0 复用 tp / d=1 复用 kids / 14 张取 keep 的 max）===")
+    # ---- 5.1 d=0：6 项 == 对应 tp（节点键与帧级特征各验一遍）
+    h1 = ids([0, 1, 2, 3, 4, 5, 10, 11, 12, 15, 15, 22, 24])   # 123m456m234p66p5s7s，听 6s
+    st1 = state_for(h1)
+    e1 = expect.Expect(st1, 0)
+    eq(e1.dist(e1.counts), 0, "d=0 用例：听牌")
+    n1 = e1.node(e1.counts)
+    for mode in (TSUMO, RON):
+        for measure in ("avail", "abs"):
+            eq(int(n1[("da", expect.FURO_ASSUME, mode, measure)]),
+               int(n1[("tp", expect.FURO_ASSUME, "sum", mode, measure)]),
+               "d=0 副露 %s/%s：da == tp" % (mode, measure))
+    for measure in ("avail", "abs"):
+        eq(int(n1[("da", expect.MENZEN_ASSUME, measure)]),
+           int(n1[("tp", expect.MENZEN_ASSUME, "sum", measure)]),
+           "d=0 门清 %s：da == tp" % measure)
+    f1 = expect.values(st1, 0)
+    eq(f1["menzen_advance_avail"], f1["menzen_tenpai_expect"], "d=0 门清：直接进张枚数 == 期望听牌枚数")
+    eq(f1["menzen_advance_abs"], f1["menzen_tenpai_abs"], "d=0 门清：直接进张绝对枚数 == 期望听牌绝对枚数")
+    eq([f1["furo_tsumo_advance_avail"], f1["furo_tsumo_advance_abs"],
+        f1["furo_ron_advance_avail"], f1["furo_ron_advance_abs"]], [0, 0, 0, 0],
+       "d=0 副露假设（123m 边张手无役）：4 项全 0")
+    eq(node_advance_vals(n1), ref_advance_frame(e1, e1.counts), "d=0 节点 6 项与独立参考一致")
+
+    # ---- 5.2 按剩余张数计，不按牌种数 +1
+    seen6s = state_for(h1, seen=[{"tile": 23 * 4 + 1, "called": False}])
+    f_seen = expect.values(seen6s, 0)
+    eq(f_seen["menzen_advance_avail"], 3,
+       "牌河见 1 张 6s：单一种进张 4-1 = 3（不是 1 种 +1）")
+    eq(f_seen["menzen_advance_abs"], 4, "同一帧绝对枚数仍 4（只看自己手牌）")
+
+    # ---- 5.3 副露假设有役时也计入：断幺九听 4s/7s 共 8 枚
+    tanyao = ids([1, 2, 3, 3, 4, 5, 10, 11, 12, 15, 15, 22, 23])   # 234m456m234p66p56s
+    ft = expect.values(state_for(tanyao), 0)
+    eq([ft["furo_ron_advance_avail"], ft["furo_tsumo_advance_avail"],
+        ft["furo_ron_advance_abs"], ft["furo_tsumo_advance_abs"]], [8, 8, 8, 8],
+       "d=0 副露假设（断幺九）：4 项都是 8 枚")
+
+    # ---- 5.4 d=1：独立一层参考对拍（节点键 + compute 各一次）
+    adv_hands = [
+        ids([1, 2, 3, 3, 4, 5, 10, 11, 12, 15, 15, 22, 26]),       # 234m456m234p66p5s9s
+        ids([0, 1, 2, 3, 4, 5, 10, 11, 12, 15, 15, 22, 26]),       # 123m456m234p66p5s9s
+    ]
+    for hand in adv_hands:
+        e = expect.Expect(state_for(hand), 0)
+        eq(e.dist(e.counts), 1, "d=1 用例：向听 1")
+        got_node = node_advance_vals(e.node(e.counts))
+        got_frame = advance_vals(e.compute()[0])
+        want = ref_advance_node(e, e.counts)
+        eq(got_node, want, "d=1 节点 6 项与独立参考一致（%s）" % want)
+        eq(got_frame, want, "d=1 帧级 6 项与节点一致（%s）" % want)
+        check(all(want["%s_advance_abs" % p] >= want["%s_advance_avail" % p]
+                  for p in ("furo_tsumo", "furo_ron", "menzen")),
+              "d=1 绝对枚数 >= 期望枚数（%s）" % want)
+
+    # ---- 5.5 d>=2 / d=-1 一律 0
+    far = ids([0, 4, 8, 9, 13, 17, 18, 22, 26, 27, 28, 29, 30])
+    e_far = expect.Expect(state_for(far), 0)
+    check(e_far.dist(e_far.counts) >= 2, "d>=2 用例：向听 %d" % e_far.dist(e_far.counts))
+    eq(advance_vals(e_far.compute()[0]), _advance_zero(), "d>=2：6 项全 0")
+    won = ids([0, 1, 2, 3, 4, 5, 10, 11, 12, 15, 15, 21, 22, 23])
+    e_won = expect.Expect(state_for(won), 0)
+    eq(e_won.dist(e_won.counts), -1, "d=-1 用例：已和牌")
+    eq(advance_vals(e_won.compute()[0]), _advance_zero(), "d=-1：6 项全 0")
+    f_far = e_far.compute()[0]
+    f_won = e_won.compute()[0]
+    check(all(isinstance(f_far[k], int) and not isinstance(f_far[k], bool)
+              and isinstance(f_won[k], int) and not isinstance(f_won[k], bool)
+              for k in expect.ADVANCE_KEYS),
+          "d>=2 / d=-1 的 6 个直接进张也是 int（不是 0.0）")
+
+    # ---- 5.6 14 张：keep 的 max，不是 sum
+    h14 = ids([0, 1, 3, 3, 3, 17, 17, 17, 22, 23, 23, 24, 24, 25])
+    e14 = expect.Expect(state_for(h14), 0)
+    eq(e14.dist(e14.counts), 0, "14 张用例：d0=0（打一张后听牌）")
+    got14 = advance_vals(e14.compute()[0])
+    want14 = ref_advance_frame(e14, e14.counts)
+    eq(got14, want14, "14 张：6 项 == keep 的 max（独立参考）")
+    disc = [c for c in range(34) if e14.counts[c] > 0]
+    ds = dict((c, e14.dist(sub(e14.counts, c))) for c in disc)
+    keep = [sub(e14.counts, c) for c in disc if ds[c] == min(ds.values())]
+    per_keep = [e14.node(h) for h in keep]
+    per_keep_menzen = [int(g[("tp", expect.MENZEN_ASSUME, "sum", "avail")]) for g in per_keep]
+    eq(got14["menzen_advance_avail"], max(per_keep_menzen),
+       "14 张门清枚数 = max(keep)（%d 个 keep）" % len(keep))
+    check(sum(per_keep_menzen) != got14["menzen_advance_avail"],
+          "14 张不是 sum：keep 合计 %d != 取 max %d"
+          % (sum(per_keep_menzen), got14["menzen_advance_avail"]))
+
+    # ---- 5.7 赤 5 与普通 5 同种：听 5m 时把手里唯一的 5m 换成赤 5，枚数不变
+    h5 = ids([0, 1, 2, 3, 4, 5, 10, 11, 12, 14, 14, 21, 22])   # 123m456m234p66p45s（听 3s/6s）
+    h5red = list(h5)
+    h5red[h5red.index(17)] = 16                                  # 5m -> 赤 5m
+    f5 = expect.values(state_for(h5), 0)
+    f5r = expect.values(state_for(h5red), 0)
+    eq([f5r[k] for k in expect.ADVANCE_KEYS], [f5[k] for k in expect.ADVANCE_KEYS],
+       "赤 5 与普通 5 同种：6 个直接进张不因赤 5 改变")
+
+    # ---- 5.8 交接文档图 2：真实牌谱的 6 项 6/7 + 打点
+    fig2 = os.path.join(ROOT, "data", "paipu", "naga-new",
+                        "010b6cc06e02d1346909a3831ca7400dd0399fb91eaa94a613882f87a2839f43v2_2.naga")
+    check(os.path.isfile(fig2), "图 2 牌谱存在：%s" % fig2)
+    if os.path.isfile(fig2):
+        game = cli.game_from_file(fig2)
+        st2 = state_at_game(game, 2, 76)
+        e2 = expect.Expect(st2, 1)
+        eq(e2.dist(e2.counts), 0, "图 2：d0=0")
+        f2 = expect.values(st2, 1)
+        eq([f2["furo_tsumo_advance_avail"], f2["furo_tsumo_advance_abs"],
+            f2["furo_ron_advance_avail"], f2["furo_ron_advance_abs"]], [0, 0, 0, 0],
+           "图 2：副露假设 4 项全 0（无副露役）")
+        eq([f2["menzen_advance_avail"], f2["menzen_advance_abs"]], [6, 7],
+           "图 2：立直/默听直接进张 = 6 / 7")
+        near(f2["riichi_ron_score"], 5200.0, "图 2：立直荣和 5200")
+        near(f2["riichi_tsumo_score"], 7900.0, "图 2：立直自摸 7900")
+        eq(f2["damaten_ron_score"], 0.0, "图 2：默听荣和 0")
+        near(f2["damaten_tsumo_score"], 4000.0, "图 2：默听自摸 4000")
+
+        # 图 1：标准/轻量都只识别 2 向听数值；期望 / 直接进张都因 max_shanten=1 返回 0
+        st1f = state_at_game(game, 0, 24)
+        e1f = expect.Expect(st1f, 0)
+        eq(e1f.dist(e1f.counts), 2, "图 1：d=2")
+        eq(shanten.shanten_at(st1f, 0),
+           {"kokushi": 3, "chiitoi": 2, "mentsu": 2}, "图 1：三种向听数（国士 3 / 七対 2 / 面子 2）")
+        eq(sum(advance_vals(e1f.compute()[0]).values()), 0, "图 1：6 个直接进张全 0")
+        eq(sum(expect.values(st1f, 0).values()), 0.0, "图 1：18 项期望 / 直接进张全 0")
+
+
 def section4():
     print("=== 4. 不变量 + 语料子集耗时（cap=0）===")
     files = corpus()[5:7]
@@ -808,7 +1063,7 @@ def section4():
         b = buckets.setdefault(d, [0, 0.0])
         b[0] += 1
         b[1] += dt
-        for k in expect.KEYS:
+        for k in expect.ADVANCE_KEYS + expect.KEYS:
             if f[k] < 0 or f[k] != f[k]:
                 bad.append(("负值/NaN", k, f[k]))
         if f["furo_tsumo_tenpai_abs"] + 1e-9 < f["furo_tsumo_tenpai_expect"]:
@@ -848,6 +1103,7 @@ def main():
     section3()
     section3b()
     section3c()
+    section5()
     n4, t4 = section4()
     print("=== 结果：通过 %d 项，失败 %d 项 ===（总耗时 %.1f s）" % (OK[0], BAD[0], time.perf_counter() - t0))
     if BAD[0] == 0:

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-"""第 19 轮：12 个「期望」特征的计算（期望听牌枚数 / 绝对枚数 / 期望打点）。
+"""第 19 轮：12 个「期望」特征的计算（期望听牌枚数 / 绝对枚数 / 期望打点）；
+v1.6.0 第 85 轮增加 6 个「直接进张」特征（嵌入同一棵进张枚举，compute 共 18 项）。
 
 口径（用户 m01875 / m01877，修订 m02073 / m02075 / m02389；本轮只做「计算」，暂不入库、不接界面）：
 
@@ -43,8 +44,8 @@
    无关，两种假想共用。
 7. 枚举方式（m02073）：整棵「进张 -> 打牌 -> 再进张」的递归树只走一遍，每个节点算一次向听数，
    每张候选和牌张只做一次候选拆解枚举（``agari.evaluate`` 同时给出「能不能和」与「打点」），
-   12 项特征都从这同一个节点字典里聚合出来；后续的听牌强度等特征也在这里加键。
-8. 边界：向听数 >= 3（默认 > 上限 1）时 12 项一律 0；已和牌的帧：枚数 = 0、打点 = 直接按该手牌算
+   18 项特征都从这同一个节点字典里聚合出来；后续的听牌强度等特征也在这里加键。
+8. 边界：向听数 >= 3（默认 > 上限 1）时 12 个期望特征与 6 个直接进张一律 0；已和牌的帧：枚数 = 0、打点 = 直接按该手牌算
    （取所有和了张里最大）。13-3n 张的帧直接算；14-3n 张（摸牌帧 / 吃碰帧）先打一张：枚数按「打到
    最小向听数」的那些打牌聚合（sum 口径下先把分子 / 分母各自求和、再相除，见第 4 条），打点在
    「打到最小向听数」的打牌里按 ``argmax{p x 打点}`` 选一手，再用
@@ -72,7 +73,28 @@ MENZEN_ASSUME = "menzen"                              # 门清枚数项（立直
 ASSUMES = (FURO_ASSUME, RIICHI_ASSUME, DAMATEN_ASSUME)      # 打点键（sc / ms）用它
 MENZEN_ASSUMES = (RIICHI_ASSUME, DAMATEN_ASSUME)           # 门清打点的两种假想
 
-# 12 个特征：key -> 显示名
+# 6 个「直接进张」特征（v1.6.0 第 85 轮）：与现有 12 个期望特征分开登记，
+# 避免 feats.EXPECT_FEATURES 重复注册。compute() 返回 ADVANCE_KEYS + KEYS 共 18 项。
+ADVANCE_FEATURES = [
+    ("furo_tsumo_advance_avail", "副露自摸直接进张枚数"),
+    ("furo_tsumo_advance_abs", "副露自摸直接进张绝对枚数"),
+    ("furo_ron_advance_avail", "副露荣和直接进张枚数"),
+    ("furo_ron_advance_abs", "副露荣和直接进张绝对枚数"),
+    ("menzen_advance_avail", "立直/默听直接进张枚数"),
+    ("menzen_advance_abs", "立直/默听直接进张绝对枚数"),
+]
+ADVANCE_KEYS = [k for k, _n in ADVANCE_FEATURES]
+# 特征 key -> 节点字典 ("da", ...) 键
+ADVANCE_NODE_KEYS = {
+    "furo_tsumo_advance_avail": ("da", FURO_ASSUME, TSUMO, "avail"),
+    "furo_tsumo_advance_abs": ("da", FURO_ASSUME, TSUMO, "abs"),
+    "furo_ron_advance_avail": ("da", FURO_ASSUME, RON, "avail"),
+    "furo_ron_advance_abs": ("da", FURO_ASSUME, RON, "abs"),
+    "menzen_advance_avail": ("da", MENZEN_ASSUME, "avail"),
+    "menzen_advance_abs": ("da", MENZEN_ASSUME, "abs"),
+}
+
+# 12 个期望特征：key -> 显示名
 FEATURES = [
     ("furo_tsumo_tenpai_expect", "副露自摸期望听牌枚数"),
     ("furo_tsumo_tenpai_abs", "副露自摸期望听牌绝对枚数"),
@@ -225,12 +247,14 @@ AGGS = ("sum", "best")
 
 def _zeros():
     """节点字典的键（见 Expect.node）：枚数的分子 (``"tp"``) 与分母 (``"tq"``) + 打点的分子
-    (``"sc"``) 与分母 (``"ms"``)，共 36 个。
+    (``"sc"``) 与分母 (``"ms"``)，共 36 个；再加 6 个直接进张键 (``"da"``)，共 42 个。
 
     ``("sc", assume, mode)`` = 该分支上 Σ p·得点（未归一化），``("ms", assume, mode)`` = 同一分支上
     的和牌概率 Σ p；帧级打点特征 = 两者的商（用户 m02389）。
     ``("tp", ...)`` = Σ p x 听牌枚数、``("tq", ...)`` = 同一批听牌叶子的 Σ p；帧级枚数特征 = 两者的
     商（用户 m02647：听牌枚数也要先归一化再加权）。
+    ``("da", ...)`` = 直接进张的**枚数**（不是概率加权，也不分 sum / best）：d=0 取 tp，d=1 复用
+    kids 的 tp > 0 累加剩余枚数，d>=2 / d=-1 为 0（v1.6.0 第 85 轮）。
     """
     out = {}
     for agg in AGGS:
@@ -245,17 +269,23 @@ def _zeros():
         for mode in (TSUMO, RON):
             out[("sc", assume, mode)] = 0.0
             out[("ms", assume, mode)] = 0.0
+    for mode in (TSUMO, RON):
+        for measure in ("avail", "abs"):
+            out[("da", FURO_ASSUME, mode, measure)] = 0
+    for measure in ("avail", "abs"):
+        out[("da", MENZEN_ASSUME, measure)] = 0
     return out
 
 
 class Expect(object):
-    """一帧（某个座位）的 12 个期望特征计算器。
+    """一帧（某个座位）的 6 个直接进张 + 12 个期望特征计算器。
 
     ``agg`` = 期望听牌枚数的打牌聚合口径（"sum" / "best"，见模块 docstring）；
     ``compute()`` 同时返回另一种口径的值（``alt``）。
+    ``shanten_cap`` = 向听数内部上限（标准 3 / 轻量 2，v1.6.0）；``max_shanten`` 恒为 1。
     """
 
-    def __init__(self, state, seat, agg="sum", max_shanten=DEFAULT_MAX_SHANTEN):
+    def __init__(self, state, seat, agg="sum", max_shanten=DEFAULT_MAX_SHANTEN, shanten_cap=3):
         if agg not in AGGS:
             raise ValueError("agg 只能是 sum / best")
         if not 0 <= max_shanten <= MAX_SHANTEN:
@@ -264,6 +294,8 @@ class Expect(object):
         self.seat = seat
         self.agg = agg
         self.max = max_shanten
+        # v1.6.0 轻量库：只改向听数的内部上限（3 -> 2），不改期望特征枚举深度 max_shanten。
+        self.shanten_cap = shanten_cap
         pl = state["players"][seat]
         self.melds = tuple(pl["melds"])
         self.counts = agari.counts_of(pl["hand"])
@@ -324,7 +356,7 @@ class Expect(object):
         if v is None:
             v = shanten.min_shanten(shanten.shanten_of(
                 counts, melds=self.melds, avail=self._avail_left(used),
-                seat_wind=self.sw, round_wind=self.rw))
+                seat_wind=self.sw, round_wind=self.rw, cap=self.shanten_cap))
             self._dists[key] = v
         return v
 
@@ -492,6 +524,14 @@ class Expect(object):
                                     ms += p
                         out[("sc", assume, mode)] = sc
                         out[("ms", assume, mode)] = ms
+            # 直接进张（v1.6.0）：d=0 时退化为此假设 / 模式下的和牌张枚数 tp。
+            for mode in (TSUMO, RON):
+                for measure in ("avail", "abs"):
+                    out[("da", FURO_ASSUME, mode, measure)] = int(
+                        out[("tp", FURO_ASSUME, "sum", mode, measure)])
+            for measure in ("avail", "abs"):
+                out[("da", MENZEN_ASSUME, measure)] = int(
+                    out[("tp", MENZEN_ASSUME, "sum", measure)])
             self._nodes[key] = out
             return out
         for t in range(34):                                 # 进张
@@ -516,6 +556,21 @@ class Expect(object):
                     kids.append(self.node(h, nu))
             if not kids:
                 continue
+            # 直接进张（v1.6.0）：d=1 时复用现有 kids（d=0 子节点）的 tp 判役，
+            # 按剩余枚数累加；不乘概率 p，也不按牌种数 +1。d>=2 一律 0。
+            if d == 1:
+                n_abs = 4 - counts[t] - self.meldc[t]
+                for mode in (TSUMO, RON):
+                    for measure in ("avail", "abs"):
+                        key_tp = ("tp", FURO_ASSUME, "sum", mode, measure)
+                        if any(g[key_tp] > 0 for g in kids):
+                            out[("da", FURO_ASSUME, mode, measure)] += (
+                                al[t] if measure == "avail" else n_abs)
+                for measure in ("avail", "abs"):
+                    key_tp = ("tp", MENZEN_ASSUME, "sum", measure)
+                    if any(g[key_tp] > 0 for g in kids):
+                        out[("da", MENZEN_ASSUME, measure)] += (
+                            al[t] if measure == "avail" else n_abs)
             p = al[t] / float(ul)
             # 打牌层的选择：argmax{p(打完的后继状态 -> 和牌状态) x 和牌打点} = argmax 未归一化的
             # ("sc", ...)（用户 m02389：打牌仍然要考虑达到和牌状态的概率）；同一条分支上的和牌
@@ -538,6 +593,8 @@ class Expect(object):
                     chosen[src] = max(kids, key=lambda g: g[src])
                 chosen[kk] = chosen[src]
             for kk in list(out.keys()):
+                if kk[0] == "da":
+                    continue            # 直接进张是枚数计数，不乘 p（v1.6.0）
                 if kk[0] == "sc":
                     out[kk] += p * chosen[kk][kk]
                 elif kk[0] == "ms":
@@ -567,7 +624,7 @@ class Expect(object):
                 best = g
         return best
 
-    # ------------------------------------------------------------ 聚合到 12 项
+    # ------------------------------------------------------------ 聚合到 6 直接进张 + 12 项
     def _pick_sum(self, nodes, key):
         return sum(g[key] for g in nodes)
 
@@ -617,8 +674,15 @@ class Expect(object):
         feats[out_key] = v_sum if self.agg == "sum" else v_best
         alt[out_key] = v_best if self.agg == "sum" else v_sum
 
+    def _assign_advance(self, feats, nodes):
+        """6 个直接进张：13 张只有一个 node，14 张是 keep 的全部 node —— 分别取 max（不是 sum）。"""
+        for key in ADVANCE_KEYS:
+            nk = ADVANCE_NODE_KEYS[key]
+            feats[key] = max(int(g[nk]) for g in nodes) if nodes else 0
+
     def _assign_all(self, feats, alt, nodes):
-        """把节点字典里的键摊到 12 个特征（副露帧只摊副露那 6 项）。"""
+        """把节点字典里的键摊到 6 个直接进张 + 12 个期望特征（副露帧只摊副露那 6 项）。"""
+        self._assign_advance(feats, nodes)
         for mode in (TSUMO, RON):
             for measure in ("avail", "abs"):
                 self._assign_tp(feats, alt, nodes, (
@@ -642,11 +706,12 @@ class Expect(object):
             feats[SCORE_KEYS[(DAMATEN, mode)]] = self._pick_score(nodes, DAMATEN_ASSUME, mode)
 
     def compute(self):
-        """-> (12 个特征值, 另一种打牌聚合口径下的 6 个期望听牌枚数特征)。
+        """-> (18 个特征值 = 6 直接进张 + 12 期望特征, 另一种打牌聚合口径下的 6 个期望听牌枚数特征)。
 
-    6 个打点项 = 和牌前提下的条件期望（分母 = 同一条 argmax 分支上的和牌概率，m02389）。
-    """
-        feats = dict((k, 0.0) for k in KEYS)
+        6 个打点项 = 和牌前提下的条件期望（分母 = 同一条 argmax 分支上的和牌概率，m02389）。
+        """
+        feats = dict((k, 0) for k in ADVANCE_KEYS)
+        feats.update((k, 0.0) for k in KEYS)
         alt = dict((k, 0.0) for k in KEYS)
         used = (0,) * 34
         if self.size not in (self.n13, self.n13 + 1):
@@ -684,11 +749,16 @@ class Expect(object):
         return feats, alt
 
 
-def values_both(state, seat, agg="sum", max_shanten=DEFAULT_MAX_SHANTEN):
-    """-> (12 个特征值, alt)；不在本帧范畴的特征 = 0.0。"""
-    return Expect(state, seat, agg=agg, max_shanten=max_shanten).compute()
+def values_both(state, seat, agg="sum", max_shanten=DEFAULT_MAX_SHANTEN, shanten_cap=3):
+    """-> (18 个特征值 = 6 直接进张 + 12 期望特征, alt)；不在本帧范畴的特征 = 0.0。
+
+    ``shanten_cap`` = 向听数内部上限（标准 3 / 轻量 2，v1.6.0）；``max_shanten`` 恒为 1。
+    """
+    return Expect(state, seat, agg=agg, max_shanten=max_shanten,
+                  shanten_cap=shanten_cap).compute()
 
 
-def values(state, seat, agg="sum", max_shanten=DEFAULT_MAX_SHANTEN):
-    """该帧该座位的 12 个期望特征值（不在本帧范畴的项 = 0.0）。"""
-    return values_both(state, seat, agg=agg, max_shanten=max_shanten)[0]
+def values(state, seat, agg="sum", max_shanten=DEFAULT_MAX_SHANTEN, shanten_cap=3):
+    """该帧该座位的 18 个特征值（6 直接进张 + 12 期望；不在本帧范畴的项 = 0.0）。"""
+    return values_both(state, seat, agg=agg, max_shanten=max_shanten,
+                       shanten_cap=shanten_cap)[0]

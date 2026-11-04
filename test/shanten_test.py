@@ -249,6 +249,47 @@ def section1b():
         check("melds" in str(e), "有副露但没给 melds：ValueError（%s）" % e)
 
 
+def section1c():
+    print("=== 1c. cap 参数（轻量库：上限 2） ===")
+    # cap(need)：need 张才能凑成和牌形 => 向听 need - 1；超过上限一律记上限。
+    for need, want3, want2 in ((0, -1, -1), (1, 0, 0), (2, 1, 1), (3, 2, 2),
+                               (4, 3, 2), (9, 3, 2), (shanten.SENTINEL, 3, 2)):
+        eq(shanten.cap(need), want3, "cap(%d) 标准 = %d" % (need, want3))
+        eq(shanten.cap(need, cap=2), want2, "cap(%d, cap=2) 轻量 = %d" % (need, want2))
+
+    # 轻量只把「>=3」压成 2：标准值 v 与轻量值的关系恒为 min(v, 2)。
+    hands = [
+        [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 22, 22],      # 和牌
+        [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 22],           # 听牌
+        [0, 1, 2, 3, 4, 5, 10, 11, 12, 15, 15, 22, 26],       # 1 向听
+        [2, 2, 7, 7, 11, 11, 12, 14, 19, 20, 20, 21, 23, 24], # 交接文档图 1：面子手 2 向听
+        [0, 4, 8, 9, 13, 17, 18, 22, 26, 27, 28, 29, 30],     # 3 向听以上
+    ]
+    saw3 = set()
+    saw2 = set()
+    for kinds in hands:
+        r3 = shanten.shanten_of(cnt(kinds))
+        r2 = shanten.shanten_of(cnt(kinds), cap=2)
+        eq(r2, {k: min(v, 2) for k, v in r3.items()},
+           "shanten_of(cap=2) = min(标准, 2)：%s -> %s" % (fmt(r3), fmt(r2)))
+        for k, v in r3.items():
+            if v == 3:
+                saw3.add(k)
+            if v == 2:
+                saw2.add(k)
+    eq(bool(saw3), True, "样例里出现标准 3（>=3）的牌型：%s" % ",".join(sorted(saw3)))
+    eq(bool(saw2), True, "样例里出现标准 2 的牌型：%s" % ",".join(sorted(saw2)))
+
+    # shanten_at 的 cap 透传（状态适配层，与 shanten_of 同口径）。
+    hand = hand_ids(cnt([0, 4, 8, 9, 13, 17, 18, 22, 26, 27, 28, 29, 30]))
+    st = {"players": [{"hand": list(hand), "melds": [], "river": []} for _ in range(4)],
+          "dora": [], "oya": 0, "round": 0}
+    r3 = shanten.shanten_at(st, 0)
+    r2 = shanten.shanten_at(st, 0, cap=2)
+    eq(r2, {k: min(v, 2) for k, v in r3.items()},
+       "shanten_at(cap=2) = min(标准, 2)：%s -> %s" % (fmt(r3), fmt(r2)))
+
+
 def section2():
     print("=== 2. 场上可见牌约束（avail） ===")
     base = cnt([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 22])
@@ -721,6 +762,7 @@ def main():
     print("shanten_test：第 17 轮三种向听数（国士無双 / 七対子 / 面子手）")
     section1()
     section1b()
+    section1c()
     section2()
     section3()
     section4()

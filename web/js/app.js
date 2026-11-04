@@ -1032,7 +1032,10 @@
     return null;
   }
   function featName(key) { var f = featOf(key); return f ? f.name : key; }
-  function featHint(f) {
+  /* 库类型显示（v1.6.0）：meta.db_type / 响应顶层 db_type = 'light' | 'standard' */
+  function dbTypeText(t) { return (t === 'light') ? '轻量' : '标准'; }
+  function normalizeDbType(t) { return (String(t || '') === 'light') ? 'light' : 'standard'; }
+  function featHint(f, dbType) {
     if (!f) { return ''; }
     if (f.kind === 'enum') { return (f.values || []).join(' / '); }
     if (f.kind === 'float') {
@@ -1041,10 +1044,14 @@
         + ' / 列表 0,1,2.5 / 比较 >=3';
     }
     if (SHANTEN_KEYS[f.key]) {
-      /* 向听数：内部取值 {-1,0,1,2,3}，3 表示「>=3 向听」，只有展示写成 >=3；
-         检索条件仍按内部整数匹配（填 3 / 3-5 / >=3 都会命中内部值 3，用户 m04115②、m04182）。 */
-      return '整数 / 区间 ' + (f.min !== undefined ? f.min : '') + '-' + (f.max !== undefined ? f.max : '')
-        + ' / 列表 1,2,3 / 比较 >=3（内部值 3 = >=3，按整数匹配）';
+      /* 向听数（v1.6.0）：标准库内部 {-1,0,1,2,3}，3 = >=3；轻量库内部 {-1,0,1,2}，2 = >=2。
+         两种库的检索都按内部整数匹配（轻量库填 3 / >=3 返回空，不做映射）。 */
+      if (dbType === 'light') {
+        return '整数 / 区间 ' + (f.min !== undefined ? f.min : '') + '-2 '
+          + '/ 列表 -1,0,1,2 / 比较；内部值 2 = >=2，3 及以上不存在（按整数匹配）';
+      }
+      return '整数 / 区间 ' + (f.min !== undefined ? f.min : '') + '-3 '
+        + '/ 列表 1,2,3 / 比较 >=3（内部值 3 = >=3，按整数匹配）';
     }
     return '整数 / 区间 ' + (f.min !== undefined ? f.min : '') + '-' + (f.max !== undefined ? f.max : '')
       + ' / 列表 1,2,3 / 比较 >=3';
@@ -1162,7 +1169,7 @@
     scanFiles();
   }
 
-  /* 软件信息：标题栏版本号 + 「--full」说明（都来自 GET /api/features） */
+  /* 软件信息：标题栏版本号（来自 GET /api/features） */
   function loadMeta() {
     return api('/api/features').then(function (d) {
       App.version = d.version || '';
@@ -1177,8 +1184,6 @@
           ? ((App.version ? 'v' + App.version + ' · ' : '') + d.author + (d.author_email ? ' <' + d.author_email + '>' : ''))
           : '';
       }
-      var note = $('anFullNote');
-      if (note && d.full_note) { note.textContent = d.full_note; }
       return d;
     })['catch'](function () { return null; });
   }
@@ -1192,17 +1197,41 @@
     var nm = $('anDbName');
     if (nm) { nm.disabled = ext; }
     if (ext) { fillExtendSelect(App.dbList || []); }
+    syncLightForTarget();
+  }
+
+  function dbByName(name) {
+    var list = App.dbList || [];
+    for (var i = 0; i < list.length; i++) { if (list[i].name === name) { return list[i]; } }
+    return null;
+  }
+
+  /* 轻量复选框（v1.6.0）：新建库默认勾选；扩充时由目标库 db_type 自动决定并禁用。 */
+  function syncLightForTarget() {
+    var an = $('anLight');
+    if (!an) { return; }
+    if (An.mode === 'extend') {
+      var sel = $('anExtendDb');
+      var db = dbByName((sel && sel.value) || '');
+      an.disabled = true;
+      an.checked = !!(db && normalizeDbType(db.db_type) === 'light');
+      return;
+    }
+    an.disabled = false;
+    an.checked = true;
   }
 
   function fillExtendSelect(dbs) {
     var sel = $('anExtendDb');
     if (!sel) { return; }
+    App.dbList = dbs || App.dbList || [];
     var cur = sel.value || '';
     clearNode(sel);
     for (var i = 0; i < dbs.length; i++) {
       var o = document.createElement('option');
       o.value = dbs[i].name;
-      o.textContent = dbs[i].name + '（' + ((dbs[i].meta && dbs[i].meta.record_count) || 0) + ' 行'
+      o.textContent = dbs[i].name + '（' + dbTypeText(dbs[i].db_type) + ' · '
+        + ((dbs[i].meta && dbs[i].meta.record_count) || 0) + ' 行'
         + ' · ' + (dbs[i].app_version ? ('v' + dbs[i].app_version) : '版本未记录')
         + (dbs[i].compatible === false ? ' ⚠ 版本不兼容' : '') + '）';
       if (dbs[i].compatible === false) { o.disabled = true; }
@@ -1212,6 +1241,7 @@
     /* 极简 DOM（测试）不会自动选中第一项，这里显式兜一下；真实浏览器里 sel.value 已经等于第一项 */
     if (!sel.value && sel.childNodes.length) { sel.value = sel.childNodes[0].value; }
     anExtendInfo();
+    syncLightForTarget();
   }
 
   function anExtendInfo() {
@@ -1219,11 +1249,10 @@
     if (!el) { return; }
     var sel = $('anExtendDb');
     var name = (sel && sel.value) || '';
-    var db = null;
-    var list = App.dbList || [];
-    for (var i = 0; i < list.length; i++) { if (list[i].name === name) { db = list[i]; } }
+    var db = dbByName(name);
     if (!db) { el.textContent = ''; return; }
-    el.textContent = '版本 ' + (db.app_version || '未记录')
+    el.textContent = '类型 ' + dbTypeText(db.db_type)
+      + ' · 版本 ' + (db.app_version || '未记录')
       + (db.compatible === false ? ' · ⚠ 版本不兼容，不能扩充，请删除后重新分析' : ' · 可扩充');
   }
 
@@ -1243,15 +1272,15 @@
     if (tgt.extend && !tgt.db_name) {
       setMsg('anMsg', '请先在「要扩充的数据库」里选择一个数据库。', true); return;
     }
-    var full = !!($('anFull') && $('anFull').checked);
+    var light = !!($('anLight') && $('anLight').checked);
     setMsg('anMsg', '正在分析 ' + paths.length + ' 个牌谱（node + python 自动）'
       + (tgt.extend ? ('，扩充 ' + tgt.db_name) : '') + '…');
     anProgressStart();
-    api('/api/analyze', { paths: paths, db_name: tgt.db_name, extend: tgt.extend, full: full }).then(function (d) {
+    api('/api/analyze', { paths: paths, db_name: tgt.db_name, extend: tgt.extend, light: light }).then(function (d) {
       var w = (d.warnings && d.warnings.length) ? ('；注意：' + d.warnings.join('；')) : '';
       var skip = (d.skipped && d.skipped.length) ? ('，跳过已入库 ' + d.skipped.length + ' 个牌谱') : '';
       setMsg('anMsg', '完成：' + d.logs + ' 个牌谱 / ' + d.rounds + ' 局 / 打点 ' + d.annotations
-        + ' 行（库内共 ' + d.db_total + ' 行）→ ' + d.db
+        + ' 行（' + dbTypeText(d.db_type) + '库，库内共 ' + d.db_total + ' 行）→ ' + d.db
         + (d.extend ? ('（扩充 ' + tgt.db_name + skip + '）') : '') + w,
         !!(d.warnings && d.warnings.length));
       anProgressDone(true, '分析完成：' + d.logs + ' 个牌谱 / ' + d.rounds + ' 局 / 打点 ' + d.annotations
@@ -1265,6 +1294,8 @@
 
   function setDb(name) {
     App.dbName = name || '';
+    var db = dbByName(App.dbName);
+    if (db) { Sc.dbType = normalizeDbType(db.db_type); App.dbType = Sc.dbType; }
     var sel = $('scDbSelect');
     if (sel) { sel.value = App.dbName; }
     setMsg('scMsg', App.dbName ? ('当前数据库：' + App.dbName) : '');
@@ -1277,7 +1308,8 @@
     nm.textContent = db.name;
     var meta = document.createElement('span');
     meta.className = 'muted';
-    meta.textContent = '打点 ' + ((db.meta && db.meta.record_count) || 0) + ' 行 · '
+    meta.textContent = dbTypeText(db.db_type) + '库 · 打点 '
+      + ((db.meta && db.meta.record_count) || 0) + ' 行 · '
       + ((db.meta && db.meta.tool) || '-') + ' · ' + Math.max(1, Math.round(db.size / 1024)) + ' KB'
       + ' · 版本 ' + (db.app_version || '未记录')
       + (db.compatible === false ? ' ⚠ 版本不兼容（不能扩充 / 加载）' : '');
@@ -1311,12 +1343,16 @@
     for (var i = 0; i < App.dbList.length; i++) {
       var o = document.createElement('option');
       o.value = App.dbList[i].name;
-      o.textContent = App.dbList[i].name + '（' + ((App.dbList[i].meta && App.dbList[i].meta.record_count) || 0) + ' 行'
+      o.textContent = App.dbList[i].name + '（' + dbTypeText(App.dbList[i].db_type) + ' · '
+        + ((App.dbList[i].meta && App.dbList[i].meta.record_count) || 0) + ' 行'
         + (App.dbList[i].app_version ? (' · v' + App.dbList[i].app_version) : '') + '）';
       sel.appendChild(o);
     }
     if (cur) { sel.value = cur; }
     if (!App.dbName && App.dbList.length) { App.dbName = App.dbList[0].name; }
+    /* 当前选中的库类型传给检索格式化（v1.6.0：轻量 2 -> >=2） */
+    var curDb = dbByName(sel.value || App.dbName || '');
+    if (curDb) { Sc.dbType = normalizeDbType(curDb.db_type); App.dbType = Sc.dbType; }
   }
 
   function refreshDbs() {
@@ -1520,7 +1556,7 @@
           inp.type = 'text';
           inp.className = 'cond-ctl cond-input';
           inp.value = c.expr || '';
-          inp.placeholder = featHint(f);
+          inp.placeholder = featHint(f, Sc.dbType || 'standard');
         }
         inp.setAttribute('data-key', c.key);
         inp.addEventListener('input', function () { c.expr = String(this.value || '').trim(); });
@@ -1647,6 +1683,8 @@
       App.items = d.rows || [];
       Sc.base = 0;
       Sc.total = (typeof d.total === 'number') ? d.total : App.items.length;
+      Sc.dbType = normalizeDbType(d.db_type);
+      App.dbType = Sc.dbType;
       App.itemIndex = -1;
       App.itemSource = 'query';
       renderResults(App.items);
@@ -1670,6 +1708,8 @@
       App.items = d.rows || [];
       Sc.base = 0;
       Sc.total = (typeof d.total === 'number') ? d.total : App.items.length;
+      Sc.dbType = normalizeDbType(d.db_type);
+      App.dbType = Sc.dbType;
       App.itemIndex = -1;
       App.itemSource = 'browse';
       renderResults(App.items);
@@ -1915,7 +1955,7 @@ function redMarkOf(st) {
   return null;
 }
 
-/* ------------------- 帧特征面板（42 个特征里的 34 个：不含第零类 7 项与第三类 1 项） */
+/* ------------------- 帧特征面板（48 个特征里的 40 个：不含第零类 7 项与第三类 1 项） */
   /* 当前帧的「打点视角」座位（第 63 轮，用户 m07289）：
      条目模式（检索结果）直接用它那一行的 seat —— 等待鸣牌帧一张出牌对应好几行、各家一行；
      正常播放则取 decisionSeats() 里优先主视角、否则座位最小的那一家；不是决策帧 → null。 */
@@ -2519,7 +2559,7 @@ function redMarkOf(st) {
   }
 
 
-  var FeatPanel = { key: '', seq: 0, loading: false, error: '', row: null, usedKeys: {} };
+  var FeatPanel = { key: '', seq: 0, loading: false, error: '', row: null, usedKeys: {}, dbType: '' };
 
   function featUsed(key) { return !!FeatPanel.usedKeys[key]; }
 
@@ -2531,13 +2571,17 @@ function redMarkOf(st) {
     renderFeatPanel();
   }
 
-  /* 向听数（国士無双 / 七対子 / 面子手）内部取值 3 表示「>=3 向听」，
-     对外一律显示成 >=3（用户 m04115②；对应 Python 侧 cli.feat_value_text()）。 */
+  /* 向听数（v1.6.0）：标准库内部值 3 = >=3；轻量库内部值 2 = >=2。
+     对应 Python 侧 cli.feat_value_text(key, value, db_type)。检索仍按内部整数匹配。 */
   var SHANTEN_KEYS = { shanten_kokushi: 1, shanten_chiitoi: 1, shanten_mentsu: 1 };
 
-  function fmtFeatValue(key, v) {
+  function fmtFeatValue(key, v, dbType) {
     if (v === null || v === undefined || v === '') { return '—'; }
-    if (SHANTEN_KEYS[key] && Number(v) === 3) { return '>=3'; }
+    dbType = normalizeDbType(dbType || 'standard');
+    if (SHANTEN_KEYS[key]) {
+      if (dbType === 'light' && Number(v) === 2) { return '>=2'; }
+      if (dbType === 'standard' && Number(v) === 3) { return '>=3'; }
+    }
     if (typeof v === 'number') {
       if (isFinite(v) && Math.floor(v) === v) { return String(v); }
       return String(Math.round(v * 1e6) / 1e6);
@@ -2560,6 +2604,7 @@ function redMarkOf(st) {
       return;
     }
     var feats = row.feats || {}, used = 0, shown = 0;
+    var dbType = normalizeDbType(row.db_type || FeatPanel.dbType || Sc.dbType || 'standard');
     for (var i = 0; i < FEATURES.length; i++) {
       var f = FEATURES[i];
       /* 第零类特征不列进「当前帧特征」（用户 m05937 ②）：牌谱含哪些 AI 模型的信息已经由右上角
@@ -2575,7 +2620,7 @@ function redMarkOf(st) {
       nm.textContent = f.name;
       var vv = document.createElement('span');
       vv.className = 'feat-value';
-      vv.textContent = fmtFeatValue(f.key, Object.prototype.hasOwnProperty.call(feats, f.key) ? feats[f.key] : undefined);
+      vv.textContent = fmtFeatValue(f.key, Object.prototype.hasOwnProperty.call(feats, f.key) ? feats[f.key] : undefined, dbType);
       r.appendChild(nm);
       r.appendChild(vv);
       if (featUsed(f.key)) { r.title = '这一条正用于当前检索条件'; used += 1; }
@@ -2660,6 +2705,7 @@ function redMarkOf(st) {
     api(path, body).then(function (d) {
       if (seq !== FeatPanel.seq) { return; }
       FeatPanel.loading = false;
+      if (d && d.db_type) { FeatPanel.dbType = normalizeDbType(d.db_type); }
       FeatPanel.row = d.row || null;
       renderFeatPanel();
     })['catch'](function (e) {
@@ -3250,10 +3296,22 @@ function redMarkOf(st) {
       modes[ai].addEventListener('change', function () { anSetMode(this.value); });
     }
     anSetMode('new');
-    bind('btnFullHelp', function () {
-      var d = $('anFullHelp');
+    bind('btnLightHelp', function () {
+      var d = $('anLightHelp');
       if (d) { d.open = !d.open; }
     });
+    var extendSel = $('anExtendDb');
+    if (extendSel && extendSel.addEventListener) {
+      extendSel.addEventListener('change', function () { anExtendInfo(); syncLightForTarget(); });
+    }
+    var scDbSel = $('scDbSelect');
+    if (scDbSel && scDbSel.addEventListener) {
+      scDbSel.addEventListener('change', function () {
+        var db = dbByName(this.value || '');
+        if (db) { Sc.dbType = normalizeDbType(db.db_type); }
+        renderConds();
+      });
+    }
     loadMeta();
 
     /* 牌谱检索 */
@@ -3399,6 +3457,10 @@ function redMarkOf(st) {
   window.App.anSetMode = anSetMode;
   window.App.anTargetDb = anTargetDb;
   window.App.fillExtendSelect = fillExtendSelect;
+  window.App.syncLightForTarget = syncLightForTarget;
+  window.App.fmtFeatValue = fmtFeatValue;
+  window.App.featHint = featHint;
+  window.App.dbTypeText = dbTypeText;
   window.App.featPanelState = FeatPanel;
   window.App.frameSeatOf = frameSeatOf;
   window.App.redMarkOf = redMarkOf;

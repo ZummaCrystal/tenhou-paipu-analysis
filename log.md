@@ -3853,11 +3853,11 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./build.ps1 -Clean -Skip
 3. `agari_test.py` 的语料总数 / 事件数写死值可考虑改成随语料动态计算，避免数据目录变化后误报。
 4. 完整 `mjscore_test.py` 建议在无工具时限的普通终端补跑一次。
 
-## 85. 第 85 轮：v1.6.0 直接进张 6 项 + 轻量库方案共识（尚未实现）
+## 85. 第 85 轮：v1.6.0 直接进张 6 项 + 轻量库（已实现）
 
 ### 85.1 本轮状态
 
-- 本轮只达成方案共识，**未改功能代码、未改数据库结构、未升版本**；仅在 `mjscore/expect.py` 的 `DEFAULT_MAX_SHANTEN` 下方加入「轻量/标准都保持 1」的共识注释。
+- 方案共识 + 实现完成：功能代码、数据库结构（schema 12）、版本（v1.6.0）与文档均已更新。
 - 实施方案：`docs/impl-plan-v1.6.0-advance-features.md`。
 - 交接文档：`docs/handover-v1.6.0-advance-features.md`。
 
@@ -3897,7 +3897,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./build.ps1 -Clean -Skip
 - 手牌 `3388m 3346p 233467s`。
 - `shanten_at` = 国士 3 / 七対 2 / 面子 2。
 - `mentsu_need` 最优拆解 `333m 888m 456p 33p 234s`，缺 3m / 8m / 5p，弃 3s / 6s / 7s；`need=3` → 2 向听。
-- 同一帧 `Expect` 的 `dist=2`，但 `d > max_shanten(1)`，`node()` 直接返回 0，所以 12 个期望特征全 0。
+- 同一帧 `Expect` 的 `dist=2`，但 `d > max_shanten(1)`，`node()` 直接返回 0，所以 12 个期望特征与 6 个直接进张全 0。
 - 结论：标准库能识别 2 向听数值，但默认不为 2 向听帧计算期望特征；轻量库不需要额外处理 2 向听。
 
 #### 图2：六项期望特征如何使用判别器
@@ -3926,3 +3926,57 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./build.ps1 -Clean -Skip
 - 按 `docs/impl-plan-v1.6.0-advance-features.md` 第 6 节顺序实现。
 - 先做 `shanten` cap 参数和 `expect` 直接进张的单元测试，再接 DB/UI。
 - 实现时先跑基线测试并记录既有失败（尤其 `agari_test.py` 的语料计数漂移）。
+
+### 85.6 实现记录（v1.6.0）
+
+- `mjscore/shanten.py`：新增 `_cap_value(need, limit)`；`cap(need, cap=CAP)` / `shanten_of(..., cap=CAP)` / `shanten_at(..., cap=CAP)` 全部支持上限参数；`SENTINEL` 语义不变。标准 cap=3、轻量 cap=2。
+- `mjscore/expect.py`：
+  - 新增独立 `ADVANCE_FEATURES`（6 条）与 `ADVANCE_KEYS` / `ADVANCE_NODE_KEYS`；`FEATURES` 仍只有 12 条期望特征，`feats.EXPECT_FEATURES` 不重复注册。
+  - `_zeros()` 增加 6 个 `("da", ...)` 键（共 42 个节点键）。
+  - d=0：`da = int(tp)`（副露 4 项 + 门清 2 项）。
+  - d=1：在现有进张循环的 `kids` 上按 `tp > 0` 判役，按 `al[t]` / `4 - counts[t] - meld[t]` 累加；d>=2 不累加。
+  - `_assign_advance()`：13 张 / 14 张统一对 nodes 的 6 个 `da` 取 max（不是 sum；14 张的 nodes 就是 `keep` 的全部切牌）。
+  - `node()` 末尾的概率加权循环显式 `if kk[0] == "da": continue`，直接进张不乘 `p`。
+  - `Expect(..., shanten_cap=3)`，`dist()` 透传；`values()` / `values_both()` 增加 `shanten_cap`。
+  - `DEFAULT_MAX_SHANTEN` 保持 1，第 85 轮共识注释保留。
+- `mjscore/feats.py`：新增 `ADVANCE_FEATURES`（int，0..136）；`SECOND_FEATURES = SHANTEN + ADVANCE + EXPECT + DANGER`（3 + 6 + 12 + 2 = 23）；`second_class(..., light=False)` / `make_record` / `draw_record` / `call_record` / `wait_record` / `records_for_round` / `records_for_game` 全部透传 light。
+- `mjscore/store.py`：`SCHEMA_VERSION = 12`；新增 `get_db_type(conn)`（缺失按 standard 容错）；`insert_records()` 删除 `full` 参数并始终写 `frame_full`；`FULL_NOTE` / 文档 / 错误提示改为「始终写入原始数据」。
+- `mjscore/cli.py`：`analyze(..., light=True)` / `_analyze(..., light=True)`，删除 `full`；新建默认为轻量，`--standard` 关闭；扩充读取目标库 `db_type` 强制按目标类型执行（冲突只 warning）；写 `meta.db_type` 与 `meta.full="1"`；`list_dbs()` 返回 `db_type`；`feat_value_text(key, value, db_type)`；`run_query()` 响应顶层带 `db_type`；`--features` 48；删除 `--full`，新增 `--standard`。
+- `mjscore/server.py`：`/api/analyze` 接受 `light`（默认 true）、删除 `full`；`/api/dbs` 带 `db_type`；`/api/query` / `/api/detail` / `/api/frame-feats`（以及 `/api/browse`）响应顶层带 `db_type`；`/api/features` 自动 48。
+- 前端：`mjsfeat.js` 手动补 6 条直接进张并更新 48/23 注释；`index.html` 删除 `anFull` / `anFullNote` / `anFullHelp`，新增默认勾选的 `anLight` + 轻量说明；`app.js` 发送 `{paths, db_name, extend, light}`、扩充联动勾选/禁用、DB 下拉显示轻量/标准、`fmtFeatValue(key,v,dbType)`（轻量 2→`>=2`、标准 3→`>=3`）、`featHint` 按库类型、面板从响应顶层取 `db_type`；`style.css` 面板 40 行（13px / 1.1 / 1px，标题 112px，局面 22px，正文 padding 2px）。
+- 版本 / 文档：`mjscore/__init__.py` / `package.json` → 1.6.0；`readme.md` / `docs/readme-dev.md` 同步 48 / 23 / 40 / schema 12 / 轻量库 / 删除 `--full`；本文件补充实现与测试记录。
+
+### 85.7 测试记录
+
+- 新增 / 改写的核心断言（`test/expect_test.py`）：
+  - `node_keys()` 36 → 42（+6 个 `da`）；节点字典 / 帧级 18 项口径。
+  - d=0：6 项 == 对应 `tp`（节点键与 compute 各验）；副露无役 4 项 0、断幺九副露 4 项 8。
+  - d=1：独立参考（逐牌种摸入、逐张试打、用 `agari.score` 判役、按剩余枚数累加）与节点 / compute 逐项对拍。
+  - 枚数不是种类数：牌河见 1 张 6s ⇒ 3（不是 1）。
+  - d>=2 / d=-1 全 0；14 张 `keep` 取 max（hand 的 keep 门清枚数 7 vs 合计 18，证明不是 sum）。
+  - 赤 5 与普通 5 同种；交接文档图 2 真实牌谱：副露 4 项 0、门清 6/7、打点 5200/7900/0/4000；图 1：d=2、六项 0。
+- `test/shanten_test.py` 新增 1c：`cap(need, cap=2)` 边界（need=3/4/9/SENTINEL）、`shanten_of(cap=2) == min(标准,2)`、`shanten_at(cap=2)` 透传。
+- `test/mjscore_test.py` 新增 2e：新建默认轻量、`meta.db_type`、`meta.full="1"`、轻量 `frame_full` 有数据、3 个向听列最大 2、标准最大 3、轻量检索 `2` 命中而 `3` / `>=3` / `4` / `3-5` 为空、标准 `3` 命中、扩充轻量库时传入标准模式只 warning 且不改类型、schema 11 拒绝；并逐帧比对轻量 / 标准只有 3 个向听列不同（其余 20 个第二类特征一致）。
+- 前端 `test/apptest.js`：48 项注册表 / 40 项下拉 / 40 行面板、6 个直接进张顺序、无 `anFull`、`anLight` 默认勾选、扩充轻量/标准自动勾选/禁用、payload 带 `light` 不带 `full`、DB 下拉轻量/标准、`fmtFeatValue` 两种库、面板 `>=2` 显示。
+- `test/expect_test.py`：150 OK / 1 FAIL；唯一失败是既有语料问题（测试找 `data/**/*.xml`，工作区只有 `.tenhou`，样本 0），新增直接进张 section 全部通过。
+- `test/shanten_test.py`：1c cap 断言全部通过；整体仍因既有 `.xml` 语料为 0 在第 4 节计数失败并随后除零（基线如此）。
+- `test/agari_test.py`：186 OK / 3 FAIL，与基线完全一致（语料 69 vs 71、和牌 618 vs 640、立直 530 vs 545）。
+- `test/naga_test.py`：262 OK / 0 FAIL。
+- `test/apptest.js` / `test/selftest.js` / `test/uitest.js`：全部通过。
+- 面板无滚动条实测（headless Chrome，`--allow-file-access-from-files`；probe 在 `temp/v160-dispatch/panel_probe.html`，不入库）：
+  - 1764×959：40 行，行高 16.3px，`featPanelList.scrollHeight=658 == clientHeight=658`，`featPanel.scrollHeight=814 == clientHeight=814`，无滚动条。
+  - 1920×1080：40 行，`scrollHeight=779 == clientHeight=779`，`featPanel 935 == 935`，无滚动条。
+- 性能（本机开发环境；Python 打点）：
+  - 整库分析（单文件 2026082919 共 660 帧）：新建轻量库（cap=2）99.1 s；新建标准库（cap=3）101.6 s；轻量不慢于标准（差异在噪声内）。
+  - `shanten_at` 2000 个摸牌帧（预热后交替复测）：cap=2 ≈ 1.92 ms/帧、cap=3 ≈ 1.95 ms/帧（差 <2%，无额外枚举）。
+  - `Expect.values` 200 个 d0/d1 帧：cap=2 62.0 ms/帧、cap=3 64.2 ms/帧（轻量略快，无新开枚举）。
+  - 轻量 / 标准逐帧对比 660 行 × 23 个第二类特征：除 3 个向听列（轻量 = min(标准, 2)）外 0 差异；6 个直接进张 + 12 个期望特征 + 2 个危险特征完全相同。
+  - 直接进张没有新开向听枚举：d=1 只读现有 `kids` 的 `tp`，d=0 只读现有 `tp`，14 张只读现有 `keep`；`shanten_of` 调用次数不因 6 个直接进张增加（代码路径上没有新增调用）。
+- `test/mjscore_test.py` 全量：**308 OK / 0 FAIL**，exit=0，wall 约 72.8 分钟（覆盖 schema 12 / db_type / 轻量检索 / 扩充类型 / 旧库拒绝 / 双工具 73 列交叉校验 / 服务端顶层 db_type / frame_full 始终写入）。
+
+### 85.8 提交与留意
+
+- 分支 `feat/v1.6.0-advance-features`，不 push、不 tag、不打包发布。
+- 既有语料基线失败（非本轮回归）：`agari_test.py` 186 OK / 3 FAIL（本地 69 个 `.tenhou` vs 测试写死的 71 个，和牌 618 vs 640、立直 530 vs 545）；`shanten_test.py` / `expect_test.py` 的 `.xml` 语料计数为 0（同样为语料目录漂移；这两项在基线就失败）；`shanten_test.py` 第 4 节随后因 `n_frame=0` 除零。新增的 cap / 直接进张断言均通过。
+- `mjscore_test.py` 全量 308 OK / 0 FAIL（wall 约 72.8 分钟，exit=0），见 85.7。
+

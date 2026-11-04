@@ -4,10 +4,10 @@
  * 本文件与 Python 端 mjscore/feats.py 的「第一类特征」、口径、字段名逐项对齐，
  * test/mjscore_test.py 会交叉校验「Node 打点」与「Python 打点」的结果完全一致。
  *
- * 第 21 轮（m02959）把 17 个「第二类特征」（3 个向听数 + 12 个期望枚数/打点 + 2 个危险筋组·两面组）
- * 也登记在 FEATURES 里：浏览器只用它们的 key / 中文名 / 值域（检索下拉 + 帧特征面板显示）；
+ * 第 21 轮（m02959）把「第二类特征」也登记在 FEATURES 里（v1.6.0 起 23 个：3 向听 + 6 直接进张 +
+ * 12 期望枚数/打点 + 2 危险筋组·两面组）：浏览器只用它们的 key / 中文名 / 值域（检索下拉 + 帧特征面板显示）；
  * 这些值由 Python 端算好后入库（js 侧没有实现；--tool node 时由 cli.py 用 Python 补列）。
- * 三个向听数的内部取值 3 表示「>=3」，界面上一律显示成 >=3（用户 m04115②）。
+ * 三个向听数的内部取值标准库 3 表示「>=3」、轻量库 2 表示「>=2」，界面按库类型显示（v1.6.0）。
  * 第 52 轮（用户 m04556 ②）把原来的第一类特征「NAGA决策」改名「NAGA-平衡 分析」并移到
  * 「第零类特征」；第 59 轮（用户 m05937 ②）补齐 Mortal 的避四 / 争一；第 74 轮（用户 m09507）
  * 再补新版 NAGA 的避四（アナンタ）/ 争一（ウロボロス），共 7 项：NAGA-平衡 分析 /
@@ -50,7 +50,7 @@
   ];
 
   /* 特征注册表：与 mjscore/feats.py 的 FEATURES 一致（key / 中文名 / 值域）。
-     顺序 = 第零类 7 项（AI_FEATURES）→ 第一类 17 项 → 第二类 17 项 → 第三类 1 项（共 42 项）。
+     顺序 = 第零类 7 项（AI_FEATURES）→ 第一类 17 项 → 第二类 23 项 → 第三类 1 项（共 48 项）。
      第一类 17 项：局况 … 顺位 → 自家立直状态 → …
      立直家（他家）数量 → 立直家（他家）一发巡 → 副露家（他家）数量 … 亲家（他家）副露数量。 */
   var FIRST_FEATURES = [
@@ -78,11 +78,17 @@
     { key: 'oya_meld_n', name: '亲家（他家）副露数量', kind: 'int', min: 0, max: 4 }
   ];
 
-  /* ---- 第二类特征（第 21 轮，m02959）：值由 Python 端算好后入库，这里只登记定义 ---- */
+  /* ---- 第二类特征（第 21 轮，m02959；v1.6.0 第 85 轮新增 6 个直接进张）：值由 Python 端算好后入库，这里只登记定义 ---- */
   var SECOND_FEATURES = [
     { key: 'shanten_kokushi', name: '国士無双向听数', kind: 'int', min: -1, max: 3 },
     { key: 'shanten_chiitoi', name: '七対子向听数', kind: 'int', min: -1, max: 3 },
     { key: 'shanten_mentsu', name: '面子手向听数', kind: 'int', min: -1, max: 3 },
+    { key: 'furo_tsumo_advance_avail', name: '副露自摸直接进张枚数', kind: 'int', min: 0, max: 136 },
+    { key: 'furo_tsumo_advance_abs', name: '副露自摸直接进张绝对枚数', kind: 'int', min: 0, max: 136 },
+    { key: 'furo_ron_advance_avail', name: '副露荣和直接进张枚数', kind: 'int', min: 0, max: 136 },
+    { key: 'furo_ron_advance_abs', name: '副露荣和直接进张绝对枚数', kind: 'int', min: 0, max: 136 },
+    { key: 'menzen_advance_avail', name: '立直/默听直接进张枚数', kind: 'int', min: 0, max: 136 },
+    { key: 'menzen_advance_abs', name: '立直/默听直接进张绝对枚数', kind: 'int', min: 0, max: 136 },
     { key: 'furo_tsumo_tenpai_expect', name: '副露自摸期望听牌枚数', kind: 'float', min: 0, max: 100000 },
     { key: 'furo_tsumo_tenpai_abs', name: '副露自摸期望听牌绝对枚数', kind: 'float', min: 0, max: 100000 },
     { key: 'furo_ron_tenpai_expect', name: '副露荣和期望听牌枚数', kind: 'float', min: 0, max: 100000 },
@@ -106,8 +112,8 @@
     { key: 'meld_wait', name: '等待鸣牌', kind: 'enum', values: [YES, NO] }
   ];
 
-  /* 顺序 = 第零类 7 项 + 第一类 17 项 + 第二类 17 项 + 第三类 1 项
-     （与 mjscore/feats.py 的 FEATURES 一致，共 42 项） */
+  /* 顺序 = 第零类 7 项 + 第一类 17 项 + 第二类 23 项 + 第三类 1 项
+     （与 mjscore/feats.py 的 FEATURES 一致，共 48 项） */
   var FEATURES = AI_FEATURES.concat(FIRST_FEATURES).concat(SECOND_FEATURES).concat(THIRD_FEATURES);
 
   /** 「立直家（他家）一发巡」（用户 m02227 ② / m02356）：另外三家只要有一家有「一发」状态就是 是 */

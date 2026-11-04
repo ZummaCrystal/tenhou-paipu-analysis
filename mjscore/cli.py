@@ -164,8 +164,11 @@ def game_from_file(path):
 
 
 # ------------------------------------------------------------------ 打点
-def python_records(games, on_progress=None, progress=None):
-    """Python 一侧的打点（mjscore/mjlog.py + replay.py + feats.py）；逐局上报进度。"""
+def python_records(games, on_progress=None, progress=None, light=False):
+    """Python 一侧的打点（mjscore/mjlog.py + replay.py + feats.py）；逐局上报进度。
+
+    light=True = 轻量库（三种向听数上限 2；其余特征与标准库相同）。
+    """
     recs = []
     for i, game in enumerate(games):
         lid = game["log_id"]
@@ -174,7 +177,7 @@ def python_records(games, on_progress=None, progress=None):
             progress(stage="打点", files_done=i, current=lid, rounds_done=0, rounds_total=len(rounds))
         n = 0
         for ri in range(len(rounds)):
-            rs = feats.records_for_round(game, ri)
+            rs = feats.records_for_round(game, ri, light=light)
             for r in rs:
                 r["path"] = game["path"]; r["tool"] = "python"
             recs.extend(rs)
@@ -188,11 +191,12 @@ def python_records(games, on_progress=None, progress=None):
     return recs
 
 
-def second_class_pass(games, on_progress=None, progress=None):
-    """逐帧算第二类 17 项（只取 feats 里 s_* 那部分）。
+def second_class_pass(games, on_progress=None, progress=None, light=False):
+    """逐帧算第二类 23 项（只取 feats 里 s_* 那部分）。
 
     js 侧没有实现第二类特征 ⇒ --tool node 时用它补列。返回
     {(log_id, round_index, ev_index, seat): {key: value, ...}}。
+    light=True = 轻量库（向听数上限 2）。
     """
     out = {}
     for i, game in enumerate(games):
@@ -203,7 +207,7 @@ def second_class_pass(games, on_progress=None, progress=None):
                      rounds_done=0, rounds_total=len(rounds))
         n = 0
         for ri in range(len(rounds)):
-            rs = feats.records_for_round(game, ri)
+            rs = feats.records_for_round(game, ri, light=light)
             for r in rs:
                 out[(r["log_id"], r["round_index"], r["ev_index"], r["seat"])] = r["feats"]
             n += len(rs)
@@ -253,18 +257,19 @@ def fill_ai(records, games):
     return records
 
 
-def fill_second_class(records, games, warnings, on_progress=None, progress=None):
-    """node 只打第一类 16 项特征，第二类 17 项由 python 逐帧补齐。"""
-    warnings.append("--tool node：第一类特征来自 node，第二类 17 项由 python 补齐（js 侧没有实现）")
-    extra = second_class_pass(games, on_progress=on_progress, progress=progress)
+def fill_second_class(records, games, warnings, on_progress=None, progress=None, light=False):
+    """node 只打第一类 17 项特征，第二类 23 项由 python 逐帧补齐。"""
+    warnings.append("--tool node：第一类特征来自 node，第二类 23 项由 python 补齐（js 侧没有实现）")
+    extra = second_class_pass(games, on_progress=on_progress, progress=progress, light=light)
     merge_second_class(records, extra)
     return records
 
 
-def build_records(files, games, tool="auto", node=None, warnings=None, on_progress=None, progress=None):
+def build_records(files, games, tool="auto", node=None, warnings=None, on_progress=None, progress=None,
+                  light=False):
     """按 --tool 选择打点工具；auto = 有 node 用 node，node 失败则退回 python。
 
-    node（web/js/mjsfeat.js）只实现第一类 16 项特征 ⇒ 之后由 python 补齐第二类 17 项。
+    node（web/js/mjsfeat.js）只实现第一类 17 项特征 ⇒ 之后由 python 补齐第二类 23 项。
     批次里有 NAGA / Mortal 报告时整批走 python：node 侧解析器（mjscore/node_harness.js）只认天凤 xml。
     """
     warnings = warnings if warnings is not None else []
@@ -273,28 +278,29 @@ def build_records(files, games, tool="auto", node=None, warnings=None, on_progre
         warnings.append("批次里有 NAGA / Mortal / mix 报告，Node 侧解析器只认天凤 xml，本次整批改用 python 打点")
         tool = "python"
     if tool == "python":
-        return "python", python_records(games, on_progress, progress=progress)
+        return "python", python_records(games, on_progress, progress=progress, light=light)
     if tool == "node":
         if not nodeharness.available():
             raise nodeharness.NodeMissing("--tool node 但找不到 node.exe")
         recs = nodeharness.node_records(files, node=node)
-        return "node", fill_second_class(recs, games, warnings, on_progress, progress)
+        return "node", fill_second_class(recs, games, warnings, on_progress, progress, light)
     if nodeharness.available():
         try:
             recs = nodeharness.node_records(files, node=node)
-            return "node", fill_second_class(recs, games, warnings, on_progress, progress)
+            return "node", fill_second_class(recs, games, warnings, on_progress, progress, light)
         except (nodeharness.NodeMissing, nodeharness.NodeFailed) as exc:
             warnings.append("node 打点不可用，自动退回 python：%s" % exc)
     else:
         warnings.append("未找到 node.exe，使用 python 打点")
-    return "python", python_records(games, on_progress, progress=progress)
+    return "python", python_records(games, on_progress, progress=progress, light=light)
 
 
-def analyze(inputs, db=None, db_name=None, tool="auto", full=False, node=None,
+def analyze(inputs, db=None, db_name=None, tool="auto", light=True, node=None,
             on_progress=None, fixture=None, extend=False):
     """打点并写库；进度写进 cli.PROGRESS（前端轮询 /api/analyze-progress）。
 
     extend=True 时扩充已有数据库（库里已有的牌谱自动跳过），见 _analyze。
+    light=True（默认）= 轻量库：三种向听数内部上限 2；False = 标准库（上限 3）。
     返回结果摘要 dict（server.py 也调这个函数）。
     """
     progress_reset(running=True, stage="解析牌谱", tool=tool, db=db_path_of(db, db_name),
@@ -302,7 +308,7 @@ def analyze(inputs, db=None, db_name=None, tool="auto", full=False, node=None,
                    records=0, events_done=0, events_total=0, skipped=0, extend=bool(extend),
                    started_at=time.time())
     try:
-        res = _analyze(inputs, db=db, db_name=db_name, tool=tool, full=full, node=node,
+        res = _analyze(inputs, db=db, db_name=db_name, tool=tool, light=light, node=node,
                        on_progress=on_progress, fixture=fixture, progress=progress_update,
                        extend=extend)
     except Exception as exc:
@@ -318,19 +324,20 @@ def analyze(inputs, db=None, db_name=None, tool="auto", full=False, node=None,
     return res
 
 
-def _analyze(inputs, db=None, db_name=None, tool="auto", full=False, node=None,
+def _analyze(inputs, db=None, db_name=None, tool="auto", light=True, node=None,
              on_progress=None, fixture=None, progress=None, extend=False):
     """打点并写库的内部实现。返回结果摘要 dict（server.py 也调 analyze()）。
 
     extend=True（「扩充现有数据库」）：目标库必须已存在、结构版本与软件版本都匹配；
     库里 source 表已记录过的牌谱（特征码相同）直接跳过，只把新牌谱追加进去。
+    扩充时**强制使用目标库的 db_type**：如果调用方传了与之冲突的类型，只加 warning 并忽略。
     """
     t0 = time.time()
     db_path = db_path_of(db, db_name)
     warnings = []
     skipped = []
     existing = set()
-    prev_full = False
+    db_type = "light" if light else "standard"
     if extend:
         if fixture:
             raise ValueError("fixture 入库不能与扩充模式同时使用")
@@ -339,9 +346,17 @@ def _analyze(inputs, db=None, db_name=None, tool="auto", full=False, node=None,
         conn0 = store.connect(db_path, create=False)      # 同时校验结构版本 / 软件版本
         try:
             existing = store.source_ids(conn0)
-            prev_full = str(store.get_meta(conn0).get("full") or "") == "1"
+            if existing:
+                target_type = store.get_db_type(conn0)
+                if target_type != db_type:
+                    warnings.append("扩充按目标库类型（%s）执行，忽略本次传入的 %s 模式"
+                                    % ("轻量" if target_type == "light" else "标准",
+                                       "轻量" if db_type == "light" else "标准"))
+                db_type = target_type
         finally:
             conn0.close()
+        # 让后续打点 / 补齐第二类特征都按目标库类型执行（空库按新建处理，沿用传入类型）
+        light = (db_type == "light")
         if not existing:
             warnings.append("要扩充的数据库还没有任何牌谱记录，本次按新建处理")
     if fixture:
@@ -382,12 +397,11 @@ def _analyze(inputs, db=None, db_name=None, tool="auto", full=False, node=None,
             progress(rounds_total=sum(len(g.get("rounds") or []) for g in games))
         used_tool, records = build_records(files, games, tool=tool, node=node,
                                           warnings=warnings, on_progress=on_progress,
-                                          progress=progress)
+                                          progress=progress, light=light)
         if progress:
             progress(stage="写库", files_done=len(files), current="", events_total=len(records))
 
     fill_ai(records, games)        # 第零类 7 项 + ai_models / ai_series：三条打点路径统一补
-    log_full = bool(full)
     if progress:
         progress(stage="写库")
     conn = store.open_db(db_path)
@@ -406,7 +420,7 @@ def _analyze(inputs, db=None, db_name=None, tool="auto", full=False, node=None,
         kind_counts = {}
         for rec in records:
             store.insert_records(conn, [rec], tool=used_tool, log_path=rec.get("path", ""),
-                                 added_at=ts, full=log_full)
+                                 added_at=ts)
             counts[rec["log_id"]] = counts.get(rec["log_id"], 0) + 1
             k = rec.get("kind") or "draw"
             kind_counts[k] = kind_counts.get(k, 0) + 1
@@ -440,20 +454,21 @@ def _analyze(inputs, db=None, db_name=None, tool="auto", full=False, node=None,
         store.set_meta(conn, "record_count", total)
         store.set_meta(conn, "source_count", src_count)
         store.set_meta(conn, "round_count", round_count)
-        store.set_meta(conn, "full", "1" if (log_full or prev_full) else "0")
+        store.set_meta(conn, "db_type", db_type)
+        store.set_meta(conn, "full", "1")
         store.set_meta(conn, "doukou", store.DOUKOU)
-        store.set_meta(conn, "full_note", store.FULL_NOTE if log_full else "")
+        store.set_meta(conn, "full_note", store.FULL_NOTE)
         store.set_meta(conn, "sources_json", files_json)
         store.set_meta(conn, "last_batch", json.dumps(
             {"tool": used_tool, "files": files, "annotations": sum(counts.values()),
-             "extend": bool(extend), "skipped": skipped, "full": log_full,
+             "extend": bool(extend), "skipped": skipped, "db_type": db_type,
              "at": ts}, ensure_ascii=False))
         conn.commit()
     finally:
         conn.close()
 
     return {
-        "ok": True, "db": db_path, "tool": used_tool, "full": log_full,
+        "ok": True, "db": db_path, "tool": used_tool, "db_type": db_type,
         "extend": bool(extend), "skipped": skipped,
         "files": files, "logs": len(games), "annotations": sum(counts.values()),
         "rows_draw": kind_counts.get("draw", 0),
@@ -478,14 +493,18 @@ def resolve_feature(token):
     raise ValueError("未知的牌谱特征：%s" % t)
 
 
-def feat_value_text(key, value):
+def feat_value_text(key, value, db_type="standard"):
     """特征值对外的显示文本。
 
-    向听数内部取值为 3 表示「>=3 向听」，对外一律显示成 >=3（用户 m04115②）；
+    标准库向听数内部取值 3 表示「>=3 向听」，对外显示成 >=3；轻量库内部取值 2 表示
+    「>=2 向听」，对外显示成 >=2（v1.6.0）。检索仍按内部整数匹配，不做特殊映射。
     其余特征直接 str。
     """
-    if key in feats.SHANTEN_KEYS and value == 3:
-        return ">=3"
+    if key in feats.SHANTEN_KEYS:
+        if db_type == "light" and value == 2:
+            return ">=2"
+        if db_type == "standard" and value == 3:
+            return ">=3"
     return str(value)
 
 
@@ -514,10 +533,14 @@ def parse_condition_lines(text):
 def run_query(db_path, conds, limit=200, offset=0, ai=None, wait=None):
     """执行检索。``ai`` = 第零类特征方案（用户 m04556 ③），形如
     ``{"mode": "any|naga|mortal|multi", "picks": ["ai_balance", …]}``；None = 不筛选。
-    ``wait`` = 第三类「出牌 / 鸣牌响应」（用户 m07289），None / 空 = 「出牌」。"""
+    ``wait`` = 第三类「出牌 / 鸣牌响应」（用户 m07289），None / 空 = 「出牌」。
+    响应顶层带 ``db_type``（v1.6.0），前端据此把轻量库的 2 显示成 >=2。
+    """
     conn = store.connect(db_path, create=False)
     try:
-        return store.query(conn, conds, limit=limit, offset=offset, ai=ai, wait=wait)
+        res = store.query(conn, conds, limit=limit, offset=offset, ai=ai, wait=wait)
+        res["db_type"] = store.get_db_type(conn)
+        return res
     finally:
         conn.close()
 
@@ -550,6 +573,7 @@ def list_dbs():
         ver = meta.get("app_version") or ""
         out.append({"name": fn, "path": p, "size": os.path.getsize(p), "meta": meta,
                     "app_version": ver,
+                    "db_type": meta.get("db_type") or "standard",
                     "compatible": store.version_compatible(ver)})
     return out
 
@@ -591,7 +615,8 @@ def main(argv=None):
         description="天凤牌谱分析：对给定本地牌谱（文件或目录）里的每一个「非自摸的摸牌帧」、「吃/碰后等待出牌的帧」和「等待鸣牌决策的帧」打点，写入 SQLite 数据库，并支持按特征检索。",
         epilog="示例：\n"
                "  python tools/analyze.py data\\*.tenhou --db-name demo\n"
-               "  python tools/analyze.py \"D:\\paipu\" --db-name demo --full --tool node\n"
+               "  python tools/analyze.py \"D:\\paipu\" --db-name demo --tool node\n"
+               "  python tools/analyze.py data\\paipu\\new --db-name demo --extend --standard\n"
                "  python tools/analyze.py --list-dbs\n"
                "  echo 巡目=3,供托>=1000 | python tools/analyze.py --query --db-name demo\n"
                "  python tools/analyze.py --serve\n")
@@ -600,7 +625,8 @@ def main(argv=None):
     ap.add_argument("--db-name", help="数据库名（默认 paipu）")
     ap.add_argument("--tool", choices=("auto", "node", "python"), default="auto",
                     help="打点工具：auto=有 node 用 node，失败退回 python（默认）；node=Node 端 js 解析器；python=本包实现")
-    ap.add_argument("--full", action="store_true", help="同时写入原始数据：把该帧的手牌/副露/宝牌/分数存进 frame_full（以后新增特征可重算）")
+    ap.add_argument("--standard", action="store_true",
+                    help="按标准库分析：三种向听数内部上限 3（默认轻量：上限 2，新建库默认轻量；扩充时按目标库类型自动决定）")
     ap.add_argument("--extend", action="store_true", help="扩充现有数据库：目标库必须已存在且版本匹配，库里已有的牌谱自动跳过")
     ap.add_argument("--version", action="version", version="%s v%s" % (APP_NAME, APP_VERSION))
     ap.add_argument("--fixture", help="用已有的 JSONL 打点 fixture 入库（不解析 XML，测试用）")
@@ -608,7 +634,7 @@ def main(argv=None):
     ap.add_argument("--list-dbs", action="store_true", help="列出 data/db 下的数据库")
     ap.add_argument("--delete-db", help="删除指定数据库文件")
     ap.add_argument("--features", action="store_true",
-                    help="打印 42 个特征定义（7 个第零类 + 17 个第一类 + 17 个第二类 + 1 个第三类）")
+                    help="打印 48 个特征定义（7 个第零类 + 17 个第一类 + 23 个第二类 + 1 个第三类）")
     ap.add_argument("--values", help="打印某个特征在库里的取值分布（配合 --db/--db-name）")
     ap.add_argument("--query", action="store_true", help="从 stdin 读检索条件（每行「特征名=条件」），执行检索")
     ap.add_argument("--ai", choices=ai_models.MODE_KEYS,
@@ -644,6 +670,7 @@ def main(argv=None):
         if args.features:
             emit({"features": feats.FEATURES,
                   "first_features": feats.BASE_FEATURES,
+                  "second_features": feats.SECOND_FEATURES,
                   "ai_features": feats.AI_FEATURES,
                   "third_features": feats.THIRD_FEATURES,
                   "wait_modes": list(store.WAIT_MODES),
@@ -656,8 +683,9 @@ def main(argv=None):
             return 0
         if args.list_dbs:
             dbs = list_dbs()
-            emit({"dbs": dbs}, "\n".join("%-28s %8d B  %s 打点 %s 行  版本 %s%s" % (
-                d["name"], d["size"], d["meta"].get("tool", "-"), d["meta"].get("record_count", "-"),
+            emit({"dbs": dbs}, "\n".join("%-28s %8d B  %s ｜ %s ｜ 打点 %s 行  版本 %s%s" % (
+                d["name"], d["size"], "轻量" if d.get("db_type") == "light" else "标准",
+                d["meta"].get("tool", "-"), d["meta"].get("record_count", "-"),
                 d.get("app_version") or "（未记录）",
                 "" if d.get("compatible") else "  ⚠ 版本不匹配")
                 for d in dbs) or "（data/db 下还没有数据库）")
@@ -682,15 +710,20 @@ def main(argv=None):
             f = resolve_feature(args.values)
             conn = store.open_db(db_path_of(args.db, args.db_name))
             try:
+                db_type = store.get_db_type(conn)
                 vals = store.list_feature_values(conn, f["key"])
             finally:
                 conn.close()
-            human = "\n".join("%-8s %6d 帧" % (feat_value_text(f["key"], v["value"]), v["count"])
+            human = "\n".join("%-8s %6d 帧" % (feat_value_text(f["key"], v["value"], db_type), v["count"])
                                for v in vals)
             if f["key"] in feats.SHANTEN_KEYS:
-                human += ("\n（向听数的内部取值 -1 / 0 / 1 / 2 / 3，3 表示 >=3；"
-                          "检索条件仍按内部整数匹配：填 3、3-5、>=3 都会命中内部值 3）")
-            emit({"feature": f["name"], "values": vals}, human)
+                if db_type == "light":
+                    human += ("\n（轻量库：向听数的内部取值 -1 / 0 / 1 / 2，2 表示 >=2；"
+                              "检索条件仍按内部整数匹配：填 3 / >=3 返回空）")
+                else:
+                    human += ("\n（标准库：向听数的内部取值 -1 / 0 / 1 / 2 / 3，3 表示 >=3；"
+                              "检索条件仍按内部整数匹配：填 3、3-5、>=3 都会命中内部值 3）")
+            emit({"feature": f["name"], "db_type": db_type, "values": vals}, human)
             return 0
         if args.query:
             text = sys.stdin.read().lstrip("﻿")
@@ -737,10 +770,11 @@ def main(argv=None):
             ap.print_help()
             return 2
         res = analyze(args.paths, db=args.db, db_name=args.db_name, tool=args.tool,
-                      full=args.full, extend=args.extend)
-        human = ("已入库 %s\n  工具 %s ｜ 牌谱 %d 个 ｜ 局 %d ｜ 本次打点 %d 行"
+                      light=not args.standard, extend=args.extend)
+        human = ("已入库 %s（%s库）\n  工具 %s ｜ 牌谱 %d 个 ｜ 局 %d ｜ 本次打点 %d 行"
                  "（出牌帧 %d = 摸牌 %d + 吃碰后 %d ｜ 鸣牌响应帧 %d）｜ 库内共 %d 行 ｜ %dms"
-                 % (res["db"], res["tool"], res["logs"], res["rounds"], res["annotations"],
+                 % (res["db"], "轻量" if res.get("db_type") == "light" else "标准",
+                    res["tool"], res["logs"], res["rounds"], res["annotations"],
                     res.get("rows_draw", 0) + res.get("rows_call", 0),
                     res.get("rows_draw", 0), res.get("rows_call", 0), res.get("rows_wait", 0),
                     res["db_total"], res["elapsed_ms"]))

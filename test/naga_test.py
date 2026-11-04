@@ -11,9 +11,9 @@ r"""naga 正式测试（第 27 轮：NAGA 报告适配层 / 流局种类推断�
   4. 真实样本（build\_scratch\naga_samples\ 里的 naga 报告，存在时才跑）：三处流局都是
      荒牌流局，听牌家 = [2] / [0,3] / [0]，且与报告 deltas 反推的收支一致
  5. 打点链路 / 存储集成（第 29 轮，用户 m00080 目标 3）：目录扫描认得 .naga（旧 .json / .json.gz）、
-    log_id = 完整 report_id、每行 42 个特征（7 第零类 + 17 第一类 + 17 第二类 + 1 第三类）、第零类七项**按帧判定**
+    log_id = 完整 report_id、每行 48 个特征（7 第零类 + 17 第一类 + 23 第二类 + 1 第三类）、第零类七项**按帧判定**
      （第 60 轮 / 用户 m06323 ①，口径按 m06560 更正：这一帧的决策者持有该模型的决策概率表才是「是」；
-     天凤七项全「否」）、f_ai_* 入库、schema_version = 11、天凤 / NAGA / Mortal 混编进同一个库
+     天凤七项全「否」）、f_ai_* 入库、schema_version = 12、天凤 / NAGA / Mortal 混编进同一个库
   6. 本地服务接口（第 30 轮，用户 m01171 第 1 / 2 条）：POST /api/naga-convert 把浏览器
      手选 / 拖放进来的报告字节转成同构 JSON（与 naga.to_game 逐字节一致）、坏内容被拒；
      GET /api/paipu-browse 只列 data/paipu 里的子目录与牌谱文件（越界目录被拒）
@@ -292,7 +292,7 @@ RID_S5 = "3180043a69ad5cbf353fba1bde67491ff135d60f7902cbe654db9057f40ee4e0v2_2"
 
 
 def section5():
-    print("---- 5. 打点链路 / 存储集成（42 个特征 + 第零类 7 项 + 天凤/NAGA 混编）")
+    print("---- 5. 打点链路 / 存储集成（48 个特征 + 第零类 7 项 + 天凤/NAGA 混编）")
     import json as _json
     import shutil
     from mjscore import cli, feats, store
@@ -326,7 +326,7 @@ def section5():
 
         recs = feats.records_for_game(game)
         check(len(recs) > 0, "NAGA 报告打出 %d 行" % len(recs))
-        eq(len(recs[0]["feats"]), 42, "每行 42 个特征（7 第零类 + 17 第一类 + 17 第二类 + 1 第三类）")
+        eq(len(recs[0]["feats"]), 48, "每行 48 个特征（7 第零类 + 17 第一类 + 23 第二类 + 1 第三类）")
         eq(recs[0]["feats"]["ai_balance"], "是",
            "决策者（0 号家）的帧 + 该帧有概率表 → NAGA-平衡 分析 = 是（用户 m06560）")
         eq((recs[0]["feats"]["ai_superhuro"], recs[0]["feats"]["ai_mortal41a"],
@@ -357,7 +357,7 @@ def section5():
         eq((fake[2]["ai_models"], fake[2]["ai_series"]), ("", ""), "无概率表的帧两个辅助列为空串")
         eq(cli.file_log_id(th_log + ".xml"), th_log, "file_log_id 对天凤 xml 仍用文件名")
 
-        # 入库：schema 11 + f_ai_*（按帧判定）+ 42 项
+        # 入库：schema 12 + f_ai_*（按帧判定）+ 48 项
         db = os.path.join(tmp, "an.sqlite")
         res = cli.analyze([path], db=db, tool="python")
         eq(res["tool"], "python", "analyze 用 python 打点")
@@ -365,7 +365,7 @@ def section5():
         conn = store.connect(db, create=False)
         try:
             eq(store.get_meta(conn).get("schema_version"), str(store.SCHEMA_VERSION),
-               "meta.schema_version = %d（第 74 轮：第零类 7 项 + 新 NAGA 两模型）" % store.SCHEMA_VERSION)
+               "meta.schema_version = %d（v1.6.0：直接进张 6 项 + 轻量库）" % store.SCHEMA_VERSION)
             eq(store.source_ids(conn), {RID_S5}, "source.log_id = 完整 report_id")
             dist = dict(conn.execute("SELECT f_ai_balance, COUNT(*) FROM frame GROUP BY f_ai_balance").fetchall())
             eq(dist, {"是": 1, "否": len(recs) - 1},
@@ -377,10 +377,10 @@ def section5():
             eq(_other, 0, "该样本只含「ニシキ」⇒ 其余六项第零类全为「否」")
             idx, seat = conn.execute("SELECT idx, seat FROM frame WHERE f_ai_balance = '是' LIMIT 1").fetchone()
             one = store.query_detail(conn, idx)
-            eq(len(one["feats"]), 42, "query_detail 展开 42 个特征")
+            eq(len(one["feats"]), 48, "query_detail 展开 48 个特征")
             eq(one["feats"]["ai_balance"], "是", "库里的 NAGA-平衡 分析 = 是")
             ff = store.frame_feats(conn, RID_S5, one["round_index"], one["frame_index"], seat)
-            eq(len((ff or {}).get("feats") or {}), 42, "frame_feats 返回 42 项特征")
+            eq(len((ff or {}).get("feats") or {}), 48, "frame_feats 返回 48 项特征")
             eq((ff or {}).get("feats", {}).get("ai_balance"), "是", "frame_feats 里的 NAGA-平衡 分析 = 是")
             eq(store.list_feature_values(conn, "ai_balance"),
                [{"value": "否", "count": len(recs) - 1}, {"value": "是", "count": 1}],
@@ -1098,7 +1098,7 @@ def section12():
     eq([c[0] for c in ai_models.CHOICES],
        ["ai_balance", "ai_superhuro", "ai_naga_avoid4", "ai_naga_aggressive",
         "ai_mortal41a", "ai_mortal41b", "ai_mortal41c"], "第零类 key 顺序（NAGA 三项在前，用户 m09507）")
-    eq(len(feats.FEATURES), 42, "总特征 42 项（7 + 17 + 17 + 1）")
+    eq(len(feats.FEATURES), 48, "总特征 48 项（7 + 17 + 23 + 1）")
     arr = [0] * 37
     arr[34] = 3000; arr[4] = 100
     arr[35] = 2000; arr[13] = 50
