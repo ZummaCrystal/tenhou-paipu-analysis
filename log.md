@@ -4051,3 +4051,34 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./build.ps1 -Clean -Skip
   - 1764×959：40 行，行高 16.3px，正文内容高 655.88px、`featPanelList.clientHeight=664`，**底部余量 8.13px**；`featPanel.scrollHeight=814 == clientHeight=814`，`noBodyScrollbar=true` / `noPanelScrollbar=true`。
   - 1920×1080：正文内容高 655.88px、`clientHeight=785`，余量 129.13px；`featPanel 935 == 935`，无滚动条。
 - 快速套件：`test/expect_test.py` **150 OK / 1 FAIL**（既有 `.xml` 语料 0 样本）；`test/shanten_test.py` **1c cap 全过**，整体因既有 `.xml` 语料 0 计数失败 + 第 4 节除零（与基线同构）；`test/apptest.js` / `test/selftest.js` / `test/uitest.js` **全部通过，exit=0**。
+
+## 86. 第 86 轮：v1.6.0 打包与 git 维护
+
+### 86.1 打包命令
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./build.ps1 -Clean -SkipIcon -SkipTests -Smoke -Port 8788
+```
+
+- `-Clean` 清理 `dist/pyi`、`dist/electron`、`build/pyi` 后完整重建。
+- `-SkipTests`：本轮代码测试已在第 85 轮完成（第 1 轮全量 308/0；第 2/3 轮按用户要求 10% 抽样 40/0；快速套件 apptest / selftest / uitest 全过）。打包只做后端冒烟。
+- 旧 v1.5.1 安装包、blockmap 与 latest.yml 已备份到 `_backup/v1.5.1_packaged_20261105/`（`_backup/` 不进 git）。
+
+### 86.2 打包结果
+
+- PyInstaller 后端 exe：**2,468,495 B**。
+- 内嵌 node：**91,694,408 B**。
+- OpenSSL 校验：`libssl-3-x64.dll` 1,326,920 B、`libcrypto-3-x64.dll` 7,349,064 B，均正确。
+- 后端冒烟（端口 8788）：`/api/health` 返回 `version 1.6.0`，通过。
+- NSIS 安装包：`dist/electron/tenhou-paipu-analysis-1.6.0-setup.exe` = **143,352,742 B**。
+- SHA256：`B03DA57B102990648F4678F86ABDE1E3E4DE56B3DB86D6CA2C29549A6CBC99A9`（`sha256sum` 复核一致）。
+- 安装包 blockmap：`dist/electron/tenhou-paipu-analysis-1.6.0-setup.exe.blockmap`。
+- `readme.md` §2.1 指纹已更新为 v1.6.0；新增 `docs/release-v1.6.0.md`。
+
+### 86.3 git 维护
+
+- 功能分支：`feat/v1.6.0-advance-features`（基线 `2341c01`，实现 `f6b72dc` + 修复 `cf9e9fc` + 本发布准备提交）。
+- 合并策略：本地 fast-forward 到 `main`。
+- 标签：`v1.6.0`（本地 annotated tag，tag 指向发布提交）。
+- 远端：`git push origin main --tags` 另行执行；若本机 SSH / 受限终端拒绝，需在普通终端补推。
+- 发布包、`dist/`、`build/`、`temp/`、`_backup/` 均在 `.gitignore` 范围，不进入源码提交。
